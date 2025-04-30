@@ -30,8 +30,9 @@ app_ui <- function(request) {
         icon = bs_icon("wrench"),
         # h2("Choose your theme from the dropdown above."),
         uiOutput("theme_selector"),# 添加一个占位符用于主题选择
-        mv_summary_ui("mv_summary"),
+        mv_noise_ui("mv_noise"),
         mv_imputation_ui("mv_imputation"),
+        mv_summary_ui("mv_summary"),
         # Align_batch_ui("Align_batch")
       ),
       bslib::nav_menu(
