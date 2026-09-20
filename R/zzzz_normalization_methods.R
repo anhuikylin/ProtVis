@@ -566,15 +566,22 @@ data_normalization_server <- function(id, shared_state) {
         samples,
         mode = input$distribution_group_by %||% "triplicate"
       )
+      group_levels <- base::unique(groups)
+      sample_order <- samples[base::order(
+        base::match(groups, group_levels),
+        base::seq_along(samples)
+      )]
       key <- base::data.frame(
         sample_id = samples,
         plot_group = groups,
         stringsAsFactors = FALSE
       )
       long <- dplyr::left_join(long, key, by = "sample_id")
-      long$sample_id <- base::factor(long$sample_id, levels = samples)
+      long$sample_id <- base::factor(
+        long$sample_id, levels = sample_order
+      )
       long$plot_group <- base::factor(
-        long$plot_group, levels = base::unique(groups)
+        long$plot_group, levels = group_levels
       )
       long
     }
