@@ -262,8 +262,24 @@ data_normalization_ui <- function(id) {
         shiny::actionButton(ns("compare_methods"), "Compare all methods", icon = bsicons::bs_icon("bar-chart-line"), class = "btn btn-outline-primary fw-bold pv-load-button pv-run-button"),
         shiny::uiOutput(ns("comparison_status_panel")),
         shiny::hr(),
-        colourpicker::colourInput(ns("original_boxplot_color"), "Original boxplot", value = "#B51F9C"),
-        colourpicker::colourInput(ns("normalized_boxplot_color"), "Normalized boxplot", value = "#FF7F0E"),
+        shiny::selectInput(
+          ns("distribution_group_by"),
+          "Distribution color grouping",
+          choices = c(
+            "Auto (triplicate group)" = "triplicate",
+            "Experimental group" = "group",
+            "Species" = "species",
+            "Tissue" = "tissue",
+            "Condition" = "condition",
+            "Batch" = "batch"
+          ),
+          selected = "triplicate"
+        ),
+        shiny::p(
+          "Auto groups samples by replicate suffix (_1/_2/_3), so each biological triplicate shares one color.",
+          class = "pv-norm-method-note"
+        ),
+        shiny::uiOutput(ns("distribution_color_mapping")),
         shiny::numericInput(ns("plot_width"), "Download width (inches)", value = 8, min = 1, max = 40),
         shiny::numericInput(ns("plot_height"), "Download height (inches)", value = 7, min = 1, max = 40),
         shiny::downloadButton(ns("download_original_plot"), "Download original PDF"),
@@ -504,24 +520,103 @@ data_normalization_server <- function(id, shared_state) {
       DT::datatable(rv$normalized_matrix, options = base::list(scrollX = TRUE, pageLength = 10), rownames = TRUE)
     })
 
+    distribution_groups <- shiny::reactive({
+      samples <- base::colnames(original_matrix_numeric())
+      .protvis_sample_group_values(
+        rv$sample_info,
+        samples,
+        mode = input$distribution_group_by %||% "triplicate"
+      )
+    })
+
+    output$distribution_color_mapping <- shiny::renderUI({
+      groups <- base::unique(distribution_groups())
+      defaults <- .protvis_group_palette(groups)
+      shiny::tagList(base::lapply(base::seq_along(groups), function(i) {
+        group <- groups[[i]]
+        colourpicker::colourInput(
+          session$ns(base::paste0("distribution_color_", i)),
+          label = group,
+          value = defaults[[group]]
+        )
+      }))
+    })
+
+    distribution_color_map <- shiny::reactive({
+      groups <- base::unique(distribution_groups())
+      defaults <- .protvis_group_palette(groups)
+      values <- base::vapply(base::seq_along(groups), function(i) {
+        value <- input[[base::paste0("distribution_color_", i)]]
+        if (base::is.null(value) || !base::nzchar(value)) defaults[[groups[[i]]]]
+        else base::as.character(value)
+      }, character(1))
+      stats::setNames(values, groups)
+    })
+
     .norm_long <- function(mat) {
-      df <- .protvis_rownames_to_column(base::as.data.frame(mat, check.names = FALSE), "ID")
-      tidyr::pivot_longer(df, cols = -ID, names_to = "sample_id", values_to = "intensity")
+      df <- .protvis_rownames_to_column(
+        base::as.data.frame(mat, check.names = FALSE), "ID"
+      )
+      long <- tidyr::pivot_longer(
+        df, cols = -ID, names_to = "sample_id", values_to = "intensity"
+      )
+      samples <- base::colnames(mat)
+      groups <- .protvis_sample_group_values(
+        rv$sample_info,
+        samples,
+        mode = input$distribution_group_by %||% "triplicate"
+      )
+      key <- base::data.frame(
+        sample_id = samples,
+        plot_group = groups,
+        stringsAsFactors = FALSE
+      )
+      long <- dplyr::left_join(long, key, by = "sample_id")
+      long$sample_id <- base::factor(long$sample_id, levels = samples)
+      long$plot_group <- base::factor(
+        long$plot_group, levels = base::unique(groups)
+      )
+      long
+    }
+
+    .distribution_boxplot <- function(mat, ylab, title = NULL) {
+      df <- .norm_long(mat)
+      ggplot2::ggplot(
+        df,
+        ggplot2::aes(x = sample_id, y = intensity, fill = plot_group)
+      ) +
+        ggplot2::geom_boxplot(outlier.size = 0.15, linewidth = 0.35) +
+        ggplot2::scale_fill_manual(
+          values = distribution_color_map(),
+          drop = FALSE
+        ) +
+        ggplot2::coord_flip() +
+        ggplot2::theme_bw() +
+        ggplot2::theme(
+          legend.position = "right",
+          legend.text = ggplot2::element_text(size = 7),
+          legend.title = ggplot2::element_text(size = 8)
+        ) +
+        ggplot2::labs(
+          x = NULL,
+          y = ylab,
+          title = title,
+          fill = .protvis_group_label(
+            input$distribution_group_by %||% "triplicate"
+          )
+        )
     }
 
     output$originalPlot <- shiny::renderPlot({
-      df <- .norm_long(original_matrix_numeric())
-      ggplot2::ggplot(df, ggplot2::aes(x = sample_id, y = intensity)) +
-        ggplot2::geom_boxplot(fill = input$original_boxplot_color, outlier.size = 0.15) +
-        ggplot2::coord_flip() + ggplot2::theme_bw() + ggplot2::labs(x = NULL, y = "Intensity / transformed value")
+      .distribution_boxplot(
+        original_matrix_numeric(),
+        "Intensity / transformed value"
+      )
     })
 
     output$normalizedPlot <- shiny::renderPlot({
       shiny::req(rv$normalized_matrix)
-      df <- .norm_long(rv$normalized_matrix)
-      ggplot2::ggplot(df, ggplot2::aes(x = sample_id, y = intensity)) +
-        ggplot2::geom_boxplot(fill = input$normalized_boxplot_color, outlier.size = 0.15) +
-        ggplot2::coord_flip() + ggplot2::theme_bw() + ggplot2::labs(x = NULL, y = "Normalized value")
+      .distribution_boxplot(rv$normalized_matrix, "Normalized value")
     })
 
     output$comparison_table <- DT::renderDT({
@@ -565,21 +660,36 @@ data_normalization_server <- function(id, shared_state) {
         ggplot2::theme_bw() + ggplot2::labs(x = "Normalized value", y = "Density")
     })
 
-    .download_boxplot <- function(file, mat, color, title, ylab) {
-      grDevices::pdf(file, width = input$plot_width, height = input$plot_height)
-      on.exit(grDevices::dev.off(), add = TRUE)
-      graphics::boxplot(mat, las = 2, col = color, main = title, ylab = ylab, outline = FALSE, cex.axis = 0.7)
+    .download_boxplot <- function(file, mat, title, ylab) {
+      plot <- .distribution_boxplot(mat, ylab = ylab, title = title)
+      ggplot2::ggsave(
+        filename = file,
+        plot = plot,
+        device = "pdf",
+        width = input$plot_width,
+        height = input$plot_height,
+        units = "in"
+      )
     }
 
     output$download_original_plot <- shiny::downloadHandler(
       filename = function() "original_data_boxplot.pdf",
-      content = function(file) .download_boxplot(file, original_matrix_numeric(), input$original_boxplot_color, "Original Data", "Value")
+      content = function(file) {
+        .download_boxplot(
+          file, original_matrix_numeric(), "Original Data",
+          "Intensity / transformed value"
+        )
+      }
     )
     output$download_normalized_plot <- shiny::downloadHandler(
-      filename = function() base::paste0("normalized_", input$normalization_method %||% "median", ".pdf"),
+      filename = function() base::paste0(
+        "normalized_", input$normalization_method %||% "median", ".pdf"
+      ),
       content = function(file) {
         shiny::req(rv$normalized_matrix)
-        .download_boxplot(file, rv$normalized_matrix, input$normalized_boxplot_color, "Normalized Data", "Normalized value")
+        .download_boxplot(
+          file, rv$normalized_matrix, "Normalized Data", "Normalized value"
+        )
       }
     )
 
