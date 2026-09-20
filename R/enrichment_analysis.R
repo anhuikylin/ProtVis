@@ -371,7 +371,79 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
   )
   numeric_cols <- intersect(c("pvalue", "p.adjust", "Count"), names(out))
   out[numeric_cols] <- lapply(out[numeric_cols], as.numeric)
+  .protvis_validate_maize_teosinte_kegg_data(out)
   out
+}
+
+
+.protvis_validate_maize_teosinte_kegg_data <- function(data) {
+  required <- c(
+    "Panel", "Direction", "Cluster", "Cluster_label", "ID",
+    "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "Count"
+  )
+  missing <- setdiff(required, names(data))
+  if (length(missing)) {
+    stop(
+      "Built-in maize-teosinte KEGG data are missing columns: ",
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (nrow(data) != 29L ||
+      sum(data$Panel == "C") != 18L ||
+      sum(data$Panel == "D") != 11L) {
+    stop(
+      "Built-in maize-teosinte KEGG data failed the 29-point ",
+      "(Panel C = 18; Panel D = 11) integrity check.",
+      call. = FALSE
+    )
+  }
+
+  expected_c <- c(
+    "Pentose and glucuronate interconversions",
+    "Phenylpropanoid biosynthesis",
+    "Galactose metabolism",
+    "Lipid biosynthesis proteins",
+    "Fatty acid biosynthesis"
+  )
+  expected_d <- c(
+    "Phenylpropanoid biosynthesis",
+    "Metabolism of terpenoids and polyketides",
+    "Monoterpenoid biosynthesis",
+    "Glutathione metabolism",
+    "Photosynthesis"
+  )
+  observed_c <- unique(data$Description[data$Panel == "C"])
+  observed_d <- unique(data$Description[data$Panel == "D"])
+  if (!setequal(observed_c, expected_c) ||
+      !setequal(observed_d, expected_d)) {
+    stop(
+      "Built-in maize-teosinte KEGG pathway labels failed integrity checks.",
+      call. = FALSE
+    )
+  }
+
+  if (any(!is.finite(data$pvalue)) ||
+      any(!is.finite(data$Count)) ||
+      any(data$pvalue <= 0) ||
+      any(data$Count <= 0) ||
+      anyDuplicated(data[c("Panel", "Cluster", "Description")])) {
+    stop(
+      "Built-in maize-teosinte KEGG numeric/key values failed integrity checks.",
+      call. = FALSE
+    )
+  }
+
+  # Publication panel D has no significant Root_V1.V2 pathway point.
+  if (any(data$Panel == "D" & data$Cluster == "Root_V1.V2")) {
+    stop(
+      "Panel D integrity check failed: Root_V1.V2 should be absent.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
 }
 
 
@@ -396,6 +468,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       "Fatty acid biosynthesis"
     )
     p_breaks <- c(0.0005, 0.0010, 0.0015)
+    p_labels <- c("0.0005", "0.0010", "0.0015")
     count_breaks <- c(20, 30, 40)
     title <- expression(italic("Zea mays ssp. mays") ~ "– enriched")
   } else {
@@ -408,6 +481,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       "Photosynthesis"
     )
     p_breaks <- c(0.0003, 0.0006, 0.0009)
+    p_labels <- c("0.0003", "0.0006", "0.0009")
     count_breaks <- c(5, 20, 30)
     title <- expression(italic("Zea mays ssp. mexicana") ~ "– enriched")
   }
@@ -433,6 +507,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       low = "red",
       high = "blue",
       breaks = p_breaks,
+      labels = p_labels,
       name = "pvalue"
     ) +
     ggplot2::scale_size_continuous(
@@ -441,8 +516,17 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       name = "Count"
     ) +
     ggplot2::guides(
-      fill = ggplot2::guide_colorbar(order = 1),
-      size = ggplot2::guide_legend(order = 2)
+      fill = ggplot2::guide_colorbar(
+        order = 1,
+        reverse = TRUE
+      ),
+      size = ggplot2::guide_legend(
+        order = 2,
+        override.aes = list(
+          fill = "white",
+          colour = "black"
+        )
+      )
     ) +
     ggplot2::labs(
       title = title,
