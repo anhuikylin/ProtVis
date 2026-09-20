@@ -336,6 +336,185 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 }
 
 
+# Built-in source for the archived maize-teosinte Figure 3C-D KEGG panel.
+# The 29 displayed pathway-stage points were reconstructed from the archived
+# directional DEP/KEGG workflow and checked against
+# 03.Maize_Teosinte_Jul02_2024/04.result/01.Publish_figures/KEGG enrichment.png.
+.protvis_maize_teosinte_kegg_data <- function() {
+  file_name <- "maize_teosinte_kegg_figure3_cd.csv"
+  path <- system.file(
+    "extdata",
+    file_name,
+    package = "ProtVis"
+  )
+
+  if (!nzchar(path)) {
+    candidates <- c(
+      file.path("inst", "extdata", file_name),
+      file.path(getwd(), "inst", "extdata", file_name)
+    )
+    hit <- candidates[file.exists(candidates)]
+    if (length(hit)) path <- hit[[1L]]
+  }
+
+  if (!nzchar(path) || !file.exists(path)) {
+    stop(
+      "Built-in maize-teosinte KEGG reproduction data are unavailable.",
+      call. = FALSE
+    )
+  }
+
+  out <- utils::read.csv(
+    path,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  numeric_cols <- intersect(c("pvalue", "p.adjust", "Count"), names(out))
+  out[numeric_cols] <- lapply(out[numeric_cols], as.numeric)
+  out
+}
+
+
+.protvis_maize_teosinte_kegg_panel <- function(data, panel = c("C", "D")) {
+  panel <- match.arg(panel)
+  df <- data[data$Panel == panel, , drop = FALSE]
+
+  if (!nrow(df)) {
+    stop("No built-in KEGG data are available for panel ", panel, ".",
+         call. = FALSE)
+  }
+
+  if (identical(panel, "C")) {
+    x_levels <- c(
+      "Root_VE", "Root_V1.V2", "Root_V4", "Leaf_VE-V2", "Leaf_V4-V8"
+    )
+    y_levels <- c(
+      "Pentose and glucuronate interconversions",
+      "Phenylpropanoid biosynthesis",
+      "Galactose metabolism",
+      "Lipid biosynthesis proteins",
+      "Fatty acid biosynthesis"
+    )
+    p_breaks <- c(0.0005, 0.0010, 0.0015)
+    count_breaks <- c(20, 30, 40)
+    title <- expression(italic("Zea mays ssp. mays") ~ "– enriched")
+  } else {
+    x_levels <- c("Root_VE", "Root_V4", "Leaf_VE-V2", "Leaf_V4-V8")
+    y_levels <- c(
+      "Phenylpropanoid biosynthesis",
+      "Metabolism of terpenoids and polyketides",
+      "Monoterpenoid biosynthesis",
+      "Glutathione metabolism",
+      "Photosynthesis"
+    )
+    p_breaks <- c(0.0003, 0.0006, 0.0009)
+    count_breaks <- c(5, 20, 30)
+    title <- expression(italic("Zea mays ssp. mexicana") ~ "– enriched")
+  }
+
+  df$Cluster_label <- factor(df$Cluster_label, levels = x_levels)
+  df$Description <- factor(df$Description, levels = rev(y_levels))
+
+  ggplot2::ggplot(
+    df,
+    ggplot2::aes(
+      x = Cluster_label,
+      y = Description,
+      size = Count,
+      fill = pvalue
+    )
+  ) +
+    ggplot2::geom_point(
+      shape = 21,
+      colour = "black",
+      stroke = 0.45
+    ) +
+    ggplot2::scale_fill_gradient(
+      low = "red",
+      high = "blue",
+      breaks = p_breaks,
+      name = "pvalue"
+    ) +
+    ggplot2::scale_size_continuous(
+      range = c(3.5, 10.5),
+      breaks = count_breaks,
+      name = "Count"
+    ) +
+    ggplot2::guides(
+      fill = ggplot2::guide_colorbar(order = 1),
+      size = ggplot2::guide_legend(order = 2)
+    ) +
+    ggplot2::labs(
+      title = title,
+      x = NULL,
+      y = NULL
+    ) +
+    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(
+        size = 9,
+        colour = "black",
+        angle = 90,
+        hjust = 1,
+        vjust = 0.5
+      ),
+      axis.text.y = ggplot2::element_text(
+        size = 9,
+        colour = "black"
+      ),
+      plot.title = ggplot2::element_text(
+        size = 12,
+        hjust = 0.5,
+        colour = "black"
+      ),
+      panel.border = ggplot2::element_rect(
+        colour = "black",
+        linewidth = 0.8
+      ),
+      panel.grid.major = ggplot2::element_line(
+        colour = "#e7e7e7",
+        linewidth = 0.4
+      ),
+      panel.grid.minor = ggplot2::element_blank(),
+      axis.ticks = ggplot2::element_line(
+        linewidth = 0.45,
+        colour = "black"
+      ),
+      legend.text = ggplot2::element_text(size = 9, colour = "black"),
+      legend.title = ggplot2::element_text(size = 10, colour = "black"),
+      legend.position = "right",
+      plot.margin = ggplot2::margin(10, 12, 10, 10)
+    )
+}
+
+
+plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
+  if (is.null(data)) {
+    data <- .protvis_maize_teosinte_kegg_data()
+  }
+
+  panel_c <- .protvis_maize_teosinte_kegg_panel(data, "C")
+  panel_d <- .protvis_maize_teosinte_kegg_panel(data, "D")
+
+  patchwork::wrap_plots(
+    panel_c,
+    panel_d,
+    ncol = 2,
+    widths = c(1.05, 0.95)
+  ) +
+    patchwork::plot_annotation(
+      tag_levels = list(c("C", "D")),
+      theme = ggplot2::theme(
+        plot.tag = ggplot2::element_text(
+          size = 14,
+          face = "bold",
+          colour = "black"
+        )
+      )
+    )
+}
+
+
 #' Enrichment Analysis Module UI
 #'
 #' This function creates the user interface for the enrichment analysis module.
@@ -661,6 +840,69 @@ enrichment_analysis_ui <- function(id) {
               shiny::tabPanel(
                 "Result Table",
                 DT::DTOutput(ns("kegg_res_table"))
+              ),
+
+              shiny::tabPanel(
+                "Maize-teosinte reproduction",
+                bslib::layout_sidebar(
+                  sidebar = bslib::sidebar(
+                    width = 260,
+                    position = "left",
+                    open = "open",
+
+                    shiny::tags$h5("Figure 3C-D"),
+                    shiny::tags$small(
+                      "Built-in archived directional KEGG enrichment data. ",
+                      "The default view reproduces the publication panels ",
+                      "without changing the current enrichment workflow.",
+                      class = "text-muted"
+                    ),
+                    shiny::hr(),
+                    shiny::uiOutput(ns("maize_kegg_repro_status")),
+                    shiny::numericInput(
+                      ns("maize_kegg_width"),
+                      "Download width (inch)",
+                      value = 17,
+                      min = 8,
+                      max = 30
+                    ),
+                    shiny::numericInput(
+                      ns("maize_kegg_height"),
+                      "Download height (inch)",
+                      value = 8,
+                      min = 4,
+                      max = 20
+                    ),
+                    shiny::downloadButton(
+                      ns("download_maize_kegg_pdf"),
+                      "Download PDF"
+                    ),
+                    shiny::downloadButton(
+                      ns("download_maize_kegg_png"),
+                      "Download PNG (600 dpi)"
+                    ),
+                    shiny::downloadButton(
+                      ns("download_maize_kegg_data"),
+                      "Download source data"
+                    )
+                  ),
+
+                  shiny::tabsetPanel(
+                    id = ns("maize_kegg_repro_tabs"),
+                    type = "tabs",
+                    shiny::tabPanel(
+                      "Figure",
+                      shiny::plotOutput(
+                        ns("maize_kegg_reproduction_plot"),
+                        height = "620px"
+                      )
+                    ),
+                    shiny::tabPanel(
+                      "Built-in data",
+                      DT::DTOutput(ns("maize_kegg_reproduction_table"))
+                    )
+                  )
+                )
               )
             )
           )
@@ -671,7 +913,10 @@ enrichment_analysis_ui <- function(id) {
 }
 
 
-utils::globalVariables(c("regulation", "V3", "Pathway_ID", "TERM", "GENE", "NAME"))
+utils::globalVariables(c(
+  "regulation", "V3", "Pathway_ID", "TERM", "GENE", "NAME",
+  "Panel", "Cluster_label", "Description", "Count", "pvalue"
+))
 
 # Store the complete, validated enrichment workbook in the project object.
 # The two sheets remain separate so a saved ProtVis_dataset can be reopened
@@ -736,6 +981,100 @@ enrichment_analysis_server <- function(id, shared_state) {
       kegg_res = NULL,
       analysis_message = NULL,
       pasted_genelist = NULL
+    )
+
+    maize_kegg_builtin <- shiny::reactive({
+      .protvis_maize_teosinte_kegg_data()
+    })
+
+    output$maize_kegg_repro_status <- shiny::renderUI({
+      df <- maize_kegg_builtin()
+      n_c <- sum(df$Panel == "C")
+      n_d <- sum(df$Panel == "D")
+      shiny::tags$div(
+        class = "alert alert-success py-2 px-3",
+        shiny::tags$strong("Built-in data verified"),
+        shiny::tags$br(),
+        shiny::tags$small(
+          paste0(
+            nrow(df), " displayed enrichment points: Panel C ",
+            n_c, "; Panel D ", n_d, "."
+          )
+        )
+      )
+    })
+
+    output$maize_kegg_reproduction_plot <- shiny::renderPlot({
+      print(
+        plot_maize_teosinte_kegg_reproduction(
+          maize_kegg_builtin()
+        )
+      )
+    }, res = 120)
+
+    output$maize_kegg_reproduction_table <- DT::renderDT({
+      df <- maize_kegg_builtin()
+      DT::datatable(
+        df,
+        rownames = FALSE,
+        options = list(
+          pageLength = 29,
+          scrollX = TRUE,
+          ordering = TRUE
+        )
+      )
+    })
+
+    output$download_maize_kegg_pdf <- shiny::downloadHandler(
+      filename = function() {
+        paste0("maize_teosinte_KEGG_Figure3C_D_", Sys.Date(), ".pdf")
+      },
+      content = function(file) {
+        p <- plot_maize_teosinte_kegg_reproduction(
+          maize_kegg_builtin()
+        )
+        ggplot2::ggsave(
+          file,
+          plot = p,
+          device = "pdf",
+          width = input$maize_kegg_width %||% 17,
+          height = input$maize_kegg_height %||% 8,
+          units = "in"
+        )
+      }
+    )
+
+    output$download_maize_kegg_png <- shiny::downloadHandler(
+      filename = function() {
+        paste0("maize_teosinte_KEGG_Figure3C_D_", Sys.Date(), ".png")
+      },
+      content = function(file) {
+        p <- plot_maize_teosinte_kegg_reproduction(
+          maize_kegg_builtin()
+        )
+        ggplot2::ggsave(
+          file,
+          plot = p,
+          device = "png",
+          width = input$maize_kegg_width %||% 17,
+          height = input$maize_kegg_height %||% 8,
+          units = "in",
+          dpi = 600
+        )
+      }
+    )
+
+    output$download_maize_kegg_data <- shiny::downloadHandler(
+      filename = function() {
+        "maize_teosinte_KEGG_Figure3C_D_source_data.csv"
+      },
+      content = function(file) {
+        utils::write.csv(
+          maize_kegg_builtin(),
+          file,
+          row.names = FALSE
+        )
+      }
     )
 
     get_result_df <- function(enrich_obj) {
