@@ -583,7 +583,7 @@
           selected = c("limma", "deqms", "proda")
         ),
         shiny::numericInput(ns("engine_fdr"), "FDR threshold", value = 0.05, min = 0, max = 1, step = 0.01),
-        shiny::numericInput(ns("engine_logfc"), "|log2FC| threshold", value = 0.27, min = 0, max = 10, step = 0.05),
+        shiny::numericInput(ns("engine_logfc"), "|log2FC| threshold", value = 1, min = 0, max = 10, step = 0.1),
         shiny::hr(),
         shiny::fileInput(
           ns("deqms_counts"), "DEqMS peptide/PSM count table (optional)",
@@ -775,7 +775,7 @@ DEP_analysis_server <- function(id, shared_state) {
       rv$results <- base::list()
       summaries <- base::list()
       fdr <- base::as.numeric(input$engine_fdr %||% 0.05)
-      lfc <- base::as.numeric(input$engine_logfc %||% 0.27)
+      lfc <- base::as.numeric(input$engine_logfc %||% 1)
 
       run_one <- function(method) {
         base::tryCatch({
@@ -913,7 +913,7 @@ DEP_analysis_server <- function(id, shared_state) {
             method = label,
             comparison = comparison_label,
             fdr = input$engine_fdr %||% 0.05,
-            logfc = input$engine_logfc %||% 0.27,
+            logfc = input$engine_logfc %||% 1,
             up = input[[base::paste0("engine_up_", method)]] %||% "#d62728",
             down = input[[base::paste0("engine_down_", method)]] %||% "#1f77b4",
             ns = input[[base::paste0("engine_ns_", method)]] %||% "#9aa6b2"
@@ -929,7 +929,7 @@ DEP_analysis_server <- function(id, shared_state) {
             method = label,
             comparison = comparison_label,
             fdr = input$engine_fdr %||% 0.05,
-            logfc = input$engine_logfc %||% 0.27,
+            logfc = input$engine_logfc %||% 1,
             top_n = input[[base::paste0("engine_heatmap_top_", method)]] %||% 50L,
             show_colnames = isTRUE(
               input[[base::paste0("engine_heatmap_colnames_", method)]]
@@ -947,7 +947,7 @@ DEP_analysis_server <- function(id, shared_state) {
             method = label,
             comparison = comparison_label,
             fdr = input$engine_fdr %||% 0.05,
-            logfc = input$engine_logfc %||% 0.27,
+            logfc = input$engine_logfc %||% 1,
             up = input[[base::paste0("engine_bar_up_", method)]] %||% "#d62728",
             down = input[[base::paste0("engine_bar_down_", method)]] %||% "#1f77b4"
           )
@@ -967,7 +967,7 @@ DEP_analysis_server <- function(id, shared_state) {
               method = label,
               comparison = comparison_label,
               fdr = input$engine_fdr %||% 0.05,
-              logfc = input$engine_logfc %||% 0.27,
+              logfc = input$engine_logfc %||% 1,
               up = input[[base::paste0("engine_up_", method)]] %||% "#d62728",
               down = input[[base::paste0("engine_down_", method)]] %||% "#1f77b4",
               ns = input[[base::paste0("engine_ns_", method)]] %||% "#9aa6b2"
@@ -997,7 +997,7 @@ DEP_analysis_server <- function(id, shared_state) {
               method = label,
               comparison = comparison_label,
               fdr = input$engine_fdr %||% 0.05,
-              logfc = input$engine_logfc %||% 0.27,
+              logfc = input$engine_logfc %||% 1,
               top_n = input[[base::paste0("engine_heatmap_top_", method)]] %||% 50L,
               show_colnames = isTRUE(
                 input[[base::paste0("engine_heatmap_colnames_", method)]]
@@ -1029,7 +1029,7 @@ DEP_analysis_server <- function(id, shared_state) {
               method = label,
               comparison = comparison_label,
               fdr = input$engine_fdr %||% 0.05,
-              logfc = input$engine_logfc %||% 0.27,
+              logfc = input$engine_logfc %||% 1,
               up = input[[base::paste0("engine_bar_up_", method)]] %||% "#d62728",
               down = input[[base::paste0("engine_bar_down_", method)]] %||% "#1f77b4"
             )
