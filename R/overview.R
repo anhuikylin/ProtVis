@@ -256,16 +256,16 @@ overview_ui <- function(id) {
           ),
           bslib::card(
             height = "520px",
-            bslib::card_header("Normalized intensity density"),
+            bslib::card_header("Dimensionality reduction analyse"),
             bslib::card_body(
-              shiny::plotOutput(ns("qc_density_plot"), height = "430px")
+              shiny::plotOutput(ns("DR_Reproduction"), height = "430px")
             )
           ),
           bslib::card(
             height = "520px",
-            bslib::card_header("Dimensionality reduction analyse"),
+            bslib::card_header("Normalized intensity density"),
             bslib::card_body(
-              shiny::plotOutput(ns("DR_Reproduction"), height = "430px")
+              shiny::plotOutput(ns("qc_density_plot"), height = "430px")
             )
           )
         ),
