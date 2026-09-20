@@ -13,7 +13,7 @@ overview_ui <- function(id) {
   shiny::tagList(
     shiny::tags$style(shiny::HTML("
       @media (min-width: 900px) {
-        .pv-qc-distribution-card {
+        .pv-qc-grid .pv-qc-distribution-card {
           grid-row: span 2;
           height: 1056px;
         }
@@ -180,6 +180,9 @@ overview_ui <- function(id) {
         )
       ),
       bslib::page_fluid(
+        # Keep the four core analysis panels in their original fixed-size grid.
+        # The taller QC distribution panel is isolated below so its row span
+        # cannot change these panels' dimensions.
         bslib::layout_column_wrap(
           width = 1/2,
           gap = "1rem",
@@ -210,7 +213,13 @@ overview_ui <- function(id) {
             bslib::card_body(
               shiny::plotOutput(ns("DR_AfterNormalization"), height = "430px")
             )
-          ),
+          )
+        ),
+        shiny::div(style = "height: 1rem;"),
+        bslib::layout_column_wrap(
+          class = "pv-qc-grid",
+          width = 1/2,
+          gap = "1rem",
           bslib::card(
             height = "520px",
             bslib::card_header("Proteomics QC summary"),
