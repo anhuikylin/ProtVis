@@ -203,7 +203,6 @@ overview_ui <- function(id) {
           )
         )
       )
-      )
     )
   )
 }
@@ -232,7 +231,7 @@ overview_ui <- function(id) {
 #'
 utils::globalVariables(c(
   "tissue", "tissue2", "species", "Type", "Species",
-  "V1", "V2", "SampleType"
+  "V1", "V2", "SampleType", "UMAP1", "UMAP2", "Group", "Region"
 ))
 
 overview_server <- function(id, shared_state) {
@@ -276,57 +275,62 @@ overview_server <- function(id, shared_state) {
     rv <- shiny::reactiveValues(
       sample_info = NULL,
       load_success = FALSE,
+      transformed_matrix = NULL,
       normalized_matrix = NULL,
-      imputed_matrix = NULL,
       cor_results = NULL,
       exp_results = NULL
     )
 
     shiny::observeEvent(input$load_data, {
       tryCatch({
-        step5 <- NULL
+        step4 <- NULL
         step6 <- NULL
         if (!base::is.null(shared_state$workdir)) {
-          step5_path <- base::file.path(
-            shared_state$workdir, "Step5_data_imputation.rda"
+          step4_path <- base::file.path(
+            shared_state$workdir, "Step4_data_transformed.rda"
           )
           step6_path <- base::file.path(
             shared_state$workdir, "Step6_data_normalization.rda"
           )
-          step5 <- .protvis_load_stage_dataset(
-            step5_path, expression_names = "imputed_df"
+          step4 <- .protvis_load_stage_dataset(
+            step4_path, expression_names = "transformed"
           )
           step6 <- .protvis_load_stage_dataset(
             step6_path, expression_names = "normalized_data"
           )
         }
 
-        if (!base::is.null(step5) && !base::is.null(step6)) {
-          imputed_mat <- base::as.matrix(step5$expression_data)
+        if (!base::is.null(step4) && !base::is.null(step6)) {
+          transformed_mat <- base::as.matrix(step4$expression_data)
           normalized_mat <- base::as.matrix(step6$expression_data)
-          storage.mode(imputed_mat) <- "numeric"
+          storage.mode(transformed_mat) <- "numeric"
           storage.mode(normalized_mat) <- "numeric"
-          if (!base::identical(dimnames(imputed_mat), dimnames(normalized_mat))) {
-            stop("Step5 and Step6 dataset dimensions or identifiers differ.")
-          }
+
           rv$sample_info <- step6$sample_info
-          rv$imputed_matrix <- imputed_mat
+          rv$transformed_matrix <- transformed_mat
           rv$normalized_matrix <- normalized_mat
           shared_state$dataset <- step6
-          notice <- "✅ Imputed and normalized ProtVis_dataset stages loaded."
+          notice <- paste0(
+            "✅ Transformed (Step4) and normalized (Step6) ",
+            "ProtVis_dataset stages loaded."
+          )
         } else if (inherits(shared_state$dataset, "ProtVis_dataset")) {
           matrix <- base::as.matrix(shared_state$dataset$expression_data)
           storage.mode(matrix) <- "numeric"
           rv$sample_info <- shared_state$dataset$sample_info
-          rv$imputed_matrix <- impute_overview_matrix(matrix)
-          rv$normalized_matrix <- standardize_overview_matrix(rv$imputed_matrix)
+          rv$transformed_matrix <- NULL
+          rv$normalized_matrix <- matrix
           notice <- paste0(
-            "⚠️ Stage snapshots were unavailable; overview was derived from ",
-            "the current ProtVis_dataset."
+            "⚠️ Step4/Step6 snapshots were unavailable. QC uses the current ",
+            "ProtVis_dataset; archived UMAP reproduction requires ",
+            "Step4_data_transformed.rda."
           )
         } else {
-          stop("Run imputation and normalization before loading the overview.")
+          stop(
+            "Run transformation and normalization before loading the overview."
+          )
         }
+
         rv$cor_results <- NULL
         rv$exp_results <- NULL
         rv$load_success <- TRUE
@@ -337,6 +341,8 @@ overview_server <- function(id, shared_state) {
           type = "error"
         )
         rv$load_success <- FALSE
+        rv$transformed_matrix <- NULL
+        rv$normalized_matrix <- NULL
         rv$cor_results <- NULL
         rv$exp_results <- NULL
       })
@@ -344,24 +350,29 @@ overview_server <- function(id, shared_state) {
 
     output$load_status_panel <- shiny::renderUI({
       if (isTRUE(rv$load_success)) {
-        shiny::div(
-          shiny::span(
-            "✅ Both datasets loaded successfully",
-            style = "color: green;"
-          ),
-          shiny::br(),
-          base::paste(
-            "Imputed data:",
-            base::nrow(rv$imputed_matrix), "proteins,",
-            base::ncol(rv$imputed_matrix), "samples"
-          ),
-          shiny::br(),
-          base::paste(
+        items <- list(
+          shiny::span("✅ Data loaded successfully", style = "color: green;"),
+          shiny::br()
+        )
+        if (!base::is.null(rv$transformed_matrix)) {
+          items <- base::c(
+            items,
+            list(base::paste(
+              "Transformed data:",
+              base::nrow(rv$transformed_matrix), "proteins,",
+              base::ncol(rv$transformed_matrix), "samples"
+            ), shiny::br())
+          )
+        }
+        items <- base::c(
+          items,
+          list(base::paste(
             "Normalized data:",
             base::nrow(rv$normalized_matrix), "proteins,",
             base::ncol(rv$normalized_matrix), "samples"
-          )
+          ))
         )
+        do.call(shiny::div, items)
       } else {
         shiny::span("❌ Data not loaded", style = "color: red;")
       }
@@ -870,390 +881,255 @@ overview_server <- function(id, shared_state) {
     )
 
     DR_results <- shiny::reactiveValues(
-      before = NULL,
-      after = NULL
+      reproduction = NULL
     )
 
-    prepare_DR_matrix <- function(data) {
+    archived_umap_groups <- c(
+      "Root_VE",
+      "Root_V1.V2",
+      "Root_V4",
+      "Leaf_VE.V1.V2",
+      "Leaf_V4.V6.V8"
+    )
+
+    run_archived_umap <- function(data) {
+      if (base::is.null(data)) {
+        stop(
+          "Step4 transformed data are required for the archived UMAP reproduction.",
+          call. = FALSE
+        )
+      }
+
       matrix <- base::as.matrix(data)
       storage.mode(matrix) <- "numeric"
-      matrix[!is.finite(matrix)] <- NA_real_
 
-      # Missing values are not written back to ProtVis_dataset.  They are
-      # replaced only in this temporary matrix because distance-based methods
-      # cannot operate on NA/Inf values.
-      observed <- base::rowSums(!is.na(matrix))
-      matrix <- matrix[observed > 0, , drop = FALSE]
+      # Match the archived Figure 3 code: select columns containing VE, V2 or
+      # V4, then sort sample names before UMAP.
+      selected <- base::grepl("VE|V2|V4", base::colnames(matrix))
+      sample_names <- base::sort(base::colnames(matrix)[selected])
+      if (base::length(sample_names) < 3L) {
+        stop(
+          "Archived UMAP reproduction requires the five early developmental groups.",
+          call. = FALSE
+        )
+      }
+      matrix <- matrix[, sample_names, drop = FALSE]
+
+      # Match dplyr::filter(rowSums(.) > 0) from the archived script. Rows with
+      # non-finite sums are discarded just as filter() discards NA conditions.
+      keep <- base::rowSums(matrix) > 0
+      keep[base::is.na(keep)] <- FALSE
+      matrix <- matrix[keep, , drop = FALSE]
       if (base::nrow(matrix) < 2L) {
-        stop("Dimensionality reduction requires at least two observed features.",
+        stop("Too few complete positive features remain for UMAP.", call. = FALSE)
+      }
+
+      base::set.seed(10086)
+      fit <- umap::umap(base::t(matrix))
+      df <- base::as.data.frame(
+        fit$layout[, 1:2, drop = FALSE],
+        stringsAsFactors = FALSE
+      )
+      base::colnames(df) <- c("UMAP1", "UMAP2")
+      df$sample <- base::rownames(df)
+      if (base::is.null(df$sample) || base::any(!base::nzchar(df$sample))) {
+        df$sample <- sample_names
+      }
+      df$Genotype <- base::sub("_.*$", "", df$sample)
+      df$Group <- base::sub(
+        "^(B73|Y12)_", "",
+        base::sub("_[123]$", "", df$sample)
+      )
+      df$Species <- base::ifelse(
+        df$Genotype == "B73",
+        "Zea mays ssp. mays",
+        "Zea mays ssp. mexicana"
+      )
+      df$Group <- base::factor(df$Group, levels = archived_umap_groups)
+      df$Region <- base::ifelse(
+        df$Group %in% c("Root_VE", "Root_V1.V2"),
+        "Root VE-V2",
+        base::ifelse(
+          df$Group == "Root_V4",
+          "Root V4",
+          base::ifelse(
+            df$Group == "Leaf_VE.V1.V2",
+            "Leaf VE-V2",
+            base::ifelse(
+              df$Group == "Leaf_V4.V6.V8",
+              "Leaf V4-V8",
+              NA_character_
+            )
+          )
+        )
+      )
+      df$Region <- base::factor(
+        df$Region,
+        levels = c("Root VE-V2", "Root V4", "Leaf VE-V2", "Leaf V4-V8")
+      )
+
+      df <- df[!base::is.na(df$Group) & !base::is.na(df$Region), , drop = FALSE]
+      if (base::nrow(df) < 3L) {
+        stop("No archived early-development sample groups were identified.",
              call. = FALSE)
       }
-      for (i in base::seq_len(base::nrow(matrix))) {
-        missing <- is.na(matrix[i, ])
-        if (base::any(missing)) {
-          replacement <- stats::median(matrix[i, !missing], na.rm = TRUE)
-          if (!is.finite(replacement)) replacement <- 0
-          matrix[i, missing] <- replacement
-        }
-      }
-      variation <- apply(matrix, 1, stats::sd)
-      matrix <- matrix[is.finite(variation) & variation > 0, , drop = FALSE]
-      if (base::nrow(matrix) == 0L) {
-        stop("Dimensionality reduction requires variable features.",
-             call. = FALSE)
-      }
-      base::t(matrix)
+      df
     }
 
-    perform_DR <- function(data, method) {
-      t_data <- prepare_DR_matrix(data)
-      if (base::nrow(t_data) < 3L) {
-        stop("At least three samples are required for a 2D reduction plot.",
-             call. = FALSE)
-      }
-
-      if (method == "PCA") {
-        res <- base::as.data.frame(stats::prcomp(
-          t_data, center = TRUE, scale. = TRUE
-        )$x[, 1:2, drop = FALSE])
-        base::colnames(res) <- c("V1", "V2")
-        base::rownames(res) <- base::rownames(t_data)
-        return(res)
-      }
-
-      if (method == "PCoA") {
-        res <- base::as.data.frame(stats::cmdscale(stats::dist(t_data), k = 2))
-        base::colnames(res) <- c("V1", "V2")
-        base::rownames(res) <- base::rownames(t_data)
-        return(res)
-      }
-
-      if (method == "tSNE") {
-        base::set.seed(12345)
-        perplexity <- base::max(1, base::min(
-          30, base::floor((base::nrow(t_data) - 1) / 3)
-        ))
-        res <- tryCatch(
-          Rtsne::Rtsne(
-            t_data, perplexity = perplexity, check_duplicates = FALSE,
-            pca = FALSE, dims = 2
-          )$Y,
-          error = function(e) {
-            # Very small or nearly tied datasets can be invalid for tSNE.
-            # Return a deterministic PCA projection so the panel remains
-            # usable and the same cleaned input is still represented.
-            stats::prcomp(t_data, center = TRUE, scale. = TRUE)$x[, 1:2,
-                                                                    drop = FALSE]
-          }
+    plot_archived_umap <- function(df) {
+      region_centres <- df |>
+        dplyr::group_by(Region) |>
+        dplyr::summarise(
+          UMAP1 = base::mean(UMAP1),
+          UMAP2 = base::mean(UMAP2),
+          .groups = "drop"
         )
-        res <- base::as.data.frame(res)
-        base::colnames(res) <- c("V1", "V2")
-        base::rownames(res) <- base::rownames(t_data)
-        return(res)
-      }
 
-      if (method == "UMAP") {
-        base::set.seed(12345)
-        config <- umap::umap.defaults
-        config$n_neighbors <- base::max(2L, base::min(
-          config$n_neighbors, base::nrow(t_data) - 1L
-        ))
-        config$n_components <- 2L
-        res <- tryCatch(
-          base::as.data.frame(umap::umap(t_data, config = config)$layout[
-            , 1:2, drop = FALSE
-          ]),
-          error = function(e) {
-            # UMAP is sensitive to tied/degenerate neighbourhood distances.
-            # PCA is a deterministic, finite fallback for the same cleaned
-            # matrix, so a valid DR plot is still available to the user.
-            base::as.data.frame(stats::prcomp(
-              t_data, center = TRUE, scale. = TRUE
-            )$x[, 1:2, drop = FALSE])
-          }
+      ggplot2::ggplot(df, ggplot2::aes(UMAP1, UMAP2)) +
+        ggplot2::stat_ellipse(
+          ggplot2::aes(group = Region, fill = Region),
+          geom = "polygon",
+          type = "norm",
+          alpha = 0.18,
+          colour = "black",
+          linewidth = 0.35,
+          show.legend = FALSE
+        ) +
+        ggplot2::geom_point(
+          ggplot2::aes(colour = Group, shape = Species),
+          size = 2.3,
+          alpha = 0.85
+        ) +
+        ggplot2::geom_label(
+          data = region_centres,
+          ggplot2::aes(
+            x = UMAP1, y = UMAP2, label = Region
+          ),
+          inherit.aes = FALSE,
+          size = 2.6,
+          label.size = NA,
+          fill = scales::alpha("white", 0.65)
+        ) +
+        ggsci::scale_color_lancet() +
+        ggplot2::scale_fill_manual(
+          values = c(
+            "Root VE-V2" = "#F4A6A1",
+            "Root V4" = "#E7C570",
+            "Leaf VE-V2" = "#9CD6B0",
+            "Leaf V4-V8" = "#9CD6B0"
+          )
+        ) +
+        ggplot2::labs(
+          title = "UMAP analysis",
+          x = "UMAP 1",
+          y = "UMAP 2",
+          colour = "Group",
+          shape = NULL
+        ) +
+        ggplot2::theme_bw(base_size = 9) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(
+            hjust = 0.5, face = "bold"
+          ),
+          panel.border = ggplot2::element_rect(
+            colour = "black", linewidth = 0.8
+          )
         )
-        base::colnames(res) <- c("V1", "V2")
-        base::rownames(res) <- base::rownames(t_data)
-        return(res)
-      }
-
-      if (method == "NMDS") {
-        res <- tryCatch(
-          vegan::metaMDS(t_data, k = 2, trace = 0)[["points"]],
-          error = function(e) {
-            stats::cmdscale(stats::dist(t_data), k = 2)
-          }
-        )
-        res <- base::as.data.frame(res)
-        base::colnames(res) <- c("V1", "V2")
-        base::rownames(res) <- base::rownames(t_data)
-        return(res)
-      }
-
-      return(NULL)
     }
 
     shiny::observeEvent(input$DR_analyse, {
       if (!isTRUE(rv$load_success)) {
-        shiny::showNotification("Load data before dimensionality reduction.",
-                                type = "warning")
+        shiny::showNotification(
+          "Load data before dimensionality reduction.",
+          type = "warning"
+        )
+        return(invisible(NULL))
+      }
+      if (base::is.null(rv$transformed_matrix)) {
+        shiny::showNotification(
+          paste0(
+            "Archived UMAP reproduction requires Step4_data_transformed.rda. ",
+            "Run the Transformation step first."
+          ),
+          type = "error",
+          duration = 8
+        )
         return(invisible(NULL))
       }
 
-      run_safe <- function(data, label) {
-        if (base::is.null(data)) return(NULL)
-        tryCatch(
-          perform_DR(data, input$dimReductionMethod),
-          error = function(e) {
-            shiny::showNotification(
-              paste(label, "reduction failed:", conditionMessage(e)),
-              type = "error", duration = 8
+      shiny::withProgress(
+        message = "Reproducing archived UMAP...",
+        value = 0.5,
+        {
+          result <- tryCatch(
+            run_archived_umap(rv$transformed_matrix),
+            error = function(e) {
+              shiny::showNotification(
+                base::paste(
+                  "UMAP reproduction failed:",
+                  base::conditionMessage(e)
+                ),
+                type = "error",
+                duration = 8
+              )
+              NULL
+            }
+          )
+          DR_results$reproduction <- result
+          shiny::incProgress(1, detail = "Done")
+        }
+      )
+
+      if (!base::is.null(DR_results$reproduction)) {
+        .protvis_record_shared_run(
+          shared_state,
+          module = "dimensionality_reduction",
+          method = "UMAP_archived_Figure3",
+          category = "dimensionality_reduction",
+          parameters = list(
+            source_stage = "Step4_data_transformed",
+            seed = 10086L,
+            groups = archived_umap_groups,
+            ellipse_regions = c(
+              "Root VE-V2", "Root V4", "Leaf VE-V2", "Leaf V4-V8"
             )
-            NULL
-          }
+          ),
+          tables = list(
+            archived_umap = DR_results$reproduction
+          ),
+          plot_data = list(
+            archived_umap = DR_results$reproduction
+          )
         )
       }
-
-      shiny::withProgress(message = "Running dimensionality reduction...", value = 0.5, {
-        DR_results$before <- run_safe(rv$imputed_matrix, "Before-normalization")
-        shiny::incProgress(0.4, detail = "Finished pre-normalization")
-        DR_results$after <- run_safe(rv$normalized_matrix, "After-normalization")
-        shiny::incProgress(0.6, detail = "Finished post-normalization")
-      })
-
-      dr_tables <- list(
-        before_normalization = if (!is.null(DR_results$before)) {
-          data.frame(
-            sample_id = rownames(DR_results$before),
-            DR_results$before,
-            check.names = FALSE,
-            stringsAsFactors = FALSE
-          )
-        } else NULL,
-        after_normalization = if (!is.null(DR_results$after)) {
-          data.frame(
-            sample_id = rownames(DR_results$after),
-            DR_results$after,
-            check.names = FALSE,
-            stringsAsFactors = FALSE
-          )
-        } else NULL
-      )
-      dr_tables <- dr_tables[vapply(dr_tables, is.data.frame, logical(1))]
-      .protvis_record_shared_run(
-        shared_state,
-        module = "dimensionality_reduction",
-        method = input$dimReductionMethod,
-        category = "dimensionality_reduction",
-        parameters = list(
-          group_by = input$dr_group_by,
-          shape_by = input$dr_shape_by
-        ),
-        tables = dr_tables,
-        plot_data = dr_tables
-      )
     })
 
-    plot_DR_results <- function(dr_data, title_suffix) {
-      df <- base::as.data.frame(dr_data)
-      sample_names <- base::rownames(df)
-      if (base::is.null(sample_names)) {
-        sample_names <- base::paste0(
-          "Sample_", base::seq_len(base::nrow(df))
+    output$DR_Reproduction <- shiny::renderPlot({
+      shiny::validate(
+        shiny::need(
+          !base::is.null(DR_results$reproduction),
+          "Run UMAP to display the archived Figure 3 reproduction."
         )
-      }
-
-      selected_group <- base::as.character(
-        input$dr_group_by %||% "tissue"
       )
-      selected_shape <- base::as.character(
-        input$dr_shape_by %||% "species"
-      )
-      group_values <- .protvis_sample_group_values(
-        rv$sample_info, sample_names, mode = selected_group
-      )
-      shape_values <- .protvis_sample_group_values(
-        rv$sample_info, sample_names, mode = selected_shape
-      )
+      print(plot_archived_umap(DR_results$reproduction))
+    })
 
-      group_levels <- base::unique(group_values)
-      shape_levels <- base::unique(shape_values)
-      group_colors <- .protvis_group_palette(group_levels)
-      shape_values_map <- .protvis_shape_palette(shape_levels)
-
-      df <- dplyr::mutate(
-        df,
-        Sample = sample_names,
-        DRGroup = base::factor(group_values, levels = group_levels),
-        DRShape = base::factor(shape_values, levels = shape_levels)
-      )
-
-      ellipse_df <- df |>
-        dplyr::filter(base::is.finite(V1), base::is.finite(V2)) |>
-        dplyr::group_by(DRGroup) |>
-        dplyr::filter(
-          dplyr::n() >= 3L,
-          stats::sd(V1) > 0,
-          stats::sd(V2) > 0
-        ) |>
-        dplyr::ungroup()
-
-      plot <- ggplot2::ggplot(df) +
-        ggplot2::geom_point(
-          ggplot2::aes(
-            x = V1, y = V2, color = DRGroup, shape = DRShape
-          ),
-          size = 1.8,
-          alpha = 0.85
-        )
-      if (base::nrow(ellipse_df) > 0L) {
-        plot <- plot +
-          ggplot2::stat_ellipse(
-            data = ellipse_df,
-            ggplot2::aes(x = V1, y = V2, fill = DRGroup),
-            geom = "polygon",
-            level = 0.95,
-            alpha = 0.20,
-            type = "norm",
-            show.legend = FALSE
-          ) +
-          ggplot2::stat_ellipse(
-            data = ellipse_df,
-            ggplot2::aes(x = V1, y = V2, color = DRGroup),
-            geom = "path",
-            level = 0.95,
-            alpha = 1,
-            linewidth = 0.55,
-            type = "norm",
-            show.legend = FALSE
-          )
-      }
-
-      shape_columns <- if (base::length(shape_levels) > 6L) 2L else 1L
-      plot +
-        ggplot2::scale_color_manual(
-          values = group_colors,
-          drop = FALSE
-        ) +
-        ggplot2::scale_fill_manual(
-          values = group_colors,
-          drop = FALSE
-        ) +
-        ggplot2::scale_shape_manual(
-          values = shape_values_map,
-          drop = FALSE
-        ) +
-        ggplot2::guides(
-          color = ggplot2::guide_legend(
-            order = 1,
-            override.aes = base::list(size = 2.4)
-          ),
-          shape = ggplot2::guide_legend(
-            order = 2,
-            ncol = shape_columns,
-            byrow = TRUE,
-            override.aes = base::list(size = 2.4)
-          )
-        ) +
-        ggplot2::labs(
-          x = "Component 1",
-          y = "Component 2",
-          title = base::paste(
-            input$dimReductionMethod, "analysis", title_suffix
-          ),
-          color = .protvis_group_label(selected_group),
-          fill = .protvis_group_label(selected_group),
-          shape = .protvis_group_label(selected_shape)
-        ) +
-        ggplot2::theme_bw() +
-        ggplot2::theme(
-          legend.text = ggplot2::element_text(size = 7),
-          legend.title = ggplot2::element_text(size = 8),
-          legend.key.height = grid::unit(0.35, "cm")
-        )
-    }
-
-    safe_dr_plot <- function(result, title_suffix) {
-      tryCatch({
-        shiny::validate(shiny::need(
-          !base::is.null(result),
-          "Run dimensionality reduction to display this plot."
-        ))
-        print(plot_DR_results(result, title_suffix))
-      }, error = function(e) {
-        graphics::plot.new()
-        graphics::text(
-          0.5, 0.5,
-          paste("Dimensionality reduction unavailable:",
-                conditionMessage(e)),
-          cex = 0.85
-        )
-      })
-    }
-
-    output$DR_BeforeNormalization <- shiny::renderPlot(
-      safe_dr_plot(DR_results$before, "Before Normalization")
-    )
-
-    output$DR_AfterNormalization <- shiny::renderPlot(
-      safe_dr_plot(DR_results$after, "After Normalization")
-    )
-
-    output$dr_download_before_pdf <- shiny::downloadHandler(
+    output$dr_download_pdf <- shiny::downloadHandler(
       filename = function() {
         base::paste0(
-          input$dimReductionMethod,
-          "_before_normalization_",
+          "UMAP_archived_Figure3_",
           base::Sys.Date(),
           ".pdf"
         )
       },
       content = function(file) {
-        shiny::req(DR_results$before)
-        grDevices::pdf(file, width = input$dr_plot_width, height = input$dr_plot_height)
-        print(plot_DR_results(DR_results$before, "Before Normalization"))
-        grDevices::dev.off()
-      }
-    )
-
-    output$dr_download_after_pdf <- shiny::downloadHandler(
-      filename = function() {
-        base::paste0(
-          input$dimReductionMethod,
-          "_after_normalization_",
-          base::Sys.Date(),
-          ".pdf"
-        )
-      },
-      content = function(file) {
-        shiny::req(DR_results$after)
-        grDevices::pdf(file, width = input$dr_plot_width, height = input$dr_plot_height)
-        print(plot_DR_results(DR_results$after, "After Normalization"))
-        grDevices::dev.off()
-      }
-    )
-
-    output$dr_download_both_pdf <- shiny::downloadHandler(
-      filename = function() {
-        base::paste0(
-          input$dimReductionMethod,
-          "_both_plots_",
-          base::Sys.Date(),
-          ".pdf"
-        )
-      },
-      content = function(file) {
-        shiny::req(DR_results$before, DR_results$after)
+        shiny::req(DR_results$reproduction)
         grDevices::pdf(
           file,
-          width = input$dr_plot_width * 2,
+          width = input$dr_plot_width,
           height = input$dr_plot_height
         )
-        gridExtra::grid.arrange(
-          plot_DR_results(DR_results$before, "Before Normalization"),
-          plot_DR_results(DR_results$after, "After Normalization"),
-          ncol = 2
-        )
+        print(plot_archived_umap(DR_results$reproduction))
         grDevices::dev.off()
       }
     )
@@ -1319,14 +1195,7 @@ overview_server <- function(id, shared_state) {
         ggplot2::geom_density(na.rm = TRUE, linewidth = 0.65) +
         ggplot2::theme_minimal(base_size = 13) +
         ggplot2::theme(
-          legend.position = "bottom",
-          legend.text = ggplot2::element_text(size = 6),
-          legend.title = ggplot2::element_blank(),
-          legend.key.width = grid::unit(0.55, "cm"),
-          legend.key.height = grid::unit(0.3, "cm")
-        ) +
-        ggplot2::guides(
-          color = ggplot2::guide_legend(ncol = 5, byrow = TRUE)
+          legend.position = "none"
         ) +
         ggplot2::labs(
           title = "Normalized intensity density",
@@ -1370,14 +1239,12 @@ overview_server <- function(id, shared_state) {
     })
 
     qc_plot_by_type <- function(type) {
-      switch(type,
-             sample_total = qc_sample_total_plot(),
-             missing_rate = qc_missing_rate_plot(),
-             boxplot = qc_boxplot(),
-             density = qc_density_plot(),
-             pca = qc_pca_plot(),
-             cv = qc_cv_plot(),
-             qc_sample_total_plot())
+      switch(
+        type,
+        density = qc_density_plot(),
+        cv = qc_cv_plot(),
+        qc_density_plot()
+      )
     }
 
     output$qc_summary <- shiny::renderPrint({
@@ -1417,7 +1284,7 @@ overview_server <- function(id, shared_state) {
       safe_qc_plot(qc_pca_plot), height = 220
     )
     output$qc_cv_plot <- shiny::renderPlot(
-      safe_qc_plot(qc_cv_plot), height = 180
+      safe_qc_plot(qc_cv_plot), height = 350
     )
 
     output$qc_download_pdf <- shiny::downloadHandler(
