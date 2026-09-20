@@ -100,7 +100,37 @@
 
 project_init_ui <- function(id) {
   ns <- NS(id)
-  bslib::page_sidebar(
+  shiny::tagList(
+    shiny::tags$script(shiny::HTML("
+      (function() {
+        function closeProtVisShinyFiles() {
+          $('.sF-modalContainer').stop(true, true).hide().remove();
+          $('.sF-modalBackdrop').remove();
+          $('body').removeClass('modal-open');
+          if ($('body').css('overflow') === 'hidden') {
+            $('body').css('overflow', '');
+          }
+        }
+
+        // Primary path: close only after the server has successfully parsed
+        // and accepted a directory selection.
+        Shiny.addCustomMessageHandler(
+          'protvis_close_shinyfiles',
+          function(message) {
+            window.setTimeout(closeProtVisShinyFiles, 25);
+          }
+        );
+
+        // Defensive fallback for shinyFiles versions that leave their custom
+        // modal mounted after the Select button has emitted its Shiny input.
+        $(document)
+          .off('click.protvisShinyFiles', '#sF-selectButton')
+          .on('click.protvisShinyFiles', '#sF-selectButton', function() {
+            window.setTimeout(closeProtVisShinyFiles, 250);
+          });
+      })();
+    ")),
+    bslib::page_sidebar(
     sidebar = bslib::sidebar(
       width = 430,
       tags$h4("Setup", class = "text-primary"),
@@ -214,6 +244,7 @@ project_init_ui <- function(id) {
       )
     )
   )
+  )
 }
 
 #' Project Initialization Server Module
@@ -279,6 +310,7 @@ project_init_server <- function(id, shared_state) {
         if (base::is.null(selected_dir)) return(invisible(NULL))
 
         shared_state$workdir <- selected_dir
+        session$sendCustomMessage("protvis_close_shinyfiles", list())
         shiny::showNotification(
           paste("Working directory set to:", shared_state$workdir),
           type = "message"
@@ -320,6 +352,7 @@ project_init_server <- function(id, shared_state) {
         shared_state$raw_directory <- selected_dir
         shared_state$raw_manifest <- NULL
         shared_state$raw_check <- NULL
+        session$sendCustomMessage("protvis_close_shinyfiles", list())
       }, error = function(e) {
         shiny::showNotification(
           paste("Unable to select mzML directory:", conditionMessage(e)),
