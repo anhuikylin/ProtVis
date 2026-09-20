@@ -7,7 +7,7 @@ testthat::test_that("archived DEP defaults match 03.Maize_Teosinte_Jul02_2024", 
   testthat::expect_identical(defaults$adjust_method, "BH")
   testthat::expect_identical(defaults$sort_by, "logFC")
   testthat::expect_true(defaults$matrix_shift)
-  testthat::expect_identical(defaults$protein_universe, "shared_preknn")
+  testthat::expect_identical(defaults$protein_universe, "archived_any_detected")
   testthat::expect_equal(defaults$min_detected, 2L)
 })
 
@@ -35,13 +35,13 @@ testthat::test_that("DEP classification uses adjusted P values and strict archiv
   )
 })
 
-testthat::test_that("shared pre-KNN protein universe requires detection in both genotypes", {
+testthat::test_that("archived protein universe keeps any protein detected in the six comparison samples", {
   mat <- matrix(
     c(
-      1, 1, NA, 2, 2, NA,
-      1, NA, NA, 2, 2, 2,
-      1, 1, 1, 2, NA, NA,
-      1, 1, 1, 2, 2, 2
+      1, NA, NA, NA, NA, NA,
+      NA, NA, NA, 2, NA, NA,
+      NA, NA, NA, NA, NA, NA,
+      1, 1, NA, 2, 2, NA
     ),
     nrow = 4,
     byrow = TRUE,
@@ -51,14 +51,22 @@ testthat::test_that("shared pre-KNN protein universe requires detection in both 
     )
   )
 
-  ids <- ProtVis:::.protvis_dep_shared_ids(
+  archived <- ProtVis:::.protvis_dep_shared_ids(
     mat,
     c("B73_1", "B73_2", "B73_3"),
     c("Y12_1", "Y12_2", "Y12_3"),
+    mode = "archived_any_detected"
+  )
+  strict <- ProtVis:::.protvis_dep_shared_ids(
+    mat,
+    c("B73_1", "B73_2", "B73_3"),
+    c("Y12_1", "Y12_2", "Y12_3"),
+    mode = "both_genotypes",
     min_detected = 2L
   )
 
-  testthat::expect_identical(ids, c("P1", "P4"))
+  testthat::expect_identical(archived, c("P1", "P2", "P4"))
+  testthat::expect_identical(strict, "P4")
 })
 
 testthat::test_that("DEP summary counts up, down and not significant proteins", {
