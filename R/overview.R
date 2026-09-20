@@ -127,31 +127,99 @@ overview_ui <- function(id) {
             shiny::downloadButton(ns("dr_download_pdf"), "Download PDF")
           ),
           bslib::accordion_panel(
-            title = "Proteomics QC",
-            icon = bsicons::bs_icon("clipboard-pulse"),
+            title = "Normalized intensity density",
+            icon = bsicons::bs_icon("activity"),
             shiny::selectInput(
-              ns("qc_download_plot_type"),
-              "QC figure to download",
+              ns("qc_density_group_by"),
+              "Line colour grouping",
               choices = c(
-                "Normalized intensity density" = "density",
-                "Protein coefficient of variation" = "cv"
+                "Triplicate group" = "triplicate",
+                "Individual sample" = "sample"
               ),
-              selected = "density"
+              selected = "triplicate"
             ),
             shiny::numericInput(
-              ns("qc_plot_width"),
+              ns("qc_density_adjust"),
+              "Bandwidth adjustment",
+              value = 1,
+              min = 0.1,
+              max = 5,
+              step = 0.1
+            ),
+            shiny::numericInput(
+              ns("qc_density_linewidth"),
+              "Line width",
+              value = 0.65,
+              min = 0.1,
+              max = 3,
+              step = 0.05
+            ),
+            shiny::checkboxInput(
+              ns("qc_density_show_legend"),
+              "Show legend",
+              value = FALSE
+            ),
+            shiny::numericInput(
+              ns("qc_density_plot_width"),
               "Download Plot Width (inches)",
-              value = 8
+              value = 8,
+              min = 1,
+              max = 40
             ),
             shiny::numericInput(
-              ns("qc_plot_height"),
+              ns("qc_density_plot_height"),
               "Download Plot Height (inches)",
-              value = 6
+              value = 6,
+              min = 1,
+              max = 40
             ),
-            shiny::downloadButton(ns("qc_download_pdf"), "Download QC PDF"),
+            shiny::downloadButton(
+              ns("qc_density_download_pdf"),
+              "Download PDF"
+            ),
             shiny::downloadButton(
               ns("qc_download_matrix"),
               "Download Normalized Matrix"
+            )
+          ),
+          bslib::accordion_panel(
+            title = "Protein coefficient of variation",
+            icon = bsicons::bs_icon("bar-chart"),
+            shiny::numericInput(
+              ns("qc_cv_bins"),
+              "Histogram bins",
+              value = 50,
+              min = 10,
+              max = 200,
+              step = 5
+            ),
+            colourpicker::colourInput(
+              ns("qc_cv_fill_color"),
+              "Bar fill colour",
+              value = "#22c55e"
+            ),
+            colourpicker::colourInput(
+              ns("qc_cv_border_color"),
+              "Bar border colour",
+              value = "#FFFFFF"
+            ),
+            shiny::numericInput(
+              ns("qc_cv_plot_width"),
+              "Download Plot Width (inches)",
+              value = 10,
+              min = 1,
+              max = 40
+            ),
+            shiny::numericInput(
+              ns("qc_cv_plot_height"),
+              "Download Plot Height (inches)",
+              value = 5,
+              min = 1,
+              max = 40
+            ),
+            shiny::downloadButton(
+              ns("qc_cv_download_pdf"),
+              "Download PDF"
             )
           )
 
@@ -1188,19 +1256,61 @@ overview_server <- function(id, shared_state) {
     })
 
     qc_density_plot <- shiny::reactive({
+      df <- qc_long_intensity()
+      grouping <- input$qc_density_group_by %||% "triplicate"
+      if (base::identical(grouping, "sample")) {
+        df$DensityGroup <- df$Sample
+        legend_title <- "Sample"
+      } else {
+        sample_ids <- base::unique(df$Sample)
+        group_values <- .protvis_sample_group_values(
+          rv$sample_info,
+          sample_ids,
+          mode = "triplicate"
+        )
+        map <- stats::setNames(group_values, sample_ids)
+        df$DensityGroup <- base::unname(map[df$Sample])
+        legend_title <- "Experimental group"
+      }
+      group_levels <- base::unique(df$DensityGroup)
+      df$DensityGroup <- base::factor(
+        df$DensityGroup,
+        levels = group_levels
+      )
+      palette <- .protvis_group_palette(group_levels)
+
       ggplot2::ggplot(
-        qc_long_intensity(),
-        ggplot2::aes(x = Intensity, color = Sample)
+        df,
+        ggplot2::aes(
+          x = Intensity,
+          color = DensityGroup,
+          group = Sample
+        )
       ) +
-        ggplot2::geom_density(na.rm = TRUE, linewidth = 0.65) +
+        ggplot2::geom_density(
+          na.rm = TRUE,
+          adjust = input$qc_density_adjust %||% 1,
+          linewidth = input$qc_density_linewidth %||% 0.65
+        ) +
+        ggplot2::scale_color_manual(
+          values = palette,
+          drop = FALSE
+        ) +
         ggplot2::theme_minimal(base_size = 13) +
         ggplot2::theme(
-          legend.position = "none"
+          legend.position = if (isTRUE(input$qc_density_show_legend)) {
+            "right"
+          } else {
+            "none"
+          },
+          legend.text = ggplot2::element_text(size = 7),
+          legend.title = ggplot2::element_text(size = 8)
         ) +
         ggplot2::labs(
           title = "Normalized intensity density",
           x = "Intensity",
-          y = "Density"
+          y = "Density",
+          color = legend_title
         )
     })
 
@@ -1230,22 +1340,25 @@ overview_server <- function(id, shared_state) {
       mat <- qc_matrix()
       row_mean <- base::rowMeans(mat, na.rm = TRUE)
       row_sd <- apply(mat, 1, stats::sd, na.rm = TRUE)
-      cv_df <- base::data.frame(CV = row_sd / base::abs(row_mean), stringsAsFactors = FALSE)
-      cv_df <- cv_df[base::is.finite(cv_df$CV), , drop = FALSE]
-      ggplot2::ggplot(cv_df, ggplot2::aes(x = CV)) +
-        ggplot2::geom_histogram(bins = 50, fill = "#22c55e", color = "white") +
-        ggplot2::theme_minimal(base_size = 13) +
-        ggplot2::labs(title = "Protein coefficient of variation", x = "CV", y = "Protein count")
-    })
-
-    qc_plot_by_type <- function(type) {
-      switch(
-        type,
-        density = qc_density_plot(),
-        cv = qc_cv_plot(),
-        qc_density_plot()
+      cv_df <- base::data.frame(
+        CV = row_sd / base::abs(row_mean),
+        stringsAsFactors = FALSE
       )
-    }
+      cv_df <- cv_df[base::is.finite(cv_df$CV), , drop = FALSE]
+
+      ggplot2::ggplot(cv_df, ggplot2::aes(x = CV)) +
+        ggplot2::geom_histogram(
+          bins = base::as.integer(input$qc_cv_bins %||% 50L),
+          fill = input$qc_cv_fill_color %||% "#22c55e",
+          color = input$qc_cv_border_color %||% "#FFFFFF"
+        ) +
+        ggplot2::theme_minimal(base_size = 13) +
+        ggplot2::labs(
+          title = "Protein coefficient of variation",
+          x = "CV",
+          y = "Protein count"
+        )
+    })
 
     output$qc_summary <- shiny::renderPrint({
       mat <- qc_matrix()
@@ -1287,13 +1400,40 @@ overview_server <- function(id, shared_state) {
       safe_qc_plot(qc_cv_plot), height = 350
     )
 
-    output$qc_download_pdf <- shiny::downloadHandler(
+    output$qc_density_download_pdf <- shiny::downloadHandler(
       filename = function() {
-        base::paste0("overview_proteomics_qc_", input$qc_download_plot_type, "_", base::Sys.Date(), ".pdf")
+        base::paste0(
+          "normalized_intensity_density_",
+          base::Sys.Date(),
+          ".pdf"
+        )
       },
       content = function(file) {
-        grDevices::pdf(file, width = input$qc_plot_width, height = input$qc_plot_height)
-        print(qc_plot_by_type(input$qc_download_plot_type))
+        grDevices::pdf(
+          file,
+          width = input$qc_density_plot_width,
+          height = input$qc_density_plot_height
+        )
+        print(qc_density_plot())
+        grDevices::dev.off()
+      }
+    )
+
+    output$qc_cv_download_pdf <- shiny::downloadHandler(
+      filename = function() {
+        base::paste0(
+          "protein_coefficient_of_variation_",
+          base::Sys.Date(),
+          ".pdf"
+        )
+      },
+      content = function(file) {
+        grDevices::pdf(
+          file,
+          width = input$qc_cv_plot_width,
+          height = input$qc_cv_plot_height
+        )
+        print(qc_cv_plot())
         grDevices::dev.off()
       }
     )
