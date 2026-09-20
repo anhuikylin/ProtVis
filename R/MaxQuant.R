@@ -269,6 +269,7 @@ MaxQuant_server <- function(id, shared_state) {
       filter_summary = NULL
     )
     filter_done <- shiny::reactiveVal(FALSE)
+    report_requested <- shiny::reactiveVal(FALSE)
 
     load_dataset <- function(dataset) {
       rv$sample_info <- dataset$sample_info
@@ -280,14 +281,11 @@ MaxQuant_server <- function(id, shared_state) {
       )
       if (base::is.data.frame(rv$maxquant_raw)) {
         shared_state$maxquant_raw_table <- rv$maxquant_raw
-        rv$filter_summary <- .protvis_maxquant_filter_report(
-          rv$maxquant_raw,
-          input$selected_Method %||%
-            c("site", "reverse", "contaminant")
-        )
-      } else {
-        rv$filter_summary <- NULL
       }
+      # Do not calculate/show the report automatically on LOAD DATA.
+      # The report is intentionally user-triggered via the REPORT button.
+      rv$filter_summary <- NULL
+      report_requested(FALSE)
       filter_done(FALSE)
       rv$load_success <- TRUE
       invisible(dataset)
@@ -367,7 +365,10 @@ MaxQuant_server <- function(id, shared_state) {
 
       rv$expression_matrix_filtered <- filtered
       rv$unreliable_filtered <- filtered
-      rv$filter_summary <- filter_state$report
+      # Filtering updates the matrix, but the report remains hidden until the
+      # user explicitly clicks REPORT.
+      rv$filter_summary <- NULL
+      report_requested(FALSE)
       filter_done(TRUE)
 
       removed_rows <- base::sum(filter_state$remove)
@@ -482,9 +483,16 @@ MaxQuant_server <- function(id, shared_state) {
         raw_table,
         input$selected_Method %||% character()
       )
+      report_requested(TRUE)
+      bslib::nav_select(
+        id = "Expression_Matrix",
+        selected = "Report",
+        session = session
+      )
     })
 
     output$result_df <- DT::renderDT({
+      shiny::req(isTRUE(report_requested()))
       shiny::req(rv$filter_summary)
       DT::datatable(
         rv$filter_summary,
