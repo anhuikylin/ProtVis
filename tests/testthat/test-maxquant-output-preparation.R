@@ -69,9 +69,12 @@ testthat::test_that("bundled MaxQuant output removes 389 unique flagged rows", {
   testthat::skip_if_not(file.exists(path))
 
   raw <- protvis_read_table(
-    path, filename = "Raw_reporter_corrected_5groups_verified.csv"
+    path, filename = "MaxQuant_output.xlsx"
   )
   testthat::expect_equal(nrow(raw), 12689L)
+  testthat::expect_equal(ncol(raw), 34L)
+  testthat::expect_identical(names(raw)[11], "B73_Root_VE_3")
+  testthat::expect_identical(names(raw)[15], "B73_Root_V1.V2_2")
   testthat::expect_true(all(c(
     "Only identified by site", "Reverse", "Potential contaminant"
   ) %in% names(raw)))
