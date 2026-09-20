@@ -159,6 +159,11 @@ overview_ui <- function(id) {
               "Show legend",
               value = FALSE
             ),
+            shiny::actionButton(
+              ns("run_qc_density"),
+              "RUN DENSITY",
+              class = "btn btn-primary w-100"
+            ),
             shiny::numericInput(
               ns("qc_density_plot_width"),
               "Download Plot Width (inches)",
@@ -202,6 +207,11 @@ overview_ui <- function(id) {
               ns("qc_cv_border_color"),
               "Bar border colour",
               value = "#FFFFFF"
+            ),
+            shiny::actionButton(
+              ns("run_qc_cv"),
+              "RUN CV",
+              class = "btn btn-primary w-100"
             ),
             shiny::numericInput(
               ns("qc_cv_plot_width"),
@@ -346,7 +356,9 @@ overview_server <- function(id, shared_state) {
       transformed_matrix = NULL,
       normalized_matrix = NULL,
       cor_results = NULL,
-      exp_results = NULL
+      exp_results = NULL,
+      qc_density_result = NULL,
+      qc_cv_result = NULL
     )
 
     shiny::observeEvent(input$load_data, {
@@ -401,6 +413,8 @@ overview_server <- function(id, shared_state) {
 
         rv$cor_results <- NULL
         rv$exp_results <- NULL
+        rv$qc_density_result <- NULL
+        rv$qc_cv_result <- NULL
         rv$load_success <- TRUE
         shiny::showNotification(notice, type = "message")
       }, error = function(e) {
@@ -413,6 +427,8 @@ overview_server <- function(id, shared_state) {
         rv$normalized_matrix <- NULL
         rv$cor_results <- NULL
         rv$exp_results <- NULL
+        rv$qc_density_result <- NULL
+        rv$qc_cv_result <- NULL
       })
     })
 
@@ -1255,7 +1271,7 @@ overview_server <- function(id, shared_state) {
         ggplot2::labs(title = "Normalized intensity distribution", x = NULL, y = "Intensity")
     })
 
-    qc_density_plot <- shiny::reactive({
+    build_qc_density_plot <- function() {
       df <- qc_long_intensity()
       grouping <- input$qc_density_group_by %||% "triplicate"
       if (base::identical(grouping, "sample")) {
@@ -1312,7 +1328,7 @@ overview_server <- function(id, shared_state) {
           y = "Density",
           color = legend_title
         )
-    })
+    }
 
     qc_pca_plot <- shiny::reactive({
       mat <- qc_matrix()
@@ -1336,7 +1352,7 @@ overview_server <- function(id, shared_state) {
         ggplot2::labs(title = "PCA of normalized proteomics samples", x = base::paste0("PC1 (", var_exp[1], "%)"), y = base::paste0("PC2 (", var_exp[2], "%)"))
     })
 
-    qc_cv_plot <- shiny::reactive({
+    build_qc_cv_plot <- function() {
       mat <- qc_matrix()
       row_mean <- base::rowMeans(mat, na.rm = TRUE)
       row_sd <- apply(mat, 1, stats::sd, na.rm = TRUE)
@@ -1358,7 +1374,37 @@ overview_server <- function(id, shared_state) {
           x = "CV",
           y = "Protein count"
         )
-    })
+    }
+
+    shiny::observeEvent(input$run_qc_density, {
+      shiny::req(isTRUE(rv$load_success))
+      shiny::req(rv$normalized_matrix)
+      rv$qc_density_result <- tryCatch(
+        build_qc_density_plot(),
+        error = function(e) {
+          shiny::showNotification(
+            paste("Density plot failed:", conditionMessage(e)),
+            type = "error"
+          )
+          NULL
+        }
+      )
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$run_qc_cv, {
+      shiny::req(isTRUE(rv$load_success))
+      shiny::req(rv$normalized_matrix)
+      rv$qc_cv_result <- tryCatch(
+        build_qc_cv_plot(),
+        error = function(e) {
+          shiny::showNotification(
+            paste("CV plot failed:", conditionMessage(e)),
+            type = "error"
+          )
+          NULL
+        }
+      )
+    }, ignoreInit = TRUE)
 
     output$qc_summary <- shiny::renderPrint({
       mat <- qc_matrix()
@@ -1390,15 +1436,27 @@ overview_server <- function(id, shared_state) {
     output$qc_boxplot <- shiny::renderPlot(
       safe_qc_plot(qc_boxplot), height = 260
     )
-    output$qc_density_plot <- shiny::renderPlot(
-      safe_qc_plot(qc_density_plot), height = 430
-    )
+    output$qc_density_plot <- shiny::renderPlot({
+      shiny::validate(
+        shiny::need(
+          !base::is.null(rv$qc_density_result),
+          "Set parameters and click RUN DENSITY to display the plot."
+        )
+      )
+      print(rv$qc_density_result)
+    }, height = 430)
     output$qc_pca_plot <- shiny::renderPlot(
       safe_qc_plot(qc_pca_plot), height = 220
     )
-    output$qc_cv_plot <- shiny::renderPlot(
-      safe_qc_plot(qc_cv_plot), height = 350
-    )
+    output$qc_cv_plot <- shiny::renderPlot({
+      shiny::validate(
+        shiny::need(
+          !base::is.null(rv$qc_cv_result),
+          "Set parameters and click RUN CV to display the plot."
+        )
+      )
+      print(rv$qc_cv_result)
+    }, height = 350)
 
     output$qc_density_download_pdf <- shiny::downloadHandler(
       filename = function() {
@@ -1414,7 +1472,8 @@ overview_server <- function(id, shared_state) {
           width = input$qc_density_plot_width,
           height = input$qc_density_plot_height
         )
-        print(qc_density_plot())
+        shiny::req(rv$qc_density_result)
+        print(rv$qc_density_result)
         grDevices::dev.off()
       }
     )
@@ -1433,7 +1492,8 @@ overview_server <- function(id, shared_state) {
           width = input$qc_cv_plot_width,
           height = input$qc_cv_plot_height
         )
-        print(qc_cv_plot())
+        shiny::req(rv$qc_cv_result)
+        print(rv$qc_cv_result)
         grDevices::dev.off()
       }
     )
