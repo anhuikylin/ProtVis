@@ -542,15 +542,25 @@ overview_server <- function(id, shared_state) {
           Tissue = TRUE,
           Species = TRUE
         ),
-        annotation_name_gp = grid::gpar(fontsize = 7),
+        annotation_name_gp = grid::gpar(
+          fontsize = 7, fontfamily = "sans", fontface = "plain"
+        ),
         annotation_legend_param = base::list(
           Tissue = base::list(
-            title_gp = grid::gpar(fontsize = 7),
-            labels_gp = grid::gpar(fontsize = 6)
+            title_gp = grid::gpar(
+              fontsize = 7, fontfamily = "sans", fontface = "plain"
+            ),
+            labels_gp = grid::gpar(
+              fontsize = 7, fontfamily = "sans", fontface = "plain"
+            )
           ),
           Species = base::list(
-            title_gp = grid::gpar(fontsize = 7),
-            labels_gp = grid::gpar(fontsize = 6)
+            title_gp = grid::gpar(
+              fontsize = 7, fontfamily = "sans", fontface = "plain"
+            ),
+            labels_gp = grid::gpar(
+              fontsize = 7, fontfamily = "sans", fontface = "plain"
+            )
           )
         )
       )
@@ -597,7 +607,12 @@ overview_server <- function(id, shared_state) {
         cluster_columns = isTRUE(input$cor_cluster_columns),
         show_row_names = TRUE,
         show_column_names = isTRUE(input$cor_show_column_names),
-        row_names_gp = grid::gpar(fontsize = 6),
+        row_names_gp = grid::gpar(
+          fontsize = 7, fontfamily = "sans", fontface = "plain"
+        ),
+        column_names_gp = grid::gpar(
+          fontsize = 7, fontfamily = "sans", fontface = "plain"
+        ),
         border = "black",
         na_col = "#d1d5db",
         name = "r",
@@ -610,8 +625,12 @@ overview_server <- function(id, shared_state) {
           )
         ),
         heatmap_legend_param = base::list(
-          title_gp = grid::gpar(fontsize = 6),
-          labels_gp = grid::gpar(fontsize = 6)
+          title_gp = grid::gpar(
+            fontsize = 7, fontfamily = "sans", fontface = "plain"
+          ),
+          labels_gp = grid::gpar(
+            fontsize = 7, fontfamily = "sans", fontface = "plain"
+          )
         ),
         cell_fun = if (isTRUE(input$cor_show_numbers)) function(j, i, x, y, width, height, fill) {
           grid::grid.text(
@@ -622,7 +641,10 @@ overview_server <- function(id, shared_state) {
             },
             x = x,
             y = y,
-            gp = grid::gpar(fontsize = 6, col = "white")
+            gp = grid::gpar(
+              fontsize = 6, col = "white",
+              fontfamily = "sans", fontface = "plain"
+            )
           )
         } else NULL
       )
@@ -776,7 +798,12 @@ overview_server <- function(id, shared_state) {
         cluster_columns = column_dend,
         show_row_names = TRUE,
         show_column_names = isTRUE(input$exp_show_feature_names),
-        row_names_gp = grid::gpar(fontsize = 6),
+        row_names_gp = grid::gpar(
+          fontsize = 7, fontfamily = "sans", fontface = "plain"
+        ),
+        column_names_gp = grid::gpar(
+          fontsize = 7, fontfamily = "sans", fontface = "plain"
+        ),
         border = "black",
         na_col = "#d1d5db",
         name = ifelse(isTRUE(input$exp_scale) &&
@@ -791,8 +818,12 @@ overview_server <- function(id, shared_state) {
           )
         ),
         heatmap_legend_param = base::list(
-          title_gp = grid::gpar(fontsize = 6),
-          labels_gp = grid::gpar(fontsize = 6)
+          title_gp = grid::gpar(
+            fontsize = 7, fontfamily = "sans", fontface = "plain"
+          ),
+          labels_gp = grid::gpar(
+            fontsize = 7, fontfamily = "sans", fontface = "plain"
+          )
         )
       )
     })
