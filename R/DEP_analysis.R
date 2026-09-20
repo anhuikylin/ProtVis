@@ -223,13 +223,17 @@ DEP_analysis_ui <- function(id) {
                 )
               ),
               shiny::div(
+                class = "pv-dep-summary-main",
                 style = paste0(
-                  "max-width:760px;height:450px;margin:18px auto 0;",
-                  "padding:0 10px;"
+                  "width:100%;max-width:none;min-width:0;",
+                  "height:520px;margin:8px 0 0 0;",
+                  "padding:8px 18px 0 18px;",
+                  "box-sizing:border-box;",
+                  "align-self:stretch;justify-self:stretch;"
                 ),
                 shiny::plotOutput(
                   ns("dep_summary_plot"),
-                  height = "430px",
+                  height = "500px",
                   width = "100%"
                 )
               )
