@@ -11,17 +11,6 @@
 overview_ui <- function(id) {
   ns <- NS(id)
   shiny::tagList(
-    shiny::tags$style(shiny::HTML("
-      @media (min-width: 900px) {
-        .pv-qc-grid .pv-qc-distribution-card {
-          grid-row: span 2;
-          height: 1056px;
-        }
-      }
-      .pv-qc-distribution-card .card-body {
-        overflow: hidden;
-      }
-    ")),
     bslib::layout_sidebar(
       sidebar = bslib::sidebar(
         width = 300,
@@ -119,74 +108,56 @@ overview_ui <- function(id) {
           bslib::accordion_panel(
             title = "Dimensionality Reduction",
             icon = dimensionality_reduction_icon,
-            shiny::selectInput(
-              inputId = ns("dimReductionMethod"),
-              label = "Select Method:",
-              choices = c("PCA", "PCoA", "tSNE", "UMAP", "NMDS"),
-              selected = "UMAP"
-            ),
-            shiny::selectInput(
-              ns("dr_group_by"),
-              "Color and ellipse grouping",
-              choices = c(
-                "Experimental group" = "group",
-                "Tissue" = "tissue",
-                "Species" = "species",
-                "Batch" = "batch",
-                "Condition" = "condition"
-              ),
-              selected = "tissue"
-            ),
             shiny::helpText(
-              "Colors and 95% confidence ellipses follow the selected grouping. ",
-              "Point shapes follow the point-shape grouping below."
+              "Reproduces the archived Figure 3 UMAP: transformed pre-KNN ",
+              "intensity matrix, five early developmental groups, seed 10086, ",
+              "group colours, species shapes, and four biological-region ellipses."
             ),
-            shiny::selectInput(
-              ns("dr_shape_by"),
-              "Point shape grouping",
-              choices = c(
-                "Species" = "species",
-                "Experimental group" = "group",
-                "Tissue" = "tissue",
-                "Batch" = "batch",
-                "Condition" = "condition"
-              ),
-              selected = "species"
+            shiny::actionButton(ns("DR_analyse"), "Run UMAP"),
+            shiny::numericInput(
+              ns("dr_plot_width"),
+              "Download Plot Width (inches)",
+              value = 10
             ),
-            shiny::actionButton(ns("DR_analyse"), "Run"),
-            shiny::numericInput(ns("dr_plot_width"), "Download Plot Width (inches)", value = 10),
-            shiny::numericInput(ns("dr_plot_height"), "Download Plot Height (inches)", value = 7),
-            shiny::downloadButton(ns("dr_download_before_pdf"), "Download Before Normalization"),
-            shiny::downloadButton(ns("dr_download_after_pdf"), "Download After Normalization"),
-            shiny::downloadButton(ns("dr_download_both_pdf"), "Download Both Plots")
+            shiny::numericInput(
+              ns("dr_plot_height"),
+              "Download Plot Height (inches)",
+              value = 7
+            ),
+            shiny::downloadButton(ns("dr_download_pdf"), "Download PDF")
           ),
           bslib::accordion_panel(
             title = "Proteomics QC",
             icon = bsicons::bs_icon("clipboard-pulse"),
-            shiny::numericInput(ns("qc_top_n"), "Top variable features for QC PCA", value = 500, min = 50, max = 5000, step = 50),
             shiny::selectInput(
               ns("qc_download_plot_type"),
               "QC figure to download",
               choices = c(
-                "Sample total intensity" = "sample_total",
-                "Missing value rate" = "missing_rate",
-                "Intensity boxplot" = "boxplot",
-                "Intensity density" = "density",
-                "PCA" = "pca",
-                "Coefficient of variation" = "cv"
-              )
+                "Normalized intensity density" = "density",
+                "Protein coefficient of variation" = "cv"
+              ),
+              selected = "density"
             ),
-            shiny::numericInput(ns("qc_plot_width"), "Download Plot Width (inches)", value = 8),
-            shiny::numericInput(ns("qc_plot_height"), "Download Plot Height (inches)", value = 6),
+            shiny::numericInput(
+              ns("qc_plot_width"),
+              "Download Plot Width (inches)",
+              value = 8
+            ),
+            shiny::numericInput(
+              ns("qc_plot_height"),
+              "Download Plot Height (inches)",
+              value = 6
+            ),
             shiny::downloadButton(ns("qc_download_pdf"), "Download QC PDF"),
-            shiny::downloadButton(ns("qc_download_matrix"), "Download Normalized Matrix")
+            shiny::downloadButton(
+              ns("qc_download_matrix"),
+              "Download Normalized Matrix"
+            )
           )
+
         )
       ),
       bslib::page_fluid(
-        # Keep the four core analysis panels in their original fixed-size grid.
-        # The taller QC distribution panel is isolated below so its row span
-        # cannot change these panels' dimensions.
         bslib::layout_column_wrap(
           width = 1/2,
           gap = "1rem",
@@ -206,50 +177,32 @@ overview_ui <- function(id) {
           ),
           bslib::card(
             height = "520px",
-            bslib::card_header("Dimensionality reduction analyse before normalization"),
+            bslib::card_header("Normalized intensity density"),
             bslib::card_body(
-              shiny::plotOutput(ns("DR_BeforeNormalization"), height = "430px")
-            )
-          ),
-          bslib::card(
-            height = "520px",
-            bslib::card_header("Dimensionality reduction analyse after normalization"),
-            bslib::card_body(
-              shiny::plotOutput(ns("DR_AfterNormalization"), height = "430px")
-            )
-          )
-        ),
-        shiny::div(style = "height: 1rem;"),
-        bslib::layout_column_wrap(
-          class = "pv-qc-grid",
-          width = 1/2,
-          gap = "1rem",
-          bslib::card(
-            height = "520px",
-            bslib::card_header("Proteomics QC summary"),
-            bslib::card_body(
-              shiny::verbatimTextOutput(ns("qc_summary")),
-              shiny::plotOutput(ns("qc_sample_total_plot"), height = "300px")
-            )
-          ),
-          bslib::card(
-            class = "pv-qc-distribution-card",
-            bslib::card_header("Proteomics missing values and distributions"),
-            bslib::card_body(
-              shiny::plotOutput(ns("qc_missing_rate_plot"), height = "180px"),
-              shiny::plotOutput(ns("qc_boxplot"), height = "260px"),
               shiny::plotOutput(ns("qc_density_plot"), height = "430px")
             )
           ),
           bslib::card(
             height = "520px",
-            bslib::card_header("Proteomics PCA and CV"),
+            bslib::card_header("Dimensionality reduction analyse"),
             bslib::card_body(
-              shiny::plotOutput(ns("qc_pca_plot"), height = "220px"),
-              shiny::plotOutput(ns("qc_cv_plot"), height = "180px")
+              shiny::plotOutput(ns("DR_Reproduction"), height = "430px")
+            )
+          )
+        ),
+        shiny::div(style = "height: 1rem;"),
+        bslib::layout_column_wrap(
+          width = 1,
+          gap = "1rem",
+          bslib::card(
+            height = "440px",
+            bslib::card_header("Protein coefficient of variation"),
+            bslib::card_body(
+              shiny::plotOutput(ns("qc_cv_plot"), height = "350px")
             )
           )
         )
+      )
       )
     )
   )
