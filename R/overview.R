@@ -883,6 +883,7 @@ overview_server <- function(id, shared_state) {
       }
 
       if (method == "tSNE") {
+        base::set.seed(12345)
         perplexity <- base::max(1, base::min(
           30, base::floor((base::nrow(t_data) - 1) / 3)
         ))
@@ -906,6 +907,7 @@ overview_server <- function(id, shared_state) {
       }
 
       if (method == "UMAP") {
+        base::set.seed(12345)
         config <- umap::umap.defaults
         config$n_neighbors <- base::max(2L, base::min(
           config$n_neighbors, base::nrow(t_data) - 1L
@@ -1009,103 +1011,120 @@ overview_server <- function(id, shared_state) {
     plot_DR_results <- function(dr_data, title_suffix) {
       df <- base::as.data.frame(dr_data)
       sample_names <- base::rownames(df)
-      if (is.null(sample_names)) sample_names <- paste0("Sample_", base::seq_len(nrow(df)))
-
-      metadata_values <- function(column) {
-        info <- rv$sample_info
-        if (is.null(info) || !is.data.frame(info) ||
-            !"sample_id" %in% names(info)) {
-          return(rep(NA_character_, length(sample_names)))
-        }
-        if (identical(column, "tissue2") && !"tissue2" %in% names(info)) {
-          column <- if ("tissue" %in% names(info)) "tissue" else column
-        }
-        if (!column %in% names(info)) {
-          return(rep(NA_character_, length(sample_names)))
-        }
-        index <- match(sample_names, info$sample_id)
-        if ("maxquant_id" %in% names(info)) {
-          fallback_index <- match(sample_names, info$maxquant_id)
-          index[is.na(index)] <- fallback_index[is.na(index)]
-        }
-        as.character(info[[column]])[index]
+      if (base::is.null(sample_names)) {
+        sample_names <- base::paste0(
+          "Sample_", base::seq_len(base::nrow(df))
+        )
       }
 
-      normalise_tissue <- function(values) {
-        values <- as.character(values)
-        lower <- tolower(values)
-        values[grepl("root|below[ ._-]*ground|underground", lower)] <- "Root"
-        values[grepl("leaf|shoot|stem|above[ ._-]*ground|aerial", lower)] <- "Shoot"
-        values
-      }
+      selected_group <- base::as.character(
+        input$dr_group_by %||% "tissue"
+      )
+      selected_shape <- base::as.character(
+        input$dr_shape_by %||% "species"
+      )
+      group_values <- .protvis_sample_group_values(
+        rv$sample_info, sample_names, mode = selected_group
+      )
+      shape_values <- .protvis_sample_group_values(
+        rv$sample_info, sample_names, mode = selected_shape
+      )
 
-      selected_group <- as.character(input$dr_group_by %||% "tissue")
-      selected_shape <- as.character(input$dr_shape_by %||% "species")
-      group_values <- metadata_values(selected_group)
-      shape_values <- metadata_values(selected_shape)
-      if (selected_group %in% c("tissue", "tissue2")) group_values <- normalise_tissue(group_values)
-      if (selected_shape %in% c("tissue", "tissue2")) shape_values <- normalise_tissue(shape_values)
-      sample_type <- vapply(base::strsplit(sample_names, "_", fixed = TRUE),
-                            function(value) value[[1L]], character(1))
-      fallback_group <- ifelse(
-        grepl("root|below[ ._-]*ground|underground", tolower(sample_names)),
-        "Root",
-        ifelse(grepl("leaf|shoot|stem|above[ ._-]*ground|aerial",
-                     tolower(sample_names)), "Shoot", sample_type)
-      )
-      group_values[is.na(group_values) | !nzchar(group_values)] <-
-        fallback_group[is.na(group_values) | !nzchar(group_values)]
-      fallback_shape <- ifelse(
-        sample_type == "B73", "Zea mays ssp. mays",
-        ifelse(sample_type == "Y12", "Zea mays ssp. mexicana", sample_type)
-      )
-      shape_values[is.na(shape_values) | !nzchar(shape_values)] <-
-        fallback_shape[is.na(shape_values) | !nzchar(shape_values)]
+      group_levels <- base::unique(group_values)
+      shape_levels <- base::unique(shape_values)
+      group_colors <- .protvis_group_palette(group_levels)
+      shape_values_map <- .protvis_shape_palette(shape_levels)
 
       df <- dplyr::mutate(
         df,
         Sample = sample_names,
-        SampleType = vapply(base::strsplit(sample_names, "_", fixed = TRUE),
-                            function(value) value[[1L]], character(1)),
-        DRGroup = group_values,
-        DRShape = shape_values
+        DRGroup = base::factor(group_values, levels = group_levels),
+        DRShape = base::factor(shape_values, levels = shape_levels)
       )
 
       ellipse_df <- df |>
-        dplyr::filter(is.finite(V1), is.finite(V2)) |>
+        dplyr::filter(base::is.finite(V1), base::is.finite(V2)) |>
         dplyr::group_by(DRGroup) |>
-        dplyr::filter(dplyr::n() >= 3L,
-                      stats::sd(V1) > 0, stats::sd(V2) > 0) |>
+        dplyr::filter(
+          dplyr::n() >= 3L,
+          stats::sd(V1) > 0,
+          stats::sd(V2) > 0
+        ) |>
         dplyr::ungroup()
 
       plot <- ggplot2::ggplot(df) +
         ggplot2::geom_point(
-          ggplot2::aes(x = V1, y = V2, color = DRGroup, shape = DRShape),
-          size = 1.2,
-          alpha = 0.8
+          ggplot2::aes(
+            x = V1, y = V2, color = DRGroup, shape = DRShape
+          ),
+          size = 1.8,
+          alpha = 0.85
         )
-      if (nrow(ellipse_df) > 0L) {
+      if (base::nrow(ellipse_df) > 0L) {
         plot <- plot +
           ggplot2::stat_ellipse(
             data = ellipse_df,
             ggplot2::aes(x = V1, y = V2, fill = DRGroup),
-            geom = "polygon", level = 0.95, alpha = 0.25, type = "norm"
+            geom = "polygon",
+            level = 0.95,
+            alpha = 0.20,
+            type = "norm",
+            show.legend = FALSE
           ) +
           ggplot2::stat_ellipse(
             data = ellipse_df,
             ggplot2::aes(x = V1, y = V2, color = DRGroup),
-            geom = "path", level = 0.95, alpha = 1, linewidth = 0.5, type = "norm"
+            geom = "path",
+            level = 0.95,
+            alpha = 1,
+            linewidth = 0.55,
+            type = "norm",
+            show.legend = FALSE
           )
       }
+
+      shape_columns <- if (base::length(shape_levels) > 6L) 2L else 1L
       plot +
-        ggsci::scale_color_lancet() +
-        ggsci::scale_fill_lancet() +
+        ggplot2::scale_color_manual(
+          values = group_colors,
+          drop = FALSE
+        ) +
+        ggplot2::scale_fill_manual(
+          values = group_colors,
+          drop = FALSE
+        ) +
+        ggplot2::scale_shape_manual(
+          values = shape_values_map,
+          drop = FALSE
+        ) +
+        ggplot2::guides(
+          color = ggplot2::guide_legend(
+            order = 1,
+            override.aes = base::list(size = 2.4)
+          ),
+          shape = ggplot2::guide_legend(
+            order = 2,
+            ncol = shape_columns,
+            byrow = TRUE,
+            override.aes = base::list(size = 2.4)
+          )
+        ) +
         ggplot2::labs(
           x = "Component 1",
           y = "Component 2",
-          title = base::paste(input$dimReductionMethod, "analysis", title_suffix)
+          title = base::paste(
+            input$dimReductionMethod, "analysis", title_suffix
+          ),
+          color = .protvis_group_label(selected_group),
+          fill = .protvis_group_label(selected_group),
+          shape = .protvis_group_label(selected_shape)
         ) +
-        ggplot2::theme_bw()
+        ggplot2::theme_bw() +
+        ggplot2::theme(
+          legend.text = ggplot2::element_text(size = 7),
+          legend.title = ggplot2::element_text(size = 8),
+          legend.key.height = grid::unit(0.35, "cm")
+        )
     }
 
     safe_dr_plot <- function(result, title_suffix) {
