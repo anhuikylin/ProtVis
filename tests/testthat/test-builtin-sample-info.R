@@ -7,7 +7,7 @@ test_that("built-in fixtures provide real B73 and Y12 metadata", {
     expect_equal(info$condition, info$group)
     expect_true(all(info$organism == "Zea mays"))
     expect_true(all(grepl(
-      "ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv",
+      "ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
                           info$source_url, fixed = TRUE)))
   }
 })
@@ -15,6 +15,21 @@ test_that("built-in fixtures provide real B73 and Y12 metadata", {
 test_that("MaxQuant demo metadata matches all 30 biological samples", {
   info <- .protvis_builtin_sample_info("MaxQuant")
   expect_equal(nrow(info), 30L)
+  expected_samples <- c(
+    "B73_Root_VE_1", "B73_Root_V1.V2_1", "B73_Root_V4_1",
+    "B73_Leaf_VE.V1.V2_1", "B73_Leaf_V4.V6.V8_1",
+    "B73_Root_VE_2", "B73_Root_VE_3", "B73_Root_V4_2",
+    "B73_Leaf_VE.V1.V2_2", "B73_Leaf_V4.V6.V8_2",
+    "B73_Root_V1.V2_2", "B73_Root_V1.V2_3", "B73_Root_V4_3",
+    "B73_Leaf_VE.V1.V2_3", "B73_Leaf_V4.V6.V8_3",
+    "Y12_Root_VE_1", "Y12_Root_V1.V2_1", "Y12_Root_V4_1",
+    "Y12_Leaf_VE.V1.V2_1", "Y12_Leaf_V4.V6.V8_1",
+    "Y12_Root_VE_2", "Y12_Root_V1.V2_2", "Y12_Root_V4_2",
+    "Y12_Leaf_VE.V1.V2_2", "Y12_Leaf_V4.V6.V8_2",
+    "Y12_Root_VE_3", "Y12_Root_V1.V2_3", "Y12_Root_V4_3",
+    "Y12_Leaf_VE.V1.V2_3", "Y12_Leaf_V4.V6.V8_3"
+  )
+  expect_identical(info$sample_id, expected_samples)
   expect_equal(info$sample_id, info$maxquant_id)
   expect_equal(as.integer(table(info$genotype)), c(15L, 15L))
   expect_equal(as.integer(table(info$tissue)), c(12L, 18L))
