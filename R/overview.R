@@ -11,6 +11,17 @@
 overview_ui <- function(id) {
   ns <- NS(id)
   shiny::tagList(
+    shiny::tags$style(shiny::HTML("
+      @media (min-width: 900px) {
+        .pv-qc-distribution-card {
+          grid-row: span 2;
+          height: 1056px;
+        }
+      }
+      .pv-qc-distribution-card .card-body {
+        overflow: hidden;
+      }
+    ")),
     bslib::layout_sidebar(
       sidebar = bslib::sidebar(
         width = 300,
@@ -209,12 +220,12 @@ overview_ui <- function(id) {
             )
           ),
           bslib::card(
-            height = "520px",
+            class = "pv-qc-distribution-card",
             bslib::card_header("Proteomics missing values and distributions"),
             bslib::card_body(
               shiny::plotOutput(ns("qc_missing_rate_plot"), height = "180px"),
-              shiny::plotOutput(ns("qc_boxplot"), height = "180px"),
-              shiny::plotOutput(ns("qc_density_plot"), height = "180px")
+              shiny::plotOutput(ns("qc_boxplot"), height = "260px"),
+              shiny::plotOutput(ns("qc_density_plot"), height = "430px")
             )
           ),
           bslib::card(
@@ -1266,10 +1277,27 @@ overview_server <- function(id, shared_state) {
     })
 
     qc_density_plot <- shiny::reactive({
-      ggplot2::ggplot(qc_long_intensity(), ggplot2::aes(x = Intensity, color = Sample)) +
-        ggplot2::geom_density(na.rm = TRUE) +
+      ggplot2::ggplot(
+        qc_long_intensity(),
+        ggplot2::aes(x = Intensity, color = Sample)
+      ) +
+        ggplot2::geom_density(na.rm = TRUE, linewidth = 0.65) +
         ggplot2::theme_minimal(base_size = 13) +
-        ggplot2::labs(title = "Normalized intensity density", x = "Intensity", y = "Density")
+        ggplot2::theme(
+          legend.position = "bottom",
+          legend.text = ggplot2::element_text(size = 6),
+          legend.title = ggplot2::element_blank(),
+          legend.key.width = grid::unit(0.55, "cm"),
+          legend.key.height = grid::unit(0.3, "cm")
+        ) +
+        ggplot2::guides(
+          color = ggplot2::guide_legend(ncol = 5, byrow = TRUE)
+        ) +
+        ggplot2::labs(
+          title = "Normalized intensity density",
+          x = "Intensity",
+          y = "Density"
+        )
     })
 
     qc_pca_plot <- shiny::reactive({
@@ -1345,10 +1373,10 @@ overview_server <- function(id, shared_state) {
       safe_qc_plot(qc_missing_rate_plot), height = 180
     )
     output$qc_boxplot <- shiny::renderPlot(
-      safe_qc_plot(qc_boxplot), height = 180
+      safe_qc_plot(qc_boxplot), height = 260
     )
     output$qc_density_plot <- shiny::renderPlot(
-      safe_qc_plot(qc_density_plot), height = 180
+      safe_qc_plot(qc_density_plot), height = 430
     )
     output$qc_pca_plot <- shiny::renderPlot(
       safe_qc_plot(qc_pca_plot), height = 220
