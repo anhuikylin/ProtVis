@@ -269,16 +269,16 @@ project_init_server <- function(id, shared_state) {
     )
     # Listen to directory selection and update shared_state$workdir
     shiny::observeEvent(input$prj_wd, {
-      shiny::req(input$prj_wd)
+      # shinyDirButton first emits its button-click value (for example 1L).
+      # Only the later structured shinyFiles payload represents a confirmed
+      # directory choice; ignore the transient click event.
       tryCatch({
-        selected_dir <- shinyFiles::parseDirPath(volumes, input$prj_wd)
-        selected_dir <- as.character(selected_dir)[[1L]]
-        if (!nzchar(selected_dir) || !base::dir.exists(selected_dir)) {
-          stop("The selected directory is not accessible.", call. = FALSE)
-        }
-        shared_state$workdir <- base::normalizePath(
-          selected_dir, winslash = "/", mustWork = TRUE
+        selected_dir <- .protvis_parse_directory_selection(
+          volumes, input$prj_wd
         )
+        if (base::is.null(selected_dir)) return(invisible(NULL))
+
+        shared_state$workdir <- selected_dir
         shiny::showNotification(
           paste("Working directory set to:", shared_state$workdir),
           type = "message"
@@ -311,20 +311,20 @@ project_init_server <- function(id, shared_state) {
       )
     })
     shiny::observeEvent(input$raw_directory, {
-      shiny::req(input$raw_directory)
       tryCatch({
-        selected_dir <- shinyFiles::parseDirPath(volumes, input$raw_directory)
-        selected_dir <- as.character(selected_dir)[[1L]]
-        if (!nzchar(selected_dir) || !dir.exists(selected_dir)) {
-          stop("The selected mzML directory is not accessible.", call. = FALSE)
-        }
-        shared_state$raw_directory <- normalizePath(selected_dir, winslash = "/",
-                                                     mustWork = TRUE)
+        selected_dir <- .protvis_parse_directory_selection(
+          volumes, input$raw_directory
+        )
+        if (base::is.null(selected_dir)) return(invisible(NULL))
+
+        shared_state$raw_directory <- selected_dir
         shared_state$raw_manifest <- NULL
         shared_state$raw_check <- NULL
       }, error = function(e) {
-        shiny::showNotification(paste("Unable to select mzML directory:",
-                                      conditionMessage(e)), type = "error")
+        shiny::showNotification(
+          paste("Unable to select mzML directory:", conditionMessage(e)),
+          type = "error"
+        )
       })
     }, ignoreInit = TRUE)
     shiny::observeEvent(input$use_builtin_raw_sample_info, {
