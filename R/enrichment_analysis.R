@@ -931,64 +931,104 @@ enrichment_analysis_ui <- function(id) {
       ),
 
       bslib::card(
-        height = "780px",
-        bslib::card_header("Maize-teosinte KEGG reproduction"),
-        bslib::card_body(
-          bslib::layout_sidebar(
-            sidebar = bslib::sidebar(
-              width = 270,
-              position = "left",
-              open = "open",
-
-              shiny::tags$h5("Figure 3C-D"),
+        class = "pv-maize-kegg-repro-card",
+        bslib::card_header(
+          shiny::div(
+            class = "d-flex align-items-center justify-content-between flex-wrap gap-2",
+            shiny::div(
+              shiny::tags$strong("Maize-teosinte KEGG reproduction"),
               shiny::tags$small(
-                "Built-in archived directional KEGG enrichment data. ",
-                "This full-width panel reproduces the publication figure ",
-                "without changing the standard enrichment workflow above.",
-                class = "text-muted"
-              ),
-              shiny::hr(),
-              shiny::uiOutput(ns("maize_kegg_repro_status")),
+                "  Archived Figure 3C-D directional KEGG enrichment",
+                class = "text-muted ms-2"
+              )
+            ),
+            shiny::tags$span(
+              "Figure 3C-D",
+              class = "badge rounded-pill text-bg-light border"
+            )
+          )
+        ),
+        bslib::card_body(
+          shiny::div(
+            class = "d-flex flex-wrap align-items-end gap-3",
+            style = paste0(
+              "padding: 14px 16px; margin-bottom: 14px;",
+              "border: 1px solid #dbe7ee; border-radius: 12px;",
+              "background: #f8fbfd;"
+            ),
+
+            shiny::div(
+              style = "flex: 1 1 300px; min-width: 260px;",
+              shiny::uiOutput(ns("maize_kegg_repro_status"))
+            ),
+
+            shiny::div(
+              style = "width: 150px;",
               shiny::numericInput(
                 ns("maize_kegg_width"),
-                "Download width (inch)",
+                "PDF/PNG width",
                 value = 17,
                 min = 8,
-                max = 30
-              ),
-              shiny::numericInput(
-                ns("maize_kegg_height"),
-                "Download height (inch)",
-                value = 8,
-                min = 4,
-                max = 20
-              ),
-              shiny::downloadButton(
-                ns("download_maize_kegg_pdf"),
-                "Download PDF"
-              ),
-              shiny::downloadButton(
-                ns("download_maize_kegg_png"),
-                "Download PNG (600 dpi)"
-              ),
-              shiny::downloadButton(
-                ns("download_maize_kegg_data"),
-                "Download source data"
+                max = 30,
+                width = "100%"
               )
             ),
 
-            shiny::tabsetPanel(
-              id = ns("maize_kegg_repro_tabs"),
-              type = "tabs",
-              shiny::tabPanel(
-                "Figure",
+            shiny::div(
+              style = "width: 150px;",
+              shiny::numericInput(
+                ns("maize_kegg_height"),
+                "PDF/PNG height",
+                value = 8,
+                min = 4,
+                max = 20,
+                width = "100%"
+              )
+            ),
+
+            shiny::div(
+              class = "d-flex flex-wrap gap-2",
+              style = "margin-left: auto;",
+              shiny::downloadButton(
+                ns("download_maize_kegg_pdf"),
+                "PDF",
+                class = "btn btn-outline-secondary btn-sm"
+              ),
+              shiny::downloadButton(
+                ns("download_maize_kegg_png"),
+                "PNG 600 dpi",
+                class = "btn btn-outline-secondary btn-sm"
+              ),
+              shiny::downloadButton(
+                ns("download_maize_kegg_data"),
+                "Source data",
+                class = "btn btn-outline-secondary btn-sm"
+              )
+            )
+          ),
+
+          shiny::tabsetPanel(
+            id = ns("maize_kegg_repro_tabs"),
+            type = "tabs",
+            shiny::tabPanel(
+              "Figure",
+              shiny::div(
+                style = paste0(
+                  "padding: 14px 10px 4px;",
+                  "min-height: 590px;",
+                  "overflow: visible;"
+                ),
                 shiny::plotOutput(
                   ns("maize_kegg_reproduction_plot"),
-                  height = "650px"
+                  width = "100%",
+                  height = "570px"
                 )
-              ),
-              shiny::tabPanel(
-                "Built-in data",
+              )
+            ),
+            shiny::tabPanel(
+              "Built-in data",
+              shiny::div(
+                style = "padding-top: 12px;",
                 DT::DTOutput(ns("maize_kegg_reproduction_table"))
               )
             )
@@ -1079,13 +1119,23 @@ enrichment_analysis_server <- function(id, shared_state) {
       n_c <- sum(df$Panel == "C")
       n_d <- sum(df$Panel == "D")
       shiny::tags$div(
-        class = "alert alert-success py-2 px-3",
-        shiny::tags$strong("Built-in data verified"),
-        shiny::tags$br(),
-        shiny::tags$small(
-          paste0(
-            nrow(df), " displayed enrichment points: Panel C ",
-            n_c, "; Panel D ", n_d, "."
+        class = "d-flex align-items-center gap-2",
+        shiny::tags$span(
+          "✓",
+          style = paste0(
+            "display:inline-flex;align-items:center;justify-content:center;",
+            "width:26px;height:26px;border-radius:50%;",
+            "background:#e8f7ef;color:#198754;font-weight:700;"
+          )
+        ),
+        shiny::tags$div(
+          shiny::tags$strong("Built-in data verified"),
+          shiny::tags$div(
+            paste0(
+              nrow(df), " enrichment points · Panel C ",
+              n_c, " · Panel D ", n_d
+            ),
+            class = "text-muted small"
           )
         )
       )
