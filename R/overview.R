@@ -526,13 +526,13 @@ overview_server <- function(id, shared_state) {
                       "Zea mays ssp. mexicana" = "#84cc16",
                       "All samples" = "#94a3b8")
         ),
+        show_legend = c(
+          Group = FALSE,
+          Tissue = TRUE,
+          Species = TRUE
+        ),
         annotation_name_gp = grid::gpar(fontsize = 7),
         annotation_legend_param = base::list(
-          Group = base::list(
-            title_gp = grid::gpar(fontsize = 7),
-            labels_gp = grid::gpar(fontsize = 6),
-            ncol = 2
-          ),
           Tissue = base::list(
             title_gp = grid::gpar(fontsize = 7),
             labels_gp = grid::gpar(fontsize = 6)
