@@ -777,10 +777,13 @@ overview_server <- function(id, shared_state) {
           cluster_matrix[i, missing] <- replacement
         }
       }
-      row_dend <- if (isTRUE(input$exp_cluster_rows) &&
-                      base::nrow(cluster_matrix) > 1L) {
-        stats::hclust(stats::dist(cluster_matrix))
-      } else FALSE
+      # Rows are samples and are split into biological triplicate groups.
+      # ComplexHeatmap does not allow a categorical row_split together with a
+      # precomputed row dendrogram. Use a logical cluster_rows flag instead:
+      # this clusters samples within each triplicate slice while preserving the
+      # group order via cluster_row_slices = FALSE.
+      cluster_sample_rows <- isTRUE(input$exp_cluster_rows) &&
+        base::nrow(cluster_matrix) > 1L
       column_dend <- if (isTRUE(input$exp_cluster_columns) &&
                          base::ncol(cluster_matrix) > 1L) {
         stats::hclust(stats::dist(base::t(cluster_matrix)))
@@ -803,7 +806,7 @@ overview_server <- function(id, shared_state) {
         cluster_row_slices = FALSE,
         row_gap = grid::unit(1.2, "mm"),
         row_title = NULL,
-        cluster_rows = row_dend,
+        cluster_rows = cluster_sample_rows,
         cluster_columns = column_dend,
         show_row_names = TRUE,
         show_column_names = isTRUE(input$exp_show_feature_names),
