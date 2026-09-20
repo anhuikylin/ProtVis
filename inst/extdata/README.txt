@@ -1,6 +1,6 @@
 The small DIA-NN, FragPipe, Skyline, OpenMS, Proteome Discoverer, and
 Spectronaut files in this directory are source-specific adapter views of the
-real `Raw_reporter_corrected_5groups_verified.csv` maize proteomics export
+real `MaxQuant_output.xlsx` maize proteomics export
 bundled in this package.
 Each compact file retains exactly 5,000 valid protein groups (rows selected
 from the upstream export without duplication) and two real B73/Y12 TMT
@@ -17,7 +17,7 @@ invented gene descriptions are no longer included.  Only upstream protein
 identifiers and intensity measurements are retained.
 
 Upstream data and metadata:
-https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv
+https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx
 
 The B73/Y12 sample mapping is retained by
 `.protvis_builtin_sample_info()` and includes the organism, upstream file
@@ -31,10 +31,13 @@ load_protvis_builtin_data(source = "DIA-NN") (or another listed source) to
 load one directly into a ProtVis_dataset. The resulting object can be passed
 to run_protvis_pipeline(), checkpoint functions, and downstream modules.
 
-Raw_reporter_corrected_5groups_verified.csv is the full reproducible MaxQuant
-example. It contains 30 biologically named B73/Y12 samples across root and leaf
-developmental stages. Its importer removes rows marked Reverse, Potential
-contaminant, or Only identified by site by default.
+MaxQuant_output.xlsx is the full reproducible MaxQuant example supplied for
+the ProtVis demonstration. It contains 12,689 protein groups and 30 biologically
+named B73/Y12 samples across root and leaf developmental stages. The built-in
+workbook preserves the corrected sample labels from the supplied workbook,
+including B73_Root_VE_3 and B73_Root_V1.V2_2 in their corrected columns. Its
+importer removes rows marked Reverse, Potential contaminant, or Only identified
+by site by default.
 
 The `kmeans.csv` file is the built-in expression-profile example for
 Multi-omics -> Kmeans. Click `LOAD DEMO DATA` to load it, or download it
