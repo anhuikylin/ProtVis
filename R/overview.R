@@ -123,7 +123,8 @@ overview_ui <- function(id) {
               selected = "tissue"
             ),
             shiny::helpText(
-              "Color and 95% confidence ellipses use tissue (Root/Shoot)."
+              "Colors and 95% confidence ellipses follow the selected grouping. ",
+              "Point shapes follow the point-shape grouping below."
             ),
             shiny::selectInput(
               ns("dr_shape_by"),
@@ -505,10 +506,18 @@ overview_server <- function(id, shared_state) {
       }
       metadata_share$species[is.na(metadata_share$species) |
                                !nzchar(metadata_share$species)] <- "All samples"
+      metadata_share$group <- .protvis_sample_group_values(
+        rv$sample_info,
+        metadata_share$sample_id,
+        mode = "triplicate"
+      )
+      group_colors <- .protvis_group_palette(metadata_share$group)
       ComplexHeatmap::rowAnnotation(
+        Group = base::as.matrix(metadata_share["group"]),
         Tissue = base::as.matrix(metadata_share["tissue2"]),
         Species = base::as.matrix(metadata_share["species"]),
         col = base::list(
+          Group = group_colors,
           Tissue = c("Shoot" = "#65a30d", "Root" = "#c2410c",
                      "Leaf" = "#65a30d", "Pulvinus" = "#a16207",
                      "Stem" = "#166534",
@@ -519,8 +528,19 @@ overview_server <- function(id, shared_state) {
         ),
         annotation_name_gp = grid::gpar(fontsize = 7),
         annotation_legend_param = base::list(
-          title_gp = grid::gpar(fontsize = 7),
-          labels_gp = grid::gpar(fontsize = 6)
+          Group = base::list(
+            title_gp = grid::gpar(fontsize = 7),
+            labels_gp = grid::gpar(fontsize = 6),
+            ncol = 2
+          ),
+          Tissue = base::list(
+            title_gp = grid::gpar(fontsize = 7),
+            labels_gp = grid::gpar(fontsize = 6)
+          ),
+          Species = base::list(
+            title_gp = grid::gpar(fontsize = 7),
+            labels_gp = grid::gpar(fontsize = 6)
+          )
         )
       )
     }
@@ -541,10 +561,27 @@ overview_server <- function(id, shared_state) {
       mid_break <- (min_break + max_break) / 2
       heatmap_matrix <- rv$cor_results
       heatmap_matrix[!is.finite(heatmap_matrix)] <- 0
+      sample_groups <- .protvis_sample_group_values(
+        rv$sample_info,
+        base::rownames(heatmap_matrix),
+        mode = "triplicate"
+      )
+      sample_groups <- base::factor(
+        sample_groups,
+        levels = base::unique(sample_groups)
+      )
 
       ComplexHeatmap::Heatmap(
         heatmap_matrix,
         right_annotation = ha,
+        row_split = sample_groups,
+        column_split = sample_groups,
+        cluster_row_slices = FALSE,
+        cluster_column_slices = FALSE,
+        row_gap = grid::unit(1.2, "mm"),
+        column_gap = grid::unit(1.2, "mm"),
+        row_title = NULL,
+        column_title = NULL,
         cluster_rows = isTRUE(input$cor_cluster_rows),
         cluster_columns = isTRUE(input$cor_cluster_columns),
         show_row_names = TRUE,
@@ -707,9 +744,23 @@ overview_server <- function(id, shared_state) {
         stats::hclust(stats::dist(base::t(cluster_matrix)))
       } else FALSE
 
+      sample_groups <- .protvis_sample_group_values(
+        rv$sample_info,
+        base::rownames(heatmap_matrix),
+        mode = "triplicate"
+      )
+      sample_groups <- base::factor(
+        sample_groups,
+        levels = base::unique(sample_groups)
+      )
+
       ComplexHeatmap::Heatmap(
         heatmap_matrix,
         right_annotation = ha,
+        row_split = sample_groups,
+        cluster_row_slices = FALSE,
+        row_gap = grid::unit(1.2, "mm"),
+        row_title = NULL,
         cluster_rows = row_dend,
         cluster_columns = column_dend,
         show_row_names = TRUE,
