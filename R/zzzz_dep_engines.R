@@ -277,7 +277,7 @@
     ggplot2::theme_void()
 }
 
-.protvis_dep_engine_classify <- function(table, fdr = 0.05, logfc = 0.27) {
+.protvis_dep_engine_classify <- function(table, fdr = 0.05, logfc = 1) {
   table <- base::as.data.frame(
     table, stringsAsFactors = FALSE, check.names = FALSE
   )
@@ -304,7 +304,7 @@
   if (!base::is.finite(threshold) || threshold <= 0) threshold <- 0.05
   logfc_threshold <- suppressWarnings(base::as.numeric(logfc[[1L]]))
   if (!base::is.finite(logfc_threshold) || logfc_threshold < 0) {
-    logfc_threshold <- 0.27
+    logfc_threshold <- 1
   }
 
   regulation <- base::rep("Not significant", base::nrow(table))
@@ -336,7 +336,7 @@
 }
 
 .protvis_dep_engine_volcano_plot <- function(
-    table, method, comparison, fdr = 0.05, logfc = 0.27,
+    table, method, comparison, fdr = 0.05, logfc = 1,
     up = "#d62728", down = "#1f77b4", ns = "#9aa6b2") {
   classified <- .protvis_dep_engine_classify(table, fdr, logfc)
   data <- classified$data
@@ -392,7 +392,7 @@
 }
 
 .protvis_dep_engine_bar_plot <- function(
-    table, method, comparison, fdr = 0.05, logfc = 0.27,
+    table, method, comparison, fdr = 0.05, logfc = 1,
     up = "#d62728", down = "#1f77b4") {
   classified <- .protvis_dep_engine_classify(table, fdr, logfc)
   values <- base::as.character(classified$data$.pv_regulation)
@@ -434,7 +434,7 @@
 
 .protvis_dep_engine_heatmap_plot <- function(
     table, dataset, sample_sets, method, comparison,
-    fdr = 0.05, logfc = 0.27, top_n = 50L,
+    fdr = 0.05, logfc = 1, top_n = 50L,
     show_colnames = TRUE, show_rownames = FALSE) {
   if (!inherits(dataset, "ProtVis_dataset")) {
     return(.protvis_dep_engine_empty_plot("No ProtVis_dataset available"))
