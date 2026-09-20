@@ -71,16 +71,16 @@ protvis_builtin_datasets <- function() {
     source = c("MaxQuant", "Proteome Discoverer", "DIA-NN", "Spectronaut",
                "FragPipe", "Skyline", "OpenMS", "OpenMS"),
     file = c(
-      "Raw_reporter_corrected_5groups_verified.csv", "ProteomeDiscoverer_proteins.txt",
+      "MaxQuant_output.xlsx", "ProteomeDiscoverer_proteins.txt",
       "DIA-NN_report.tsv", "Spectronaut_report.tsv",
       "FragPipe_combined_protein.tsv", "Skyline_report.csv",
       "OpenMS_protein_quantification.tsv", "OpenMS_proteins.mzTab"
     ),
-    format = c("csv", "txt", "tsv", "tsv", "tsv", "csv", "tsv", "mzTab"),
+    format = c("xlsx", "txt", "tsv", "tsv", "tsv", "csv", "tsv", "mzTab"),
     description = c(
       paste0(
-        "MaxQuant corrected reporter-intensity protein export ",
-        "(12,689 protein groups; 30 B73/Y12 samples)"
+        "MaxQuant reporter-intensity protein export from MaxQuant_output.xlsx ",
+        "(12,689 protein groups; 30 B73/Y12 samples; corrected sample labels)"
       ),
       "Proteome Discoverer adapter view of 5,000 real Zea mays B73/Y12 protein groups",
       "DIA-NN adapter view of 5,000 real Zea mays B73/Y12 protein groups",
@@ -91,14 +91,14 @@ protvis_builtin_datasets <- function() {
       "HUPO-PSI mzTab adapter view of 5,000 real Zea mays B73/Y12 protein groups"
     ),
     reference = c(
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv"
+      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
+      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
+      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
+      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
+      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
+      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
+      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
+      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx"
     ),
     stringsAsFactors = FALSE,
     check.names = FALSE
@@ -114,9 +114,9 @@ protvis_builtin_datasets <- function() {
     samples <- c(
       "B73_Root_VE_1", "B73_Root_V1.V2_1", "B73_Root_V4_1",
       "B73_Leaf_VE.V1.V2_1", "B73_Leaf_V4.V6.V8_1",
-      "B73_Root_VE_2", "B73_Root_V1.V2_2", "B73_Root_V4_2",
+      "B73_Root_VE_2", "B73_Root_VE_3", "B73_Root_V4_2",
       "B73_Leaf_VE.V1.V2_2", "B73_Leaf_V4.V6.V8_2",
-      "B73_Root_VE_3", "B73_Root_V1.V2_3", "B73_Root_V4_3",
+      "B73_Root_V1.V2_2", "B73_Root_V1.V2_3", "B73_Root_V4_3",
       "B73_Leaf_VE.V1.V2_3", "B73_Leaf_V4.V6.V8_3",
       "Y12_Root_VE_1", "Y12_Root_V1.V2_1", "Y12_Root_V4_1",
       "Y12_Leaf_VE.V1.V2_1", "Y12_Leaf_V4.V6.V8_1",
@@ -130,7 +130,7 @@ protvis_builtin_datasets <- function() {
     replicate <- as.integer(sub("^.*_([0-9]+)$", "\\1", samples))
     stage <- sub("^[^_]+_[^_]+_(.*)_[0-9]+$", "\\1", samples)
     group <- sub("_[0-9]+$", "", samples)
-    data_file <- "Raw_reporter_corrected_5groups_verified.csv"
+    data_file <- "MaxQuant_output.xlsx"
     source_url <- paste0(
       "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/",
       data_file
@@ -174,10 +174,10 @@ protvis_builtin_datasets <- function() {
     tissue2 = rep("maize tissue (B73/Y12)", 2L),
     organism = rep("Zea mays", 2L),
     accession = rep(
-      "ProtVis-inst-extdata-Raw_reporter_corrected_5groups_verified.csv", 2L
+      "ProtVis-inst-extdata-MaxQuant_output.xlsx", 2L
     ),
     source_url = rep(
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/Raw_reporter_corrected_5groups_verified.csv",
+      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
       2L
     ),
     source = rep(source, 2L),
