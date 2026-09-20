@@ -924,69 +924,72 @@ enrichment_analysis_ui <- function(id) {
               shiny::tabPanel(
                 "Result Table",
                 DT::DTOutput(ns("kegg_res_table"))
+              )
+            )
+          )
+        )
+      ),
+
+      bslib::card(
+        height = "780px",
+        bslib::card_header("Maize-teosinte KEGG reproduction"),
+        bslib::card_body(
+          bslib::layout_sidebar(
+            sidebar = bslib::sidebar(
+              width = 270,
+              position = "left",
+              open = "open",
+
+              shiny::tags$h5("Figure 3C-D"),
+              shiny::tags$small(
+                "Built-in archived directional KEGG enrichment data. ",
+                "This full-width panel reproduces the publication figure ",
+                "without changing the standard enrichment workflow above.",
+                class = "text-muted"
               ),
+              shiny::hr(),
+              shiny::uiOutput(ns("maize_kegg_repro_status")),
+              shiny::numericInput(
+                ns("maize_kegg_width"),
+                "Download width (inch)",
+                value = 17,
+                min = 8,
+                max = 30
+              ),
+              shiny::numericInput(
+                ns("maize_kegg_height"),
+                "Download height (inch)",
+                value = 8,
+                min = 4,
+                max = 20
+              ),
+              shiny::downloadButton(
+                ns("download_maize_kegg_pdf"),
+                "Download PDF"
+              ),
+              shiny::downloadButton(
+                ns("download_maize_kegg_png"),
+                "Download PNG (600 dpi)"
+              ),
+              shiny::downloadButton(
+                ns("download_maize_kegg_data"),
+                "Download source data"
+              )
+            ),
 
+            shiny::tabsetPanel(
+              id = ns("maize_kegg_repro_tabs"),
+              type = "tabs",
               shiny::tabPanel(
-                "Maize-teosinte reproduction",
-                bslib::layout_sidebar(
-                  sidebar = bslib::sidebar(
-                    width = 260,
-                    position = "left",
-                    open = "open",
-
-                    shiny::tags$h5("Figure 3C-D"),
-                    shiny::tags$small(
-                      "Built-in archived directional KEGG enrichment data. ",
-                      "The default view reproduces the publication panels ",
-                      "without changing the current enrichment workflow.",
-                      class = "text-muted"
-                    ),
-                    shiny::hr(),
-                    shiny::uiOutput(ns("maize_kegg_repro_status")),
-                    shiny::numericInput(
-                      ns("maize_kegg_width"),
-                      "Download width (inch)",
-                      value = 17,
-                      min = 8,
-                      max = 30
-                    ),
-                    shiny::numericInput(
-                      ns("maize_kegg_height"),
-                      "Download height (inch)",
-                      value = 8,
-                      min = 4,
-                      max = 20
-                    ),
-                    shiny::downloadButton(
-                      ns("download_maize_kegg_pdf"),
-                      "Download PDF"
-                    ),
-                    shiny::downloadButton(
-                      ns("download_maize_kegg_png"),
-                      "Download PNG (600 dpi)"
-                    ),
-                    shiny::downloadButton(
-                      ns("download_maize_kegg_data"),
-                      "Download source data"
-                    )
-                  ),
-
-                  shiny::tabsetPanel(
-                    id = ns("maize_kegg_repro_tabs"),
-                    type = "tabs",
-                    shiny::tabPanel(
-                      "Figure",
-                      shiny::plotOutput(
-                        ns("maize_kegg_reproduction_plot"),
-                        height = "620px"
-                      )
-                    ),
-                    shiny::tabPanel(
-                      "Built-in data",
-                      DT::DTOutput(ns("maize_kegg_reproduction_table"))
-                    )
-                  )
+                "Figure",
+                shiny::plotOutput(
+                  ns("maize_kegg_reproduction_plot"),
+                  height = "650px"
                 )
+              ),
+              shiny::tabPanel(
+                "Built-in data",
+                DT::DTOutput(ns("maize_kegg_reproduction_table"))
               )
             )
           )
