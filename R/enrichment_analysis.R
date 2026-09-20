@@ -615,7 +615,12 @@ enrichment_analysis_ui <- function(id) {
   ns <- shiny::NS(id)
 
   shiny::tagList(
-    bslib::layout_sidebar(
+    bslib::navset_card_tab(
+      id = ns("enrichment_main_tabs"),
+
+      bslib::nav_panel(
+        "Enrichment workflow",
+        bslib::layout_sidebar(
       sidebar = bslib::sidebar(
         width = 300,
 
@@ -928,22 +933,26 @@ enrichment_analysis_ui <- function(id) {
             )
           )
         )
+      )
+        )
       ),
 
+      bslib::nav_panel(
+        "Maize-teosinte reproduction",
       bslib::card(
         class = "pv-maize-kegg-repro-card",
         bslib::card_header(
           shiny::div(
             class = "d-flex align-items-center justify-content-between flex-wrap gap-2",
             shiny::div(
-              shiny::tags$strong("Maize-teosinte KEGG reproduction"),
+              shiny::tags$strong("Figure 3C-D reproduction"),
               shiny::tags$small(
-                "  Archived Figure 3C-D directional KEGG enrichment",
+                "  Archived directional KEGG enrichment",
                 class = "text-muted ms-2"
               )
             ),
             shiny::tags$span(
-              "Figure 3C-D",
+              "Built-in verified data",
               class = "badge rounded-pill text-bg-light border"
             )
           )
@@ -1035,10 +1044,10 @@ enrichment_analysis_ui <- function(id) {
           )
         )
       )
+      )
     )
   )
 }
-
 
 utils::globalVariables(c(
   "regulation", "V3", "Pathway_ID", "TERM", "GENE", "NAME",
@@ -1334,8 +1343,11 @@ enrichment_analysis_server <- function(id, shared_state) {
         rv$load_success <- FALSE
 
         shiny::showNotification(
-          "No DEP results are available. Run DEP analysis first or load a ProtVis_dataset containing differential analysis results.",
-          type = "warning"
+          paste0(
+            "No DEP results are available for the standard enrichment workflow. ",
+            "You can upload a genelist, or use the independent Maize-teosinte reproduction tab."
+          ),
+          type = "message"
         )
       }
     })
