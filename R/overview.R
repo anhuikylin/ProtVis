@@ -17,6 +17,7 @@ overview_ui <- function(id) {
         shiny::actionButton(ns("load_data"), "LOAD DATA", class = "btn btn-light fw-bold"),
         shiny::uiOutput(ns("load_status_panel")),
         bslib::accordion(
+          open = NULL,
           bslib::accordion_panel(
             title = "Correlation",
             icon = correlation_icon,
