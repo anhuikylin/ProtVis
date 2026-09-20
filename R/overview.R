@@ -61,7 +61,11 @@ overview_ui <- function(id) {
             shiny::actionButton(ns("run_correlation"), "Run Correlation"),
             shiny::numericInput(ns("cor_plot_width"), "Download Plot Width (inches)", value = 10),
             shiny::numericInput(ns("cor_plot_height"), "Download Plot Height (inches)", value = 7),
-            shiny::downloadButton(ns("cor_download_pdf"), "Download PDF")
+            shiny::downloadButton(ns("cor_download_pdf"), "Download PDF"),
+            shiny::downloadButton(
+              ns("cor_download_table"),
+              "Download Correlation Table"
+            )
           ),
           bslib::accordion_panel(
             title = "Expression pattern",
@@ -693,6 +697,41 @@ overview_server <- function(id, shared_state) {
         )
         ComplexHeatmap::draw(cor_heatmap())
         grDevices::dev.off()
+      }
+    )
+
+    # Download the computed sample-by-sample correlation matrix without
+    # rendering another table in the UI. Keep undefined pairwise correlations
+    # as NA in the exported file rather than replacing them with heatmap display
+    # values.
+    output$cor_download_table <- shiny::downloadHandler(
+      filename = function() {
+        method <- base::tolower(input$cor_method %||% "pearson")
+        base::paste0(
+          "correlation_matrix_", method, "_", base::Sys.Date(), ".csv"
+        )
+      },
+      content = function(file) {
+        shiny::req(isTRUE(rv$load_success))
+        shiny::req(!base::is.null(rv$cor_results))
+
+        result <- base::as.data.frame(
+          rv$cor_results,
+          stringsAsFactors = FALSE,
+          check.names = FALSE
+        )
+        result <- base::data.frame(
+          Sample = base::rownames(rv$cor_results),
+          result,
+          check.names = FALSE,
+          stringsAsFactors = FALSE
+        )
+        utils::write.csv(
+          result,
+          file = file,
+          row.names = FALSE,
+          na = "NA"
+        )
       }
     )
 
