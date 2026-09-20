@@ -183,6 +183,10 @@ DEP_analysis_ui <- function(id) {
             )
           ),
           bslib::nav_panel(
+            "DEP result",
+            shiny::uiOutput(ns("dynamic_dep_tabs"))
+          ),
+          bslib::nav_panel(
             "DEP summary",
             bslib::layout_sidebar(
               sidebar = bslib::sidebar(
@@ -213,10 +217,6 @@ DEP_analysis_ui <- function(id) {
               ),
               shiny::plotOutput(ns("dep_summary_plot"), height = "590px")
             )
-          ),
-          bslib::nav_panel(
-            "DEP result",
-            shiny::uiOutput(ns("dynamic_dep_tabs"))
           )
         )
       )
@@ -661,7 +661,7 @@ DEP_analysis_server <- function(id, shared_state) {
         if (!is.null(rv$pre_knn_matrix)) {
           shiny::tagList(
             shiny::br(),
-            shiny::small("Step4 available for archived-style protein filtering.")
+            shiny::tags$small("Step4 available for archived-style protein filtering.")
           )
         }
       )
