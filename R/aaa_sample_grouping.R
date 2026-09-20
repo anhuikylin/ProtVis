@@ -39,7 +39,11 @@
   mode <- base::tolower(base::as.character(mode %||% "triplicate"))
   triplicate <- .protvis_triplicate_group(sample_ids)
 
-  if (mode %in% c("triplicate", "auto", "experimental_group", "group")) {
+  if (mode %in% c("triplicate", "auto")) {
+    return(triplicate)
+  }
+
+  if (mode %in% c("experimental_group", "group")) {
     values <- .protvis_sample_metadata_values(sample_info, sample_ids, "group")
     missing <- base::is.na(values) | !base::nzchar(base::trimws(values)) |
       values == "Unassigned"
@@ -58,6 +62,8 @@
         base::sub("_.*$", "", sample_ids)
       )
     )
+    encoded <- base::grepl("^(B73|Y12)_", sample_ids, ignore.case = TRUE)
+    values[encoded] <- fallback[encoded]
     missing <- base::is.na(values) | !base::nzchar(base::trimws(values)) |
       values %in% c("Unassigned", "All samples")
     values[missing] <- fallback[missing]
@@ -79,6 +85,10 @@
         triplicate
       )
     )
+    encoded <- base::grepl(
+      "root|leaf|shoot|stem", sample_ids, ignore.case = TRUE
+    )
+    values[encoded] <- fallback[encoded]
     missing <- base::is.na(values) | !base::nzchar(base::trimws(values)) |
       values %in% c("Unassigned", "All samples")
     values[missing] <- fallback[missing]
