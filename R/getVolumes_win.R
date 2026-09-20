@@ -103,3 +103,28 @@ getVolumes_win <- function(exclude = NULL) {
   }
   roots
 }
+
+# Safely resolve a shinyFiles directory selection.
+#
+# shinyDirButton emits a normal button-click value before shinyDirChoose has
+# replaced it with the directory-selection payload. Passing that transient
+# integer to parseDirPath() can raise "subscript out of bounds" on Windows.
+# Return NULL for incomplete/non-selection events and only parse the structured
+# payload produced after the user confirms a directory.
+.protvis_parse_directory_selection <- function(
+    roots, selection, parser = shinyFiles::parseDirPath) {
+  if (is.null(selection) || !is.list(selection)) return(NULL)
+  if (is.null(selection$root) || is.null(selection$path)) return(NULL)
+  if (!length(selection$root)) return(NULL)
+
+  parsed <- parser(roots, selection)
+  parsed <- as.character(parsed)
+  parsed <- parsed[!is.na(parsed) & nzchar(trimws(parsed))]
+  if (!length(parsed)) return(NULL)
+
+  selected <- parsed[[1L]]
+  if (!base::dir.exists(selected)) {
+    stop("The selected directory is not accessible.", call. = FALSE)
+  }
+  base::normalizePath(selected, winslash = "/", mustWork = TRUE)
+}
