@@ -85,15 +85,22 @@ DEP_analysis_ui <- function(id) {
             shiny::selectInput(
               ns("dep_protein_universe"), "Protein universe",
               choices = c(
-                "Shared proteins detected before KNN (archived-style)" = "shared_preknn",
+                "Archived default: detected in any of the 6 comparison samples" = "archived_any_detected",
+                "Strict: detected in both genotypes" = "both_genotypes",
                 "All proteins in Step6 normalized matrix" = "all"
               ),
-              selected = "shared_preknn"
+              selected = "archived_any_detected"
             ),
-            shiny::numericInput(
-              ns("dep_min_detected"),
-              "Minimum detected replicates per genotype",
-              value = 2, min = 1, max = 3, step = 1
+            shiny::conditionalPanel(
+              condition = paste0(
+                "input['", ns("dep_protein_universe"),
+                "'] == 'both_genotypes'"
+              ),
+              shiny::numericInput(
+                ns("dep_min_detected"),
+                "Minimum detected replicates per genotype",
+                value = 2, min = 1, max = 3, step = 1
+              )
             )
           )
         ),
@@ -215,7 +222,17 @@ DEP_analysis_ui <- function(id) {
                   ns("download_dep_counts"), "DOWNLOAD COUNTS CSV"
                 )
               ),
-              shiny::plotOutput(ns("dep_summary_plot"), height = "590px")
+              shiny::div(
+                style = paste0(
+                  "max-width:760px;height:450px;margin:18px auto 0;",
+                  "padding:0 10px;"
+                ),
+                shiny::plotOutput(
+                  ns("dep_summary_plot"),
+                  height = "430px",
+                  width = "100%"
+                )
+              )
             )
           )
         )
@@ -232,7 +249,7 @@ DEP_analysis_ui <- function(id) {
     adjust_method = "BH",
     sort_by = "logFC",
     matrix_shift = TRUE,
-    protein_universe = "shared_preknn",
+    protein_universe = "archived_any_detected",
     min_detected = 2L
   )
 }
@@ -266,18 +283,35 @@ DEP_analysis_ui <- function(id) {
   result
 }
 
-.protvis_dep_shared_ids <- function(pre_knn, group1_samples, group2_samples,
-                                    min_detected = 2L) {
+.protvis_dep_shared_ids <- function(
+    pre_knn, group1_samples, group2_samples,
+    mode = "archived_any_detected", min_detected = 2L) {
   if (is.null(pre_knn)) return(NULL)
   mat <- as.matrix(pre_knn)
   storage.mode(mat) <- "numeric"
   required <- c(group1_samples, group2_samples)
   if (!all(required %in% colnames(mat))) return(NULL)
 
+  selected <- mat[, required, drop = FALSE]
+  mode <- as.character(mode %||% "archived_any_detected")
+
+  if (identical(mode, "archived_any_detected")) {
+    # Exact historical 02.depforseedling.R / reproduction logic:
+    # mat_step2[, six samples] -> replace NA with 0 -> rowSums(.) > 0.
+    # Step4_data_transformed is the log2(mat_step2 * 1e7) snapshot before KNN,
+    # so any finite value here is equivalent to a positive mat_step2 value.
+    keep <- rowSums(is.finite(selected)) > 0L
+    return(rownames(mat)[keep])
+  }
+
   min_detected <- as.integer(min_detected)
   min_detected <- max(1L, min_detected)
-  g1 <- rowSums(is.finite(mat[, group1_samples, drop = FALSE])) >= min_detected
-  g2 <- rowSums(is.finite(mat[, group2_samples, drop = FALSE])) >= min_detected
+  g1 <- rowSums(is.finite(
+    mat[, group1_samples, drop = FALSE]
+  )) >= min_detected
+  g2 <- rowSums(is.finite(
+    mat[, group2_samples, drop = FALSE]
+  )) >= min_detected
   rownames(mat)[g1 & g2]
 }
 
@@ -378,7 +412,10 @@ DEP_analysis_ui <- function(id) {
     ggplot2::aes(x = Stage, y = Protein_number, fill = Direction)
   ) +
     ggplot2::geom_col(
-      colour = "black", linewidth = 0.3, width = 0.9
+      colour = "black",
+      linewidth = 0.3,
+      width = 0.9,
+      position = ggplot2::position_stack(reverse = TRUE)
     ) +
     ggplot2::coord_flip() +
     ggplot2::scale_fill_manual(
@@ -396,11 +433,19 @@ DEP_analysis_ui <- function(id) {
       y = "Protein number",
       fill = NULL
     ) +
-    ggplot2::theme_bw(base_size = 12) +
+    ggplot2::theme_bw(base_size = 9) +
     ggplot2::theme(
-      plot.title = ggplot2::element_text(hjust = 0.5),
+      plot.title = ggplot2::element_text(
+        hjust = 0.5, face = "bold", size = 11
+      ),
+      axis.text = ggplot2::element_text(size = 9, colour = "black"),
+      axis.title = ggplot2::element_text(size = 10, colour = "black"),
+      panel.border = ggplot2::element_rect(
+        colour = "black", linewidth = 0.8
+      ),
       panel.grid.minor = ggplot2::element_blank(),
-      legend.position = "right"
+      legend.position = "right",
+      legend.text = ggplot2::element_text(size = 9)
     )
 }
 
@@ -628,9 +673,9 @@ DEP_analysis_server <- function(id, shared_state) {
         )
         shiny::showNotification(
           if (is.null(rv$pre_knn_matrix)) {
-            "✅ Step6 loaded. Step4 was not found; archived-style shared-protein filtering will fall back to all Step6 proteins."
+            "✅ Step6 loaded. Step4 was not found; archived protein-universe filtering will fall back to all Step6 proteins."
           } else {
-            "✅ Step6 normalized and Step4 pre-KNN matrices loaded."
+            "✅ Step6 normalized and Step4 pre-KNN matrices loaded; archived detected-protein universe can be reproduced."
           },
           type = "message",
           duration = 6
@@ -661,7 +706,7 @@ DEP_analysis_server <- function(id, shared_state) {
         if (!is.null(rv$pre_knn_matrix)) {
           shiny::tagList(
             shiny::br(),
-            shiny::tags$small("Step4 available for archived-style protein filtering.")
+            shiny::tags$small("Step4 available for the archived six-sample detected-protein universe.")
           )
         }
       )
@@ -775,7 +820,7 @@ DEP_analysis_server <- function(id, shared_state) {
         adjust_method = input$dep_adjust_method %||% "BH",
         sort_by = input$dep_sort_by %||% "logFC",
         matrix_shift = isTRUE(input$dep_matrix_shift),
-        protein_universe = input$dep_protein_universe %||% "shared_preknn",
+        protein_universe = input$dep_protein_universe %||% "archived_any_detected",
         min_detected = as.integer(input$dep_min_detected %||% 2L)
       )
       rv$dep_params <- params
@@ -810,14 +855,18 @@ DEP_analysis_server <- function(id, shared_state) {
 
           matrix_use <- rv$normalized_matrix
           effective_universe <- "all"
-          if (identical(params$protein_universe, "shared_preknn")) {
+          if (!identical(params$protein_universe, "all")) {
             ids <- .protvis_dep_shared_ids(
-              rv$pre_knn_matrix, s1, s2, params$min_detected
+              rv$pre_knn_matrix,
+              s1,
+              s2,
+              mode = params$protein_universe,
+              min_detected = params$min_detected
             )
             if (!is.null(ids) && length(ids)) {
               ids <- intersect(ids, rownames(matrix_use))
               matrix_use <- matrix_use[ids, , drop = FALSE]
-              effective_universe <- "shared_preknn"
+              effective_universe <- params$protein_universe
             }
           }
 
