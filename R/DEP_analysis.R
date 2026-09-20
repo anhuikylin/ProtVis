@@ -404,6 +404,41 @@ DEP_analysis_ui <- function(id) {
     )
 }
 
+.protvis_dep_count_plot <- function(result, title = NULL,
+                                    up = "#FA8072",
+                                    ns = "#B3B3B3",
+                                    down = "#90EE90") {
+  counts <- data.frame(
+    Direction = factor(
+      c("Upregulated", "Not significant", "Downregulated"),
+      levels = c("Upregulated", "Not significant", "Downregulated")
+    ),
+    Protein_number = as.integer(table(factor(
+      result$regulation,
+      levels = c("Upregulated", "Not significant", "Downregulated")
+    )))
+  )
+
+  ggplot2::ggplot(
+    counts,
+    ggplot2::aes(x = "", y = Protein_number, fill = Direction)
+  ) +
+    ggplot2::geom_col(colour = "black", linewidth = 0.3) +
+    ggplot2::coord_flip() +
+    ggplot2::scale_fill_manual(values = c(
+      "Upregulated" = up,
+      "Not significant" = ns,
+      "Downregulated" = down
+    )) +
+    ggplot2::theme_bw() +
+    ggplot2::labs(
+      x = NULL,
+      y = "Protein number",
+      fill = NULL,
+      title = title
+    )
+}
+
 .protvis_dep_volcano_plot <- function(result, params, up, down, ns) {
   p_metric <- params$p_metric
   p <- suppressWarnings(as.numeric(result[[p_metric]]))
@@ -1057,45 +1092,31 @@ DEP_analysis_server <- function(id, shared_state) {
         )
 
         output[[bar_id]] <- shiny::renderPlot({
-          result <- rv$dep_results[[key]]
-          counts <- data.frame(
-            Direction = factor(
-              c("Upregulated", "Not significant", "Downregulated"),
-              levels = c("Upregulated", "Not significant", "Downregulated")
-            ),
-            Protein_number = as.integer(table(factor(
-              result$regulation,
-              levels = c("Upregulated", "Not significant", "Downregulated")
-            )))
-          )
-          ggplot2::ggplot(
-            counts,
-            ggplot2::aes(x = "", y = Protein_number, fill = Direction)
-          ) +
-            ggplot2::geom_col(colour = "black", linewidth = 0.3) +
-            ggplot2::coord_flip() +
-            ggplot2::scale_fill_manual(values = c(
-              "Upregulated" = input[[paste0("bar_up_", i)]] %||% "#FA8072",
-              "Not significant" = input[[paste0("bar_ns_", i)]] %||% "#B3B3B3",
-              "Downregulated" = input[[paste0("bar_down_", i)]] %||% "#90EE90"
-            )) +
-            ggplot2::theme_bw() +
-            ggplot2::labs(
-              x = NULL, y = "Protein number", fill = NULL,
-              title = .protvis_dep_stage_label(g1)
-            )
+          print(.protvis_dep_count_plot(
+            rv$dep_results[[key]],
+            title = .protvis_dep_stage_label(g1),
+            up = input[[paste0("bar_up_", i)]] %||% "#FA8072",
+            ns = input[[paste0("bar_ns_", i)]] %||% "#B3B3B3",
+            down = input[[paste0("bar_down_", i)]] %||% "#90EE90"
+          ))
         })
 
         output[[bar_download_id]] <- shiny::downloadHandler(
           filename = function() paste0("DEP_count_", key, ".pdf"),
           content = function(file) {
-            grDevices::pdf(
-              file,
-              width = input[[paste0("bar_width_", i)]] %||% 7,
-              height = input[[paste0("bar_height_", i)]] %||% 4.5
+            plot <- .protvis_dep_count_plot(
+              rv$dep_results[[key]],
+              title = .protvis_dep_stage_label(g1),
+              up = input[[paste0("bar_up_", i)]] %||% "#FA8072",
+              ns = input[[paste0("bar_ns_", i)]] %||% "#B3B3B3",
+              down = input[[paste0("bar_down_", i)]] %||% "#90EE90"
             )
-            print(output[[bar_id]])
-            grDevices::dev.off()
+            ggplot2::ggsave(
+              file, plot = plot, device = "pdf",
+              width = input[[paste0("bar_width_", i)]] %||% 7,
+              height = input[[paste0("bar_height_", i)]] %||% 4.5,
+              units = "in"
+            )
           }
         )
 
