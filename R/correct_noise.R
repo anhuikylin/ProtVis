@@ -151,6 +151,15 @@ correct_noise_ui <- function(id) {
             inputId = ns("rename_columns"),
             label = "Rename Columns",
             class = "btn btn-outline-primary w-100 pv-run-button"
+          ),
+          shinyWidgets::progressBar(
+            id = ns("rename_progress"),
+            value = 0,
+            total = 100,
+            display_pct = TRUE,
+            striped = TRUE,
+            status = "info",
+            title = "Rename columns progress"
           )
         ),
         bslib::accordion_panel(
@@ -274,6 +283,12 @@ correct_noise_server <- function(id, shared_state) {
       shinyWidgets::updateProgressBar(
         session = session,
         id = "load_progress",
+        value = 0,
+        total = 100
+      )
+      shinyWidgets::updateProgressBar(
+        session = session,
+        id = "rename_progress",
         value = 0,
         total = 100
       )
@@ -449,13 +464,31 @@ correct_noise_server <- function(id, shared_state) {
       }
       on.exit(.protvis_end_run(shared_state, "correct_noise_rename", session,
                                "rename_columns"), add = TRUE)
+
+      shinyWidgets::updateProgressBar(
+        session, id = "rename_progress", value = 10, total = 100
+      )
       shiny::req(shared_state$expression_matrix_filtered)
+      shinyWidgets::updateProgressBar(
+        session, id = "rename_progress", value = 35, total = 100
+      )
+
       rv$rename_requested <- TRUE
       tryCatch({
-        shared_state$rename_result <- correct_noise_step1()
+        result <- correct_noise_step1()
+        shinyWidgets::updateProgressBar(
+          session, id = "rename_progress", value = 80, total = 100
+        )
+        shared_state$rename_result <- result
+        shinyWidgets::updateProgressBar(
+          session, id = "rename_progress", value = 100, total = 100
+        )
         shiny::showNotification("✅ Columns renamed.", type = "message")
       }, error = function(e) {
         shared_state$rename_result <- NULL
+        shinyWidgets::updateProgressBar(
+          session, id = "rename_progress", value = 0, total = 100
+        )
         shiny::showNotification(
           paste0("Column rename failed: ", conditionMessage(e)), type = "error"
         )
