@@ -1085,10 +1085,30 @@ DEP_analysis_server <- function(id, shared_state) {
     shiny::observeEvent(input$run_dep, {
       shiny::req(
         isTRUE(rv$load_success),
-        rv$normalized_matrix,
         rv$sample_info,
         rv$compare_data
       )
+
+      mode <- input$dep_mode %||% "recommended"
+      if (identical(mode, "recommended") && is.null(rv$pre_knn_matrix)) {
+        shiny::showNotification(
+          paste0(
+            "Recommended DEP requires Step4_data_transformed.rda ",
+            "(observed log2 values before imputation). Run Transformation first."
+          ),
+          type = "error",
+          duration = 8
+        )
+        return(invisible(NULL))
+      }
+      if (identical(mode, "archived") && is.null(rv$normalized_matrix)) {
+        shiny::showNotification(
+          "Archived reproduction requires the Step6 normalized matrix.",
+          type = "error",
+          duration = 8
+        )
+        return(invisible(NULL))
+      }
 
       comparisons <- as.data.frame(
         rv$compare_data,
@@ -1112,18 +1132,30 @@ DEP_analysis_server <- function(id, shared_state) {
         return(invisible(NULL))
       }
 
-      params <- list(
-        logfc = as.numeric(input$dep_logfc %||% 1),
-        fdr = as.numeric(input$dep_fdr %||% 0.05),
-        p_metric = input$dep_p_metric %||% "adj.P.Val",
-        adjust_method = input$dep_adjust_method %||% "BH",
-        sort_by = input$dep_sort_by %||% "logFC",
-        matrix_shift = isTRUE(input$dep_matrix_shift),
-        protein_universe = input$dep_protein_universe %||% "archived_any_detected",
-        min_detected = as.integer(input$dep_min_detected %||% 2L)
-      )
+      if (identical(mode, "recommended")) {
+        params <- .protvis_dep_recommended_defaults()
+        params$test_method <- input$dep_test_method %||% params$test_method
+        params$center_samples <- isTRUE(input$dep_center_samples)
+      } else {
+        params <- .protvis_dep_archived_defaults()
+        params$matrix_shift <- isTRUE(input$dep_matrix_shift)
+      }
+      params$logfc <- as.numeric(input$dep_logfc %||% params$logfc)
+      params$fdr <- as.numeric(input$dep_fdr %||% params$fdr)
+      params$p_metric <- input$dep_p_metric %||% params$p_metric
+      params$volcano_p_metric <-
+        input$dep_volcano_p_metric %||% params$volcano_p_metric
+      params$adjust_method <-
+        input$dep_adjust_method %||% params$adjust_method
+      params$sort_by <- input$dep_sort_by %||% params$sort_by
+      params$protein_universe <-
+        input$dep_protein_universe %||% params$protein_universe
+      params$min_detected <-
+        as.integer(input$dep_min_detected %||% params$min_detected)
+
       rv$dep_params <- params
       rv$dep_results <- list()
+      rv$presence_absence <- list()
       rv$volcano_baseline <- list()
       rv$dep_ready <- FALSE
       rv$dep_has_run <- TRUE
@@ -1137,59 +1169,148 @@ DEP_analysis_server <- function(id, shared_state) {
         return(invisible(NULL))
       }
 
-      shiny::withProgress(message = "Running archived-compatible limma", value = 0, {
+      analysis_matrix <- if (identical(mode, "recommended")) {
+        .protvis_dep_prepare_recommended_matrix(
+          rv$pre_knn_matrix,
+          center_samples = params$center_samples
+        )
+      } else {
+        rv$normalized_matrix
+      }
+      rv$dep_analysis_matrix <- analysis_matrix
+
+      progress_message <- if (identical(mode, "recommended")) {
+        "Running Recommended DEP"
+      } else {
+        "Running archived-compatible limma"
+      }
+
+      shinyWidgets::updateProgressBar(
+        session = session,
+        id = "dep_progress",
+        value = 0,
+        total = 100
+      )
+
+      shiny::withProgress(message = progress_message, value = 0, {
         for (i in seq_len(nrow(comparisons))) {
           g1 <- as.character(comparisons$Group1[[i]])
           g2 <- as.character(comparisons$Group2[[i]])
+          progress_value <- (i - 1) / nrow(comparisons)
           shiny::setProgress(
-            (i - 1) / nrow(comparisons),
+            progress_value,
             detail = paste(g1, "vs", g2)
+          )
+          shinyWidgets::updateProgressBar(
+            session = session,
+            id = "dep_progress",
+            value = round(progress_value * 100),
+            total = 100
           )
 
           s1 <- as.character(info$sample_id[as.character(info$group) == g1])
           s2 <- as.character(info$sample_id[as.character(info$group) == g2])
-          s1 <- s1[s1 %in% colnames(rv$normalized_matrix)]
-          s2 <- s2[s2 %in% colnames(rv$normalized_matrix)]
+          s1 <- s1[s1 %in% colnames(analysis_matrix)]
+          s2 <- s2[s2 %in% colnames(analysis_matrix)]
           if (!length(s1) || !length(s2)) next
 
-          matrix_use <- rv$normalized_matrix
-          effective_universe <- "all"
-          if (!identical(params$protein_universe, "all")) {
-            ids <- .protvis_dep_shared_ids(
+          key <- paste0(g1, "_vs_", g2)
+
+          if (identical(mode, "recommended")) {
+            presence <- .protvis_dep_presence_absence(
               rv$pre_knn_matrix,
               s1,
               s2,
-              mode = params$protein_universe,
               min_detected = params$min_detected
             )
-            if (!is.null(ids) && length(ids)) {
-              ids <- intersect(ids, rownames(matrix_use))
-              matrix_use <- matrix_use[ids, , drop = FALSE]
-              effective_universe <- params$protein_universe
+            if (nrow(presence)) {
+              presence$Group1 <- g1
+              presence$Group2 <- g2
+            }
+            rv$presence_absence[[key]] <- presence
+          } else {
+            rv$presence_absence[[key]] <- data.frame()
+          }
+
+          matrix_use <- analysis_matrix
+          effective_universe <- "all"
+          if (!identical(params$protein_universe, "all")) {
+            detection_matrix <- rv$pre_knn_matrix
+            if (!is.null(detection_matrix)) {
+              ids <- .protvis_dep_shared_ids(
+                detection_matrix,
+                s1,
+                s2,
+                mode = params$protein_universe,
+                min_detected = params$min_detected
+              )
+              if (!is.null(ids)) {
+                ids <- intersect(ids, rownames(matrix_use))
+                matrix_use <- matrix_use[ids, , drop = FALSE]
+                effective_universe <- params$protein_universe
+              }
             }
           }
 
-          result <- .protvis_dep_run_limma_archived(
-            matrix_use,
-            s1, s2, g1, g2,
-            adjust_method = params$adjust_method,
-            sort_by = params$sort_by,
-            matrix_shift = params$matrix_shift
-          )
+          if (!nrow(matrix_use)) next
+
+          if (identical(mode, "recommended")) {
+            result <- .protvis_dep_run_limma_recommended(
+              matrix_use,
+              s1, s2, g1, g2,
+              adjust_method = params$adjust_method,
+              sort_by = params$sort_by,
+              test_method = params$test_method,
+              lfc = params$logfc
+            )
+            fc_tested <- if (nrow(result)) {
+              isTRUE(result$fc_threshold_tested[[1L]])
+            } else {
+              FALSE
+            }
+          } else {
+            result <- .protvis_dep_run_limma_archived(
+              matrix_use,
+              s1, s2, g1, g2,
+              adjust_method = params$adjust_method,
+              sort_by = params$sort_by,
+              matrix_shift = params$matrix_shift
+            )
+            fc_tested <- FALSE
+          }
+
+          if (!nrow(result)) next
           result <- .protvis_dep_classify(
             result,
             logfc = params$logfc,
             cutoff = params$fdr,
-            p_metric = params$p_metric
+            p_metric = params$p_metric,
+            fc_threshold_tested = fc_tested
           )
+          result$analysis_mode <- mode
           result$protein_universe <- effective_universe
+          result$matrix_source <- if (identical(mode, "recommended")) {
+            "Step4_data_transformed"
+          } else {
+            "Step6_data_normalization"
+          }
+          result$test_method <- if (identical(mode, "recommended")) {
+            params$test_method
+          } else {
+            "archived_eBayes"
+          }
 
-          key <- paste0(g1, "_vs_", g2)
           rv$dep_results[[key]] <- result
           rv$volcano_baseline[[paste0("show_volcano_", i)]] <-
             input[[paste0("show_volcano_", i)]] %||% 0
         }
         shiny::setProgress(1)
+        shinyWidgets::updateProgressBar(
+          session = session,
+          id = "dep_progress",
+          value = 100,
+          total = 100
+        )
       })
 
       comparison_order <- paste0(
@@ -1204,15 +1325,52 @@ DEP_analysis_server <- function(id, shared_state) {
         dataset <- shared_state$dataset
         dataset$analysis_results$DEP <- list(
           results = rv$dep_results,
+          presence_absence = rv$presence_absence,
           summary = rv$dep_summary,
           parameters = rv$dep_params,
-          comparisons = comparisons
+          comparisons = comparisons,
+          input_matrix = rv$dep_analysis_matrix,
+          provenance = list(
+            mode = mode,
+            matrix_source = if (identical(mode, "recommended")) {
+              "Step4_data_transformed.rda"
+            } else {
+              "Step6_data_normalization.rda"
+            },
+            imputation_for_statistics = identical(mode, "archived"),
+            sample_median_centering = if (identical(mode, "recommended")) {
+              params$center_samples
+            } else {
+              NA
+            },
+            row_wise_positive_shift = if (identical(mode, "recommended")) {
+              FALSE
+            } else {
+              params$matrix_shift
+            },
+            zero_to_one_for_statistics = identical(mode, "archived"),
+            detection_filter = params$protein_universe,
+            minimum_detected_replicates = params$min_detected,
+            test_method = if (identical(mode, "recommended")) {
+              params$test_method
+            } else {
+              "archived_eBayes"
+            },
+            adjust_method = params$adjust_method,
+            significance_metric = params$p_metric,
+            fdr_threshold = params$fdr,
+            logfc_threshold = params$logfc
+          )
         )
         dataset <- .protvis_append_process(
           dataset,
-          "differential_analysis",
+          if (identical(mode, "recommended")) {
+            "differential_analysis_recommended"
+          } else {
+            "differential_analysis_archived"
+          },
           status = "success",
-          parameters = rv$dep_params
+          parameters = dataset$analysis_results$DEP$provenance
         )
         .protvis_ui_sync_state(dataset, shared_state)
         workdir <- as.character(shared_state$workdir %||% "")
@@ -1226,7 +1384,15 @@ DEP_analysis_server <- function(id, shared_state) {
 
       shiny::showNotification(
         if (rv$dep_ready) {
-          "✅ DEP analysis completed. Volcano plots remain unloaded until SHOW VOLCANO is clicked."
+          paste0(
+            "✅ ",
+            if (identical(mode, "recommended")) {
+              "Recommended DEP"
+            } else {
+              "Archived DEP"
+            },
+            " completed. Volcano plots remain unloaded until SHOW VOLCANO is clicked."
+          )
         } else {
           "No comparison produced a valid DEP result."
         },
