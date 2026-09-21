@@ -92,3 +92,63 @@ testthat::test_that("transcriptome GSEA keeps the complete DESeq2 ranked univers
     source
   ))
 })
+
+
+testthat::test_that("GSEA pathway selector defaults to 00940 and falls back safely", {
+  df <- data.frame(
+    ID = c("00010", "00940", "04075"),
+    Description = c("A", "Phenylpropanoid biosynthesis", "C"),
+    stringsAsFactors = FALSE
+  )
+
+  testthat::expect_identical(
+    ProtVis:::.protvis_deg_default_gsea_pathway(
+      df,
+      current = "",
+      preferred = "00940"
+    ),
+    "00940"
+  )
+
+  testthat::expect_identical(
+    ProtVis:::.protvis_deg_default_gsea_pathway(
+      df,
+      current = "04075",
+      preferred = "00940"
+    ),
+    "04075"
+  )
+
+  testthat::expect_identical(
+    ProtVis:::.protvis_deg_default_gsea_pathway(
+      df,
+      current = "not-present",
+      preferred = "not-present"
+    ),
+    "00010"
+  )
+})
+
+
+testthat::test_that("transcriptome GSEA curve follows archived gseaplot method", {
+  server_source <- paste(
+    deparse(ProtVis::DEG_server),
+    collapse = "\n"
+  )
+
+  testthat::expect_match(
+    server_source,
+    "selected_gsea_pathway",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    server_source,
+    "enrichplot::gseaplot",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    server_source,
+    'by = "all"',
+    fixed = TRUE
+  )
+})

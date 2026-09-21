@@ -295,13 +295,8 @@ DEG_ui <- function(id) {
               step = 1
             ),
 
-            shiny::selectInput(
-              ns("gsea_pathway"),
-              "Enrichment curve pathway",
-              choices = c(
-                "Run analysis first" = ""
-              ),
-              selected = ""
+            shiny::uiOutput(
+              ns("gsea_pathway_ui")
             ),
 
             shiny::actionButton(
@@ -703,6 +698,41 @@ DEG_ui <- function(id) {
   names(score) <- ids
 
   score
+}
+
+
+.protvis_deg_default_gsea_pathway <- function(
+    result_table,
+    current = NULL,
+    preferred = "00940") {
+  df <- as.data.frame(
+    result_table,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  if (!nrow(df) || !"ID" %in% names(df)) {
+    return("")
+  }
+
+  ids <- as.character(df$ID)
+  ids <- ids[!is.na(ids) & nzchar(ids)]
+  if (!length(ids)) {
+    return("")
+  }
+
+  current <- as.character(current %||% "")
+  if (length(current) && nzchar(current[[1L]]) &&
+      current[[1L]] %in% ids) {
+    return(current[[1L]])
+  }
+
+  preferred <- as.character(preferred %||% "")
+  if (length(preferred) && nzchar(preferred[[1L]]) &&
+      preferred[[1L]] %in% ids) {
+    return(preferred[[1L]])
+  }
+
+  ids[[1L]]
 }
 
 
@@ -1128,36 +1158,72 @@ DEG_server <- function(id, shared_state = NULL) {
       ignoreInit = TRUE
     )
 
-    shiny::observeEvent(gsea_bundle(), {
+    output$gsea_pathway_ui <- shiny::renderUI({
       bundle <- gsea_bundle()
-      if (is.null(bundle$error) &&
-          !is.null(bundle$result) &&
-          nrow(bundle$result_table)) {
-        df <- bundle$result_table
-        choices <- stats::setNames(
-          as.character(df$ID),
-          paste0(
-            df$Description,
-            " [",
-            df$ID,
-            "]"
+
+      if (is.null(bundle) ||
+          !is.null(bundle$error) ||
+          is.null(bundle$result) ||
+          !nrow(bundle$result_table)) {
+        return(
+          shiny::selectInput(
+            ns("gsea_pathway"),
+            "Enrichment curve pathway",
+            choices = c(
+              "Run analysis first" = ""
+            ),
+            selected = ""
           )
         )
-        preferred <- if (
-          "00940" %in% as.character(df$ID)
-        ) {
-          "00940"
-        } else {
-          as.character(df$ID[[1L]])
-        }
-        shiny::updateSelectInput(
-          session,
-          "gsea_pathway",
-          choices = choices,
-          selected = preferred
-        )
       }
-    }, ignoreInit = TRUE)
+
+      df <- bundle$result_table
+      ids <- as.character(df$ID)
+      labels <- paste0(
+        df$Description,
+        " [",
+        ids,
+        "]"
+      )
+      choices <- stats::setNames(
+        ids,
+        labels
+      )
+
+      selected <- .protvis_deg_default_gsea_pathway(
+        df,
+        current = isolate(input$gsea_pathway),
+        preferred = "00940"
+      )
+
+      shiny::selectizeInput(
+        ns("gsea_pathway"),
+        "Enrichment curve pathway",
+        choices = choices,
+        selected = selected,
+        options = list(
+          placeholder = "Search KEGG pathway..."
+        )
+      )
+    })
+
+    selected_gsea_pathway <- shiny::reactive({
+      bundle <- gsea_bundle()
+      shiny::req(
+        bundle,
+        is.null(bundle$error),
+        nrow(bundle$result_table)
+      )
+
+      .protvis_deg_default_gsea_pathway(
+        bundle$result_table,
+        current = input$gsea_pathway,
+        preferred = "00940"
+      )
+    })
+
+
+    # Get DEG statistics
 
     # Get DEG statistics
     deg_stats <- shiny::reactive({
@@ -1370,7 +1436,7 @@ DEG_server <- function(id, shared_state = NULL) {
       }
 
       table <- bundle$result_table
-      pathway <- input$gsea_pathway %||% ""
+      pathway <- selected_gsea_pathway()
       selected <- table[
         as.character(table$ID) == pathway,
         ,
@@ -1418,6 +1484,14 @@ DEG_server <- function(id, shared_state = NULL) {
 
         shiny::span(
           class = "pv-transcriptome-gsea-badge",
+          shiny::span("Pathway"),
+          shiny::tags$strong(
+            if (nzchar(pathway)) pathway else "—"
+          )
+        ),
+
+        shiny::span(
+          class = "pv-transcriptome-gsea-badge",
           shiny::span("Background"),
           shiny::tags$strong("Built-in maize KEGG")
         )
@@ -1433,20 +1507,51 @@ DEG_server <- function(id, shared_state = NULL) {
         nrow(bundle$result_table)
       )
 
-      enrichplot::dotplot(
-        bundle$result,
-        showCategory =
-          input$gsea_top_n %||% 10L,
-        split = ".sign"
-      ) +
-        ggplot2::facet_grid(. ~ .sign) +
-        ggplot2::theme_bw(base_size = 11) +
-        ggplot2::theme(
-          axis.text.y =
-            ggplot2::element_text(colour = "black"),
-          axis.text.x =
-            ggplot2::element_text(colour = "black")
-        )
+      top_n <- as.integer(
+        input$gsea_top_n %||% 10L
+      )
+
+      tryCatch(
+        {
+          enrichplot::dotplot(
+            bundle$result,
+            showCategory = top_n,
+            split = ".sign"
+          ) +
+            ggplot2::facet_grid(. ~ .sign) +
+            ggplot2::theme_bw(base_size = 11) +
+            ggplot2::theme(
+              axis.text.y =
+                ggplot2::element_text(
+                  colour = "black"
+                ),
+              axis.text.x =
+                ggplot2::element_text(
+                  colour = "black"
+                )
+            )
+        },
+        error = function(e) {
+          # Some enrichplot versions handle the internal .sign split
+          # differently. Fall back to the standard GSEA dotplot rather than
+          # leaving an empty panel.
+          enrichplot::dotplot(
+            bundle$result,
+            showCategory = top_n
+          ) +
+            ggplot2::theme_bw(base_size = 11) +
+            ggplot2::theme(
+              axis.text.y =
+                ggplot2::element_text(
+                  colour = "black"
+                ),
+              axis.text.x =
+                ggplot2::element_text(
+                  colour = "black"
+                )
+            )
+        }
+      )
     })
 
     gsea_curve_obj <- shiny::reactive({
@@ -1455,38 +1560,70 @@ DEG_server <- function(id, shared_state = NULL) {
         bundle,
         is.null(bundle$error),
         bundle$result,
-        nrow(bundle$result_table),
-        nzchar(input$gsea_pathway %||% "")
+        nrow(bundle$result_table)
       )
 
-      pathway <- input$gsea_pathway
-      row <- bundle$result_table[
-        as.character(bundle$result_table$ID) ==
-          pathway,
-        ,
-        drop = FALSE
-      ]
-      title <- if (nrow(row)) {
-        row$Description[[1L]]
-      } else {
-        pathway
-      }
+      pathway <- selected_gsea_pathway()
+      shiny::req(nzchar(pathway))
 
-      enrichplot::gseaplot2(
+      df <- bundle$result_table
+      gene_set_index <- match(
+        pathway,
+        as.character(df$ID)
+      )
+      shiny::validate(
+        shiny::need(
+          !is.na(gene_set_index),
+          "The selected pathway is not present in the current GSEA result."
+        )
+      )
+
+      title <- df$Description[[gene_set_index]]
+
+      # Match 02.MaizeTeosintePro/01.src/RNAseq.R: the archived script used
+      # gseaplot(..., by = "all", geneSetID = <result row index>).
+      enrichplot::gseaplot(
         bundle$result,
-        geneSetID = pathway,
-        title = title,
-        base_size = 12
+        by = "all",
+        geneSetID = as.integer(gene_set_index),
+        title = title
       )
     })
 
+
     output$gsea_dotplot <- shiny::renderPlot({
-      shiny::req(gsea_dotplot_obj())
+
+    output$gsea_dotplot <- shiny::renderPlot({
+      bundle <- gsea_bundle()
+      shiny::validate(
+        shiny::need(
+          !is.null(bundle) &&
+            is.null(bundle$error) &&
+            nrow(bundle$result_table),
+          if (!is.null(bundle$error)) {
+            paste0("GSEA failed: ", bundle$error)
+          } else {
+            "Run GSEA to display the pathway dotplot."
+          }
+        )
+      )
       print(gsea_dotplot_obj())
     }, res = 100)
 
     output$gsea_curve <- shiny::renderPlot({
-      shiny::req(gsea_curve_obj())
+      bundle <- gsea_bundle()
+      shiny::validate(
+        shiny::need(
+          !is.null(bundle) &&
+            is.null(bundle$error) &&
+            nrow(bundle$result_table),
+          if (!is.null(bundle$error)) {
+            paste0("GSEA failed: ", bundle$error)
+          } else {
+            "Run GSEA to display the enrichment curve."
+          }
+        )
+      )
       print(gsea_curve_obj())
     }, res = 100)
 
