@@ -82,7 +82,19 @@ test_that("Protein Workbench offers common species and a batch retrieval tab", {
   html <- as.character(ProtVis::protein_workbench_ui("pw_batch_test"))
   expect_match(html, "Batch sequences", fixed = TRUE)
   expect_match(html, "RETRIEVE SEQUENCES", fixed = TRUE)
-  expect_match(html, "no FASTA upload is needed", fixed = TRUE)
+  expect_match(tolower(html), "no fasta upload is needed", fixed = TRUE)
+})
+
+test_that("Protein Workbench places batch retrieval in the widened sidebar", {
+  module_source <- base::paste(
+    base::readLines(testthat::test_path("..", "..", "R", "protein_workbench.R")),
+    collapse = "\n"
+  )
+  expect_match(module_source, "width = 550", fixed = TRUE)
+  expect_equal(
+    length(regmatches(module_source, gregexpr('ns\\("batch_ids"\\)', module_source))[[1]]),
+    1L
+  )
 })
 
 test_that("Protein Workbench batch retrieval protects exact and fallback matching", {
