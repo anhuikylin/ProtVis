@@ -185,7 +185,6 @@ gsea_ui <- function(id) {
       ),
 
       shiny::actionButton(
-        ns("run"),      shiny::actionButton(
         ns("run"),
         "Run Analysis",
         class = "btn-primary w-100 mt-2",
