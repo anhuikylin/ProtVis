@@ -260,25 +260,9 @@ DEP_analysis_ui <- function(id) {
                 colourpicker::colourInput(
                   ns("summary_up"), "Up", value = "#FA8072"
                 ),
-                shiny::tags$hr(),
-                shiny::tags$strong("Retained detected/undetected evidence"),
-                colourpicker::colourInput(
-                  ns("summary_group1_only"),
-                  "Group1 detected / Group2 not detected", value = "#E76F51"
-                ),
-                colourpicker::colourInput(
-                  ns("summary_group2_only"),
-                  "Group2 detected / Group1 not detected", value = "#2A9D8F"
-                ),
-                shiny::tags$hr(),
-                shiny::tags$strong("All retained differential evidence"),
-                colourpicker::colourInput(
-                  ns("summary_quantitative_tested"),
-                  "Quantitative DEP tested", value = "#64748B"
-                ),
                 shiny::numericInput(
                   ns("summary_width"), "PDF width (inch)",
-                  value = 17, min = 10, max = 24
+                  value = 12, min = 6, max = 24
                 ),
                 shiny::numericInput(
                   ns("summary_height"), "PDF height (inch)",
@@ -644,12 +628,13 @@ DEP_analysis_ui <- function(id) {
     quantitative <- results[[key]]
     q_counts <- c(
       "Upregulated" = 0L,
+      "Not significant" = 0L,
       "Downregulated" = 0L
     )
     if (!is.null(quantitative) && nrow(quantitative)) {
       q_tab <- table(factor(
         quantitative$regulation,
-        levels = c("Upregulated", "Downregulated")
+        levels = c("Upregulated", "Not significant", "Downregulated")
       ))
       q_counts[names(q_tab)] <- as.integer(q_tab)
     }
@@ -669,12 +654,11 @@ DEP_analysis_ui <- function(id) {
     }
 
     all_retained_counts <- c(
-      "Quantitative DEP tested" = if (!is.null(quantitative)) {
-        as.integer(nrow(quantitative))
-      } else {
-        0L
-      },
-      p_counts
+      "Upregulated" = q_counts[["Upregulated"]] +
+        p_counts[["Detected in Group1 only"]],
+      "Not significant" = q_counts[["Not significant"]],
+      "Downregulated" = q_counts[["Downregulated"]] +
+        p_counts[["Detected in Group2 only"]]
     )
 
     rbind(
@@ -799,10 +783,7 @@ DEP_analysis_ui <- function(id) {
 }
 
 .protvis_dep_all_retained_summary_plot <- function(
-    counts,
-    quantitative_tested = "#64748B",
-    group1_only = "#E76F51",
-    group2_only = "#2A9D8F") {
+    counts, up = "#FA8072", ns = "#B3B3B3", down = "#90EE90") {
   retained <- counts[
     counts$Evidence == "All retained differential evidence",
     , drop = FALSE
@@ -818,59 +799,18 @@ DEP_analysis_ui <- function(id) {
     )
   }
 
-  stage_order <- unique(retained$Stage)
-  retained$Stage <- factor(retained$Stage, levels = rev(stage_order))
-  retained$Direction <- factor(
-    retained$Direction,
-    levels = c(
-      "Quantitative DEP tested",
-      "Detected in Group1 only",
-      "Detected in Group2 only"
-    ),
-    labels = c(
-      "Quantitative DEP tested",
-      "Group1 detected / Group2 not detected",
-      "Group2 detected / Group1 not detected"
-    )
-  )
-
-  ggplot2::ggplot(
-    retained,
-    ggplot2::aes(x = Stage, y = Protein_number, fill = Direction)
-  ) +
-    ggplot2::geom_col(colour = "black", linewidth = 0.3, width = 0.72) +
-    ggplot2::coord_flip() +
-    ggplot2::scale_fill_manual(
-      values = c(
-        "Quantitative DEP tested" = quantitative_tested,
-        "Group1 detected / Group2 not detected" = group1_only,
-        "Group2 detected / Group1 not detected" = group2_only
-      ),
-      drop = FALSE
-    ) +
+  .protvis_dep_summary_plot(retained, up = up, ns = ns, down = down) +
     ggplot2::labs(
-      title = "All proteins retained for differential evidence",
-      subtitle = "Quantitative DEP tested plus detected/undetected proteins",
-      x = NULL,
-      y = "Protein number",
-      fill = NULL
+      title = "All retained proteins · differential analysis result",
+      subtitle = paste0(
+        "Group1-only detections are included as up; Group2-only detections ",
+        "are included as down."
+      )
     ) +
-    ggplot2::theme_bw(base_size = 9) +
     ggplot2::theme(
-      plot.title = ggplot2::element_text(
-        hjust = 0.5, face = "bold", size = 11
-      ),
       plot.subtitle = ggplot2::element_text(
         hjust = 0.5, size = 8.5, colour = "#6c757d"
-      ),
-      axis.text = ggplot2::element_text(size = 9, colour = "black"),
-      axis.title = ggplot2::element_text(size = 10, colour = "black"),
-      panel.border = ggplot2::element_rect(
-        colour = "black", linewidth = 0.8
-      ),
-      panel.grid.minor = ggplot2::element_blank(),
-      legend.position = "right",
-      legend.text = ggplot2::element_text(size = 9)
+      )
     )
 }
 
@@ -879,10 +819,7 @@ DEP_analysis_ui <- function(id) {
     evidence_counts,
     up = "#FA8072",
     ns = "#B3B3B3",
-    down = "#90EE90",
-    group1_only = "#E76F51",
-    group2_only = "#2A9D8F",
-    quantitative_tested = "#64748B") {
+    down = "#90EE90") {
   quantitative <- .protvis_dep_summary_plot(
     quantitative_counts,
     up = up,
@@ -899,32 +836,24 @@ DEP_analysis_ui <- function(id) {
       )
     )
 
-  presence <- .protvis_dep_presence_summary_plot(
-    evidence_counts,
-    group1_only = group1_only,
-    group2_only = group2_only
-  )
-
   all_retained <- .protvis_dep_all_retained_summary_plot(
     evidence_counts,
-    quantitative_tested = quantitative_tested,
-    group1_only = group1_only,
-    group2_only = group2_only
+    up = up,
+    ns = ns,
+    down = down
   )
 
   patchwork::wrap_plots(
     quantitative,
-    presence,
     all_retained,
-    ncol = 3,
-    widths = c(1, 0.95, 1.05)
+    ncol = 2,
+    widths = c(1, 1)
   ) +
     patchwork::plot_annotation(
-      title = "Differential-protein evidence without discarding detected/undetected proteins",
+      title = "Differential-protein results with detected/undetected proteins retained",
       subtitle = paste0(
-        "Quantitative abundance differences and detected/undetected evidence ",
-        "remain separate; the third panel reports their combined retained ",
-        "protein count for every comparison."
+        "The right panel retains one-group-only detections in the final ",
+        "Up/Not significant/Down differential-protein count."
       ),
       theme = ggplot2::theme(
         plot.title = ggplot2::element_text(
@@ -1041,43 +970,37 @@ DEP_analysis_ui <- function(id) {
     )
 }
 
-.protvis_dep_presence_count_data <- function(presence, group1, group2) {
-  patterns <- c(
-    "Detected in Group1 only",
-    "Detected in Group2 only"
-  )
-  observed <- if (is.data.frame(presence) &&
-                  "Pattern" %in% names(presence)) {
+.protvis_dep_all_retained_count_data <- function(result, presence) {
+  directions <- c("Upregulated", "Not significant", "Downregulated")
+  quantitative <- if (is.data.frame(result) && "regulation" %in% names(result)) {
+    as.integer(table(factor(as.character(result$regulation), levels = directions)))
+  } else {
+    rep.int(0L, length(directions))
+  }
+
+  patterns <- c("Detected in Group1 only", "Detected in Group2 only")
+  observed <- if (is.data.frame(presence) && "Pattern" %in% names(presence)) {
     as.character(presence$Pattern)
   } else {
     character()
   }
-  counts <- as.integer(table(factor(observed, levels = patterns)))
-  labels <- c(
-    paste(
-      as.character(group1), "detected /",
-      as.character(group2), "not detected"
-    ),
-    paste(
-      as.character(group2), "detected /",
-      as.character(group1), "not detected"
-    )
-  )
+  detected_only <- as.integer(table(factor(observed, levels = patterns)))
+
   data.frame(
-    Direction = factor(labels, levels = labels),
-    Protein_number = counts,
+    Direction = factor(directions, levels = directions),
+    Protein_number = c(
+      quantitative[[1]] + detected_only[[1]],
+      quantitative[[2]],
+      quantitative[[3]] + detected_only[[2]]
+    ),
     stringsAsFactors = FALSE
   )
 }
 
-.protvis_dep_presence_count_plot <- function(
-    presence, group1, group2, title = NULL,
-    group1_only = "#E76F51", group2_only = "#2A9D8F") {
-  counts <- .protvis_dep_presence_count_data(presence, group1, group2)
-  colours <- stats::setNames(
-    c(group1_only, group2_only),
-    as.character(counts$Direction)
-  )
+.protvis_dep_all_retained_count_plot <- function(
+    result, presence, title = NULL,
+    up = "#FA8072", ns = "#B3B3B3", down = "#90EE90") {
+  counts <- .protvis_dep_all_retained_count_data(result, presence)
 
   ggplot2::ggplot(
     counts,
@@ -1085,7 +1008,11 @@ DEP_analysis_ui <- function(id) {
   ) +
     ggplot2::geom_col(colour = "black", linewidth = 0.3) +
     ggplot2::coord_flip() +
-    ggplot2::scale_fill_manual(values = colours, drop = FALSE) +
+    ggplot2::scale_fill_manual(values = c(
+      "Upregulated" = up,
+      "Not significant" = ns,
+      "Downregulated" = down
+    )) +
     ggplot2::theme_bw() +
     ggplot2::labs(
       x = NULL,
@@ -1822,10 +1749,7 @@ DEP_analysis_server <- function(id, shared_state) {
         rv$evidence_summary,
         up = input$summary_up %||% "#FA8072",
         ns = input$summary_ns %||% "#B3B3B3",
-        down = input$summary_down %||% "#90EE90",
-        group1_only = input$summary_group1_only %||% "#E76F51",
-        group2_only = input$summary_group2_only %||% "#2A9D8F",
-        quantitative_tested = input$summary_quantitative_tested %||% "#64748B"
+        down = input$summary_down %||% "#90EE90"
       ))
     })
 
@@ -1838,10 +1762,7 @@ DEP_analysis_server <- function(id, shared_state) {
           rv$evidence_summary,
           up = input$summary_up %||% "#FA8072",
           ns = input$summary_ns %||% "#B3B3B3",
-          down = input$summary_down %||% "#90EE90",
-          group1_only = input$summary_group1_only %||% "#E76F51",
-          group2_only = input$summary_group2_only %||% "#2A9D8F",
-          quantitative_tested = input$summary_quantitative_tested %||% "#64748B"
+          down = input$summary_down %||% "#90EE90"
         )
         ggplot2::ggsave(
           file, plot = plot, device = "pdf",
@@ -1963,17 +1884,13 @@ DEP_analysis_server <- function(id, shared_state) {
         )
 
         output[[presence_count_id]] <- shiny::renderPlot({
-          print(.protvis_dep_presence_count_plot(
+          print(.protvis_dep_all_retained_count_plot(
+            rv$dep_results[[key]],
             rv$presence_absence[[key]] %||% data.frame(),
-            group1 = g1,
-            group2 = g2,
             title = .protvis_dep_stage_label(g1),
-            group1_only = input[[paste0(
-              "presence_count_group1_", i
-            )]] %||% "#E76F51",
-            group2_only = input[[paste0(
-              "presence_count_group2_", i
-            )]] %||% "#2A9D8F"
+            up = input[[paste0("bar_up_", i)]] %||% "#FA8072",
+            ns = input[[paste0("bar_ns_", i)]] %||% "#B3B3B3",
+            down = input[[paste0("bar_down_", i)]] %||% "#90EE90"
           ))
         })
 
@@ -1982,17 +1899,13 @@ DEP_analysis_server <- function(id, shared_state) {
             paste0("Presence_absence_count_", key, ".pdf")
           },
           content = function(file) {
-            plot <- .protvis_dep_presence_count_plot(
+            plot <- .protvis_dep_all_retained_count_plot(
+              rv$dep_results[[key]],
               rv$presence_absence[[key]] %||% data.frame(),
-              group1 = g1,
-              group2 = g2,
               title = .protvis_dep_stage_label(g1),
-              group1_only = input[[paste0(
-                "presence_count_group1_", i
-              )]] %||% "#E76F51",
-              group2_only = input[[paste0(
-                "presence_count_group2_", i
-              )]] %||% "#2A9D8F"
+              up = input[[paste0("bar_up_", i)]] %||% "#FA8072",
+              ns = input[[paste0("bar_ns_", i)]] %||% "#B3B3B3",
+              down = input[[paste0("bar_down_", i)]] %||% "#90EE90"
             )
             ggplot2::ggsave(
               file, plot = plot, device = "pdf",
@@ -2306,7 +2219,7 @@ DEP_analysis_server <- function(id, shared_state) {
               height = "560px",
               bslib::card_header(
                 paste(
-                  "Evidence 2 · Detected/undetected count -",
+                  "All retained proteins · Differential analysis count -",
                   g1, "vs", g2
                 )
               ),
@@ -2314,14 +2227,17 @@ DEP_analysis_server <- function(id, shared_state) {
                 bslib::layout_sidebar(
                   sidebar = bslib::sidebar(
                     width = 240,
-                    colourpicker::colourInput(
-                      ns(paste0("presence_count_group1_", i)),
-                      paste(g1, "detected /", g2, "not detected"), "#E76F51"
+                    shiny::tags$small(
+                      paste0(
+                        "Uses the same Up / Not significant / Down colors ",
+                        "as Evidence 1. ", g1,
+                        "-only detections are included as Up; ", g2,
+                        "-only detections are included as Down."
+                      ),
+                      style = "color:#6c757d;"
                     ),
-                    colourpicker::colourInput(
-                      ns(paste0("presence_count_group2_", i)),
-                      paste(g2, "detected /", g1, "not detected"), "#2A9D8F"
-                    ),
+                    shiny::br(),
+                    shiny::br(),
                     shiny::numericInput(
                       ns(paste0("presence_count_width_", i)),
                       "PDF width", 7, min = 4, max = 20
@@ -2332,7 +2248,7 @@ DEP_analysis_server <- function(id, shared_state) {
                     ),
                     shiny::downloadButton(
                       ns(presence_count_download_id),
-                      "DOWNLOAD DETECTED/UNDETECTED COUNT"
+                      "DOWNLOAD ALL RETAINED DEP COUNT"
                     )
                   ),
                   shiny::plotOutput(
