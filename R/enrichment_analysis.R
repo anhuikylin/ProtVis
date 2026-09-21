@@ -681,8 +681,16 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
 }
 
 .protvis_directional_kegg_data <- function(
-    dep_results, kegg_background, top_n = 5L, p_adjust_cutoff = 0.05) {
+    dep_results, kegg_background, presence_absence = list(),
+    evidence_mode = c("quantitative", "all_retained"),
+    comparisons = NULL, top_n = 5L, p_adjust_cutoff = 0.05) {
   if (!is.list(dep_results) || !length(dep_results)) return(data.frame())
+  evidence_mode <- match.arg(evidence_mode)
+  if (!is.list(presence_absence)) presence_absence <- list()
+  if (!is.null(comparisons)) {
+    comparisons <- intersect(as.character(comparisons), names(dep_results))
+    dep_results <- dep_results[comparisons]
+  }
   background <- as.data.frame(kegg_background, stringsAsFactors = FALSE)
   if (!all(c("TERM", "GENE", "NAME") %in% names(background))) {
     stop("KEGG background must contain TERM, GENE, and NAME columns.",
@@ -716,6 +724,18 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
     ][1L]
     if (is.na(id_col) || !"regulation" %in% names(result)) return(NULL)
     tested <- expand_ids(result[[id_col]])
+    presence <- presence_absence[[comparison]] %||% data.frame()
+    presence_id_col <- c("ID", "protein_id", "Protein", "Gene")[
+      c("ID", "protein_id", "Protein", "Gene") %in% names(presence)
+    ][1L]
+    presence_ids <- if (!is.na(presence_id_col)) {
+      expand_ids(presence[[presence_id_col]])
+    } else {
+      character()
+    }
+    if (identical(evidence_mode, "all_retained")) {
+      tested <- unique(c(tested, presence_ids))
+    }
     if (!length(tested)) return(NULL)
     first_label <- function(x, fallback) {
       x <- unique(trimws(as.character(x)))
@@ -730,6 +750,18 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
       genes <- expand_ids(
         result[[id_col]][as.character(result$regulation) == direction]
       )
+      if (identical(evidence_mode, "all_retained") && nrow(presence) &&
+          "Pattern" %in% names(presence) && !is.na(presence_id_col)) {
+        pattern <- if (identical(direction, "Upregulated")) {
+          "Detected in Group1 only"
+        } else {
+          "Detected in Group2 only"
+        }
+        genes <- unique(c(
+          genes,
+          expand_ids(presence[[presence_id_col]][presence$Pattern == pattern])
+        ))
+      }
       if (!length(genes)) return(NULL)
       enriched <- tryCatch(
         clusterProfiler::enricher(
@@ -755,6 +787,11 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
       out$Cluster <- .protvis_dep_stage_label(labels[[direction]])
       out$Direction <- direction
       out$Direction_label <- paste0(labels[[direction]], " higher")
+      out$Evidence <- if (identical(evidence_mode, "all_retained")) {
+        "All retained proteins"
+      } else {
+        "Evidence 1 · Quantitative DEP"
+      }
       out
     })
   })
@@ -802,13 +839,18 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
 }
 
 .protvis_plot_directional_kegg <- function(data) {
+  evidence <- unique(as.character(data$Evidence))
+  evidence <- evidence[!is.na(evidence) & nzchar(evidence)]
   patchwork::wrap_plots(
     .protvis_directional_kegg_panel(data, "Upregulated"),
     .protvis_directional_kegg_panel(data, "Downregulated"),
     ncol = 2
   ) + patchwork::plot_annotation(
     title = "Directional KEGG enrichment across DEP comparisons",
-    subtitle = "Each direction uses the proteins tested in that comparison as its enrichment universe."
+    subtitle = paste0(
+      if (length(evidence)) evidence[[1L]] else "Selected differential evidence",
+      ": each comparison uses its retained tested proteins as the enrichment universe."
+    )
   )
 }
 
@@ -1157,27 +1199,58 @@ enrichment_analysis_ui <- function(id) {
           bslib::card_header("Directional KEGG enrichment across DEP comparisons"),
           bslib::card_body(
             shiny::tags$p(
-              "Run this after DEP. Upregulated and downregulated proteins are enriched separately for every comparison; the tested proteins from that comparison define the universe.",
+              "Choose one differential-evidence source and one or more DEP comparisons. Upregulated and downregulated proteins are enriched separately; each comparison uses its own retained protein universe.",
               class = "text-muted"
             ),
-            bslib::layout_column_wrap(
-              width = 1 / 4,
+            bslib::layout_columns(
+              col_widths = c(4, 4, 2, 2),
+              shiny::radioButtons(
+                ns("directional_evidence"),
+                "Differential evidence",
+                choices = c(
+                  "Evidence 1 · Quantitative DEP" = "quantitative",
+                  "All retained proteins" = "all_retained"
+                ),
+                selected = "quantitative",
+                inline = TRUE
+              ),
+              shiny::uiOutput(ns("directional_comparisons_ui")),
+              shiny::numericInput(
+                ns("directional_top_n"), "Top pathways", 5,
+                min = 1, max = 20
+              ),
+              shiny::numericInput(
+                ns("directional_p_adjust"), "BH FDR cutoff", 0.05,
+                min = 0, max = 1, step = 0.01
+              )
+            ),
+            bslib::layout_columns(
+              col_widths = c(3, 5, 2, 2),
               shiny::actionButton(
                 ns("load_maize_teosinte_background"),
                 "LOAD BUILT-IN BACKGROUND",
-                class = "btn btn-outline-primary fw-bold"
+                class = "btn btn-outline-primary fw-bold w-100"
               ),
-              shiny::numericInput(ns("directional_top_n"), "Top pathways per direction", 5, min = 1, max = 20),
-              shiny::numericInput(ns("directional_p_adjust"), "BH adjusted P-value cutoff", 0.05, min = 0, max = 1, step = 0.01),
+              shiny::div(
+                class = "pt-2 text-muted",
+                shiny::textOutput(ns("directional_kegg_status"))
+              ),
               shiny::actionButton(
-                ns("run_directional_kegg"), "RUN DIRECTIONAL KEGG",
-                class = "btn btn-primary fw-bold"
+                ns("run_directional_kegg"), "RUN KEGG",
+                class = "btn btn-primary fw-bold w-100"
+              ),
+              shiny::tags$div(
+                class = "d-grid gap-2",
+                shiny::downloadButton(
+                  ns("download_directional_kegg_pdf"), "PDF",
+                  class = "btn btn-outline-secondary w-100"
+                ),
+                shiny::downloadButton(
+                  ns("download_directional_kegg_data"), "CSV",
+                  class = "btn btn-outline-secondary w-100 mt-2"
+                )
               )
             ),
-            shiny::textOutput(ns("directional_kegg_status")),
-            shiny::br(),
-            shiny::downloadButton(ns("download_directional_kegg_pdf"), "DOWNLOAD FIGURE (PDF)"),
-            shiny::downloadButton(ns("download_directional_kegg_data"), "DOWNLOAD RESULT TABLE (CSV)"),
             shiny::br(), shiny::br(),
             shiny::tabsetPanel(
               shiny::tabPanel("Figure", shiny::plotOutput(ns("directional_kegg_plot"), height = "580px")),
@@ -1339,6 +1412,22 @@ enrichment_analysis_server <- function(id, shared_state) {
       dep_obj
     }
 
+    directional_dep_bundle <- function() {
+      results <- normalize_dep_results(shared_state$dep_results)
+      presence <- shared_state$presence_absence %||% list()
+      if (base::is.null(results) && base::length(rv$dep_results) > 0L) {
+        results <- rv$dep_results
+      }
+      if (base::is.null(results) && inherits(shared_state$dataset, "ProtVis_dataset")) {
+        stored_dep <- shared_state$dataset@analysis_results$DEP
+        if (base::is.list(stored_dep) && base::is.list(stored_dep$results)) {
+          results <- normalize_dep_results(stored_dep$results)
+          presence <- stored_dep$presence_absence %||% list()
+        }
+      }
+      list(results = results, presence = presence)
+    }
+
     normalise_term2gene <- function(background) {
       background <- base::as.data.frame(background, stringsAsFactors = FALSE)
       if (!base::all(c("TERM", "GENE") %in% base::names(background))) {
@@ -1452,6 +1541,24 @@ enrichment_analysis_server <- function(id, shared_state) {
       } else {
         shiny::span("❌ Data not loaded", style = "color: red;")
       }
+    })
+
+    output$directional_comparisons_ui <- shiny::renderUI({
+      bundle <- directional_dep_bundle()
+      choices <- names(bundle$results %||% list())
+      if (!length(choices)) {
+        return(shiny::helpText("Run DEP to select comparisons."))
+      }
+      selected <- isolate(input$directional_comparisons)
+      selected <- intersect(selected %||% choices, choices)
+      if (!length(selected)) selected <- choices
+      shiny::checkboxGroupInput(
+        ns("directional_comparisons"),
+        "DEP comparisons",
+        choices = choices,
+        selected = selected,
+        inline = TRUE
+      )
     })
 
     output$background_preview_ui <- shiny::renderUI({
@@ -1837,19 +1944,21 @@ enrichment_analysis_server <- function(id, shared_state) {
         return()
       }
 
-      dep_obj <- normalize_dep_results(shared_state$dep_results)
-      if (base::is.null(dep_obj) && base::length(rv$dep_results) > 0L) {
-        dep_obj <- rv$dep_results
-      }
-      if (base::is.null(dep_obj) && inherits(shared_state$dataset, "ProtVis_dataset")) {
-        stored_dep <- shared_state$dataset@analysis_results$DEP
-        if (base::is.list(stored_dep) && base::is.list(stored_dep$results)) {
-          dep_obj <- normalize_dep_results(stored_dep$results)
-        }
-      }
+      bundle <- directional_dep_bundle()
+      dep_obj <- bundle$results
+      selected_comparisons <- intersect(
+        input$directional_comparisons %||% character(),
+        names(dep_obj %||% list())
+      )
       if (base::is.null(dep_obj)) {
         rv$directional_kegg <- NULL
         rv$directional_kegg_message <- "Run DEP first, then open this panel."
+        shiny::showNotification(rv$directional_kegg_message, type = "error")
+        return()
+      }
+      if (!length(selected_comparisons)) {
+        rv$directional_kegg <- NULL
+        rv$directional_kegg_message <- "Select at least one DEP comparison."
         shiny::showNotification(rv$directional_kegg_message, type = "error")
         return()
       }
@@ -1858,6 +1967,9 @@ enrichment_analysis_server <- function(id, shared_state) {
         .protvis_directional_kegg_data(
           dep_obj,
           rv$background_data$KEGG_background,
+          presence_absence = bundle$presence,
+          evidence_mode = input$directional_evidence %||% "quantitative",
+          comparisons = selected_comparisons,
           top_n = input$directional_top_n,
           p_adjust_cutoff = input$directional_p_adjust
         ),
