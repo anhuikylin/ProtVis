@@ -1853,7 +1853,7 @@ gsea_server <- function(id, shared_state = NULL) {
       print(.protvis_gsea_archived_plot(result))
     }, res = 110)
 
-    output$download_csv <- shiny::downloadHandler(    output$download_csv <- shiny::downloadHandler(
+    output$download_csv <- shiny::downloadHandler(
       filename = function() {
         if (identical(
           input$analysis_mode,
