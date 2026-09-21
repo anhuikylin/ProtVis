@@ -208,11 +208,41 @@ testthat::test_that("parallel evidence summary separates quantitative and presen
   ]
   testthat::expect_equal(
     total$Protein_number[
-      total$Direction == "Quantitative DEP tested"
+      total$Direction == "Upregulated"
     ],
     4L
   )
+  testthat::expect_equal(
+    total$Protein_number[
+      total$Direction == "Not significant"
+    ],
+    1L
+  )
+  testthat::expect_equal(
+    total$Protein_number[
+      total$Direction == "Downregulated"
+    ],
+    2L
+  )
   testthat::expect_equal(total$Total_proteins, rep(7L, 3L))
+})
+
+testthat::test_that("retained count merges one-group detections by direction", {
+  result <- data.frame(
+    regulation = c("Upregulated", "Not significant", "Downregulated"),
+    stringsAsFactors = FALSE
+  )
+  presence <- data.frame(
+    Pattern = c(
+      "Detected in Group1 only",
+      "Detected in Group1 only",
+      "Detected in Group2 only"
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  out <- ProtVis:::.protvis_dep_all_retained_count_data(result, presence)
+  testthat::expect_equal(out$Protein_number, c(3L, 1L, 2L))
 })
 
 testthat::test_that("presence-absence evidence retains observed-intensity context", {
@@ -254,7 +284,16 @@ testthat::test_that("presence-absence evidence retains observed-intensity contex
   )
 })
 
-testthat::test_that("Evidence 2 count overview uses the candidate table", {
+testthat::test_that("all retained count includes quantitative and detected-only proteins", {
+  result <- data.frame(
+    regulation = c(
+      "Upregulated",
+      "Not significant",
+      "Downregulated",
+      "Upregulated"
+    ),
+    stringsAsFactors = FALSE
+  )
   presence <- data.frame(
     ID = paste0("P", 1:5),
     Pattern = c(
@@ -267,21 +306,22 @@ testthat::test_that("Evidence 2 count overview uses the candidate table", {
     stringsAsFactors = FALSE
   )
 
-  counts <- ProtVis:::.protvis_dep_presence_count_data(
-    presence, "B73_Root_VE", "Y12_Root_VE"
+  counts <- ProtVis:::.protvis_dep_all_retained_count_data(
+    result, presence
   )
 
   testthat::expect_identical(
     as.character(counts$Direction),
     c(
-      "B73_Root_VE detected / Y12_Root_VE not detected",
-      "Y12_Root_VE detected / B73_Root_VE not detected"
+      "Upregulated",
+      "Not significant",
+      "Downregulated"
     )
   )
-  testthat::expect_equal(counts$Protein_number, c(3L, 2L))
+  testthat::expect_equal(counts$Protein_number, c(5L, 1L, 3L))
 
-  empty <- ProtVis:::.protvis_dep_presence_count_data(
-    data.frame(), "B73", "Y12"
+  empty <- ProtVis:::.protvis_dep_all_retained_count_data(
+    data.frame(), data.frame()
   )
-  testthat::expect_equal(empty$Protein_number, c(0L, 0L))
+  testthat::expect_equal(empty$Protein_number, c(0L, 0L, 0L))
 })
