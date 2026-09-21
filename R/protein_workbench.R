@@ -423,6 +423,34 @@
   refs[refs$database %in% c("InterPro", "Pfam", "PROSITE", "SMART", "SUPFAM", "Gene3D"), , drop = FALSE]
 }
 
+.protvis_pw_domain_plot_data <- function(table) {
+  required <- c("start", "end", "name")
+  if (!base::is.data.frame(table) || !base::all(required %in% base::names(table))) {
+    return(base::data.frame())
+  }
+  plot_data <- table[!base::is.na(table$start) & !base::is.na(table$end), , drop = FALSE]
+  if (!base::nrow(plot_data)) return(plot_data)
+
+  fallback <- if ("accession" %in% base::names(plot_data)) plot_data$accession else "Domain"
+  plot_data$label <- ifelse(base::nzchar(plot_data$name), plot_data$name, fallback)
+  plot_data$label <- base::gsub("\\s+", " ", base::trimws(plot_data$label))
+  plot_data$label[!base::nzchar(plot_data$label)] <- "Domain"
+  plot_data$label_display <- base::ifelse(
+    base::nchar(plot_data$label) > 52L,
+    base::paste0(base::substr(plot_data$label, 1L, 49L), "..."),
+    plot_data$label
+  )
+  plot_data$track <- base::rev(base::seq_len(base::nrow(plot_data)))
+  plot_data
+}
+
+.protvis_pw_domain_plot_height <- function(n_domains) {
+  n_domains <- base::suppressWarnings(base::as.integer(n_domains %||% 0L))
+  if (!base::length(n_domains) || base::is.na(n_domains[[1]])) n_domains <- 0L
+  n_domains <- base::max(0L, n_domains[[1]])
+  base::min(1600L, base::max(320L, 130L + 30L * n_domains))
+}
+
 .protvis_pw_structure_table <- function(entry, alphafold = NULL) {
   refs <- .protvis_pw_xrefs_table(entry)
   structural <- if (base::nrow(refs)) {
@@ -573,7 +601,7 @@ protein_workbench_ui <- function(id) {
             bslib::nav_panel(
               "Domains",
               shiny::p("InterPro is queried when a UniProt accession is available; UniProt cross-references remain available as a fallback.", class = "pw-note"),
-              shiny::plotOutput(ns("domain_plot"), height = "280px"),
+              shiny::uiOutput(ns("domain_plot_ui")),
               DT::DTOutput(ns("domain_table"))
             ),
             bslib::nav_panel(
@@ -883,22 +911,34 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       DT::datatable(table, rownames = FALSE, options = base::list(pageLength = 15, scrollX = TRUE))
     })
 
-    output$domain_plot <- shiny::renderPlot({
+    domain_plot_data <- shiny::reactive({
       table <- rv$interpro
-      if (!base::nrow(table) || !base::all(c("start", "end", "name") %in% base::names(table))) {
+      .protvis_pw_domain_plot_data(table)
+    })
+
+    output$domain_plot_ui <- shiny::renderUI({
+      height <- .protvis_pw_domain_plot_height(base::nrow(domain_plot_data()))
+      shiny::plotOutput(ns("domain_plot"), height = base::paste0(height, "px"))
+    })
+
+    output$domain_plot <- shiny::renderPlot({
+      plot_data <- domain_plot_data()
+      if (!base::nrow(plot_data)) {
         graphics::plot.new(); graphics::text(0.5, 0.5, "InterPro positional domains will appear here when available."); return(invisible(NULL))
       }
-      plot_data <- table[!base::is.na(table$start) & !base::is.na(table$end), , drop = FALSE]
-      if (!base::nrow(plot_data)) {
-        graphics::plot.new(); graphics::text(0.5, 0.5, "No positional domain coordinates returned by InterPro."); return(invisible(NULL))
-      }
-      plot_data$label <- ifelse(base::nzchar(plot_data$name), plot_data$name, plot_data$accession)
-      plot_data$track <- base::seq_len(base::nrow(plot_data))
       ggplot2::ggplot(plot_data) +
-        ggplot2::geom_segment(ggplot2::aes(x = start, xend = end, y = track, yend = track), linewidth = 7, lineend = "round") +
-        ggplot2::scale_y_continuous(breaks = plot_data$track, labels = plot_data$label) +
+        ggplot2::geom_segment(
+          ggplot2::aes(x = start, xend = end, y = track, yend = track, colour = label),
+          linewidth = 7, lineend = "round", show.legend = FALSE
+        ) +
+        ggplot2::scale_colour_hue(h = c(15, 375), c = 75, l = 48) +
+        ggplot2::scale_y_continuous(breaks = plot_data$track, labels = plot_data$label_display) +
         ggplot2::labs(x = "Residue position", y = NULL) +
-        ggplot2::theme_minimal(base_size = 11)
+        ggplot2::theme_minimal(base_size = 11) +
+        ggplot2::theme(
+          axis.text.y = ggplot2::element_text(size = 8),
+          plot.margin = ggplot2::margin(8, 12, 8, 10)
+        )
     })
 
     output$structure_table <- DT::renderDT({
