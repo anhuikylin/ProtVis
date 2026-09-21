@@ -26,7 +26,7 @@ jobs:
 
       - name: Replace target files with latest source files
         run: |
-          rsync -a --delete --exclude=".git/" /tmp/protvis-source/ ./
+          rsync -a --delete --exclude=".git/" --exclude=".github/workflows/" /tmp/protvis-source/ ./
 
       - name: Commit and push synchronized code
         run: |
@@ -34,7 +34,7 @@ jobs:
           git config user.email "103125590+anhuikylin@users.noreply.github.com"
           git add -A
           if git diff --cached --quiet; then
-            echo "Target repository already matches source."
+            echo "Target repository already matches source outside .github/workflows."
             exit 0
           fi
           git commit -m "Sync latest code from xuebinzhang-lab/ProtVis dev"
