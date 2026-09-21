@@ -1543,7 +1543,6 @@ gsea_server <- function(id, shared_state = NULL) {
       }
 
       shiny::req(
-        input$expr_file,      shiny::req(
         input$expr_file,
         input$group_file,
         input$ko_file
