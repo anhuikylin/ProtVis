@@ -94,3 +94,37 @@ testthat::test_that("archived DEP provenance is detected for exact reproduction"
   status2 <- ProtVis:::.protvis_gsea_dep_compatibility(dep)
   testthat::expect_false(status2$exact)
 })
+
+
+testthat::test_that("GSEA reproduction layout exposes compact controls and focus metadata", {
+  ui_source <- paste(
+    deparse(ProtVis::gsea_ui),
+    collapse = "\n"
+  )
+
+  testthat::expect_match(
+    ui_source,
+    "dep_root_only",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    ui_source,
+    "dep_selected_count",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    ui_source,
+    "archive_metadata_ui",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    ui_source,
+    "navset_card_tab",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    ui_source,
+    'height = "760px"',
+    fixed = TRUE
+  )
+})

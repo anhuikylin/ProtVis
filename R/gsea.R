@@ -7,9 +7,249 @@
 gsea_ui <- function(id) {
   ns <- shiny::NS(id)
 
+  gsea_css <- shiny::tags$style(
+    shiny::HTML("
+      .pv-gsea-sidebar {
+        overflow-x: hidden;
+      }
+
+      .pv-gsea-sidebar .form-control,
+      .pv-gsea-sidebar .selectize-control {
+        max-width: 100%;
+      }
+
+      .pv-gsea-section-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #24384D;
+        margin: 10px 0 6px 0;
+      }
+
+      .pv-gsea-comparison-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+
+      .pv-gsea-selected-badge {
+        display: inline-flex;
+        align-items: center;
+        background: #EDF7FD;
+        color: #1686C9;
+        border: 1px solid #D5EAF7;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .pv-gsea-comparison-box {
+        max-height: 205px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 8px 9px;
+        border: 1px solid #DCE8F0;
+        border-radius: 9px;
+        background: #FAFCFE;
+      }
+
+      .pv-gsea-comparison-box .form-group {
+        margin-bottom: 0;
+      }
+
+      .pv-gsea-comparison-box .form-check,
+      .pv-gsea-comparison-box .checkbox {
+        margin-bottom: 5px;
+      }
+
+      .pv-gsea-comparison-box label {
+        white-space: normal !important;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        font-size: 0.79rem;
+        line-height: 1.25;
+      }
+
+      .pv-gsea-comparison-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 6px 0 12px 0;
+        font-size: 0.78rem;
+      }
+
+      .pv-gsea-advanced {
+        border: 1px solid #DCE8F0;
+        border-radius: 9px;
+        background: #FAFCFE;
+        margin-top: 8px;
+        margin-bottom: 8px;
+      }
+
+      .pv-gsea-advanced summary {
+        cursor: pointer;
+        padding: 9px 11px;
+        color: #31516A;
+        font-size: 0.80rem;
+        font-weight: 700;
+        user-select: none;
+      }
+
+      .pv-gsea-advanced-body {
+        padding: 0 11px 10px 11px;
+      }
+
+      .pv-gsea-main {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .pv-gsea-status-card {
+        margin-bottom: 12px;
+      }
+
+      .pv-gsea-status-card .card-body {
+        padding: 12px 14px;
+      }
+
+      .pv-gsea-status-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .pv-gsea-status-title {
+        font-size: 0.87rem;
+        font-weight: 700;
+        color: #24384D;
+      }
+
+      .pv-gsea-kpis {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+      }
+
+      .pv-gsea-kpi {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: 1px solid #D9E7F0;
+        border-radius: 999px;
+        background: #F7FBFD;
+        padding: 4px 9px;
+        font-size: 0.75rem;
+        color: #52697C;
+      }
+
+      .pv-gsea-kpi strong {
+        color: #15354C;
+        font-weight: 700;
+      }
+
+      .pv-gsea-kpi-success {
+        background: #F0FAF5;
+        border-color: #CCEAD9;
+        color: #278557;
+      }
+
+      .pv-gsea-kpi-warning {
+        background: #FFF9ED;
+        border-color: #F1DEAC;
+        color: #A27412;
+      }
+
+      .pv-gsea-details {
+        margin-bottom: 12px;
+        min-width: 0;
+      }
+
+      .pv-gsea-details .card {
+        min-width: 0;
+      }
+
+      .pv-gsea-summary-table {
+        max-height: 300px;
+        overflow: auto;
+      }
+
+      .pv-gsea-meta-grid {
+        display: grid;
+        grid-template-columns: minmax(155px, 0.8fr) minmax(200px, 1.7fr);
+        border: 1px solid #E2EAF0;
+        border-radius: 8px;
+        overflow: hidden;
+        margin: 8px;
+      }
+
+      .pv-gsea-meta-label,
+      .pv-gsea-meta-value {
+        padding: 7px 10px;
+        border-bottom: 1px solid #E8EEF3;
+        font-size: 0.78rem;
+        line-height: 1.3;
+      }
+
+      .pv-gsea-meta-label {
+        background: #F7FAFC;
+        color: #536B7E;
+        font-weight: 600;
+      }
+
+      .pv-gsea-meta-value {
+        background: #FFFFFF;
+        color: #20394D;
+        overflow-wrap: anywhere;
+      }
+
+      .pv-gsea-plot-card {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .pv-gsea-plot-card .card-header {
+        font-weight: 700;
+        color: #24384D;
+      }
+
+      .pv-gsea-plot-card .card-body {
+        min-height: 790px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 8px 14px 12px 14px;
+      }
+
+      .pv-gsea-plot-wrap {
+        min-width: 980px;
+        width: 100%;
+      }
+
+      @media (max-width: 900px) {
+        .pv-gsea-meta-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .pv-gsea-meta-label {
+          border-bottom: 0;
+          padding-bottom: 2px;
+        }
+
+        .pv-gsea-meta-value {
+          padding-top: 2px;
+        }
+      }
+    ")
+  )
+
   bslib::page_sidebar(
     title = "GSEA Analysis",
+    fillable = FALSE,
     sidebar = bslib::sidebar(
+      width = 330,
+
       shiny::selectInput(
         ns("analysis_mode"),
         "Analysis mode",
@@ -80,107 +320,156 @@ gsea_ui <- function(id) {
       shiny::conditionalPanel(
         condition = "input.analysis_mode === 'archived'",
         ns = ns,
-        shiny::actionButton(
-          ns("load_previous_dep"),
-          "LOAD PREVIOUS DEP RESULTS",
-          icon = shiny::icon("folder-open"),
-          class = "btn-outline-primary w-100"
-        ),
-        shiny::uiOutput(ns("dep_load_status")),
-        shiny::hr(),
-        shiny::tags$h6("DEP comparisons"),
-        shiny::uiOutput(ns("dep_comparisons_ui")),
+
         shiny::div(
-          class = "d-flex gap-2 mb-2",
-          shiny::actionLink(
-            ns("dep_select_all"),
-            "Select all"
+          class = "pv-gsea-sidebar",
+
+          shiny::actionButton(
+            ns("load_previous_dep"),
+            "LOAD PREVIOUS DEP RESULTS",
+            icon = shiny::icon("folder-open"),
+            class = "btn-outline-primary w-100"
           ),
-          shiny::tags$span("·"),
-          shiny::actionLink(
-            ns("dep_clear_all"),
-            "Clear"
-          )
-        ),
-        shiny::selectInput(
-          ns("focus_comparison"),
-          "Focus comparison",
-          choices = NULL
-        ),
-        shiny::selectInput(
-          ns("archive_pathway"),
-          "Pathway",
-          choices = c(
-            "Phenylpropanoid biosynthesis" =
-              "Phenylpropanoid biosynthesis"
-          ),
-          selected = "Phenylpropanoid biosynthesis"
-        ),
-        shiny::selectInput(
-          ns("archive_rank_metric"),
-          "Ranking metric",
-          choices = c(
-            "Moderated t statistic (script default)" = "t",
-            "log2 fold change" = "logFC",
-            "Signed -log10(P-value)" = "signed_log10_p"
-          ),
-          selected = "t"
-        ),
-        shiny::radioButtons(
-          ns("archive_filter_mode"),
-          "Protein inclusion",
-          choices = c(
-            "All tested proteins (GSEA default)" = "all",
-            "Custom thresholds" = "custom"
-          ),
-          selected = "all"
-        ),
-        shiny::conditionalPanel(
-          condition = "input.archive_filter_mode === 'custom'",
-          ns = ns,
-          shiny::selectInput(
-            ns("archive_p_metric"),
-            "P-value filter",
-            choices = c(
-              "None" = "none",
-              "Raw P-value" = "P.Value",
-              "BH-adjusted P-value" = "adj.P.Val"
+
+          shiny::uiOutput(ns("dep_load_status")),
+
+          shiny::div(
+            class = "pv-gsea-comparison-head",
+            shiny::div(
+              "DEP comparisons",
+              class = "pv-gsea-section-title"
             ),
-            selected = "none"
+            shiny::span(
+              shiny::textOutput(
+                ns("dep_selected_count"),
+                inline = TRUE
+              ),
+              class = "pv-gsea-selected-badge"
+            )
           ),
-          shiny::numericInput(
-            ns("archive_p_cutoff"),
-            "P-value cutoff",
-            value = 0.05,
-            min = 0,
-            max = 1,
-            step = 0.01
+
+          shiny::div(
+            class = "pv-gsea-comparison-box",
+            shiny::uiOutput(ns("dep_comparisons_ui"))
           ),
-          shiny::numericInput(
-            ns("archive_abs_logfc"),
-            "Minimum |log2FC|",
-            value = 0,
-            min = 0,
-            step = 0.1
+
+          shiny::div(
+            class = "pv-gsea-comparison-actions",
+            shiny::actionLink(
+              ns("dep_select_all"),
+              "Select all"
+            ),
+            shiny::actionLink(
+              ns("dep_clear_all"),
+              "Clear"
+            ),
+            shiny::actionLink(
+              ns("dep_root_only"),
+              "Root_VE only"
+            )
+          ),
+
+          shiny::selectInput(
+            ns("focus_comparison"),
+            "Focus comparison",
+            choices = NULL
+          ),
+
+          shiny::selectInput(
+            ns("archive_pathway"),
+            "Pathway",
+            choices = c(
+              "Phenylpropanoid biosynthesis" =
+                "Phenylpropanoid biosynthesis"
+            ),
+            selected = "Phenylpropanoid biosynthesis"
+          ),
+
+          shiny::selectInput(
+            ns("archive_rank_metric"),
+            "Ranking metric",
+            choices = c(
+              "Moderated t statistic (script default)" = "t",
+              "log2 fold change" = "logFC",
+              "Signed -log10(P-value)" = "signed_log10_p"
+            ),
+            selected = "t"
+          ),
+
+          shiny::radioButtons(
+            ns("archive_filter_mode"),
+            "Protein inclusion",
+            choices = c(
+              "All tested proteins (GSEA default)" = "all",
+              "Custom thresholds" = "custom"
+            ),
+            selected = "all"
+          ),
+
+          shiny::tags$details(
+            class = "pv-gsea-advanced",
+
+            shiny::tags$summary(
+              shiny::tagList(
+                shiny::icon("sliders"),
+                " Advanced settings"
+              )
+            ),
+
+            shiny::div(
+              class = "pv-gsea-advanced-body",
+
+              shiny::conditionalPanel(
+                condition =
+                  "input.archive_filter_mode === 'custom'",
+                ns = ns,
+
+                shiny::selectInput(
+                  ns("archive_p_metric"),
+                  "P-value filter",
+                  choices = c(
+                    "None" = "none",
+                    "Raw P-value" = "P.Value",
+                    "BH-adjusted P-value" = "adj.P.Val"
+                  ),
+                  selected = "none"
+                ),
+
+                shiny::numericInput(
+                  ns("archive_p_cutoff"),
+                  "P-value cutoff",
+                  value = 0.05,
+                  min = 0,
+                  max = 1,
+                  step = 0.01
+                ),
+
+                shiny::numericInput(
+                  ns("archive_abs_logfc"),
+                  "Minimum |log2FC|",
+                  value = 0,
+                  min = 0,
+                  step = 0.1
+                )
+              ),
+
+              shiny::numericInput(
+                ns("archive_seed"),
+                "Random seed",
+                value = 20260920,
+                min = 1,
+                max = .Machine$integer.max,
+                step = 1
+              ),
+
+              shiny::div(
+                class = "small text-muted",
+                "Figure defaults: moderated t · all tested proteins · ",
+                "weighted GSEA p = 1 · minSize = 5 · maxSize = 500 · ",
+                "eps = 0."
+              )
+            )
           )
-        ),
-        shiny::numericInput(
-          ns("archive_seed"),
-          "Random seed",
-          value = 20260920,
-          min = 1,
-          max = .Machine$integer.max,
-          step = 1
-        ),
-        shiny::div(
-          class = "alert alert-info py-2 small",
-          shiny::tags$b("Figure-reproduction defaults"),
-          shiny::tags$br(),
-          "Load all available DEP comparisons, then focus on Root_VE. ",
-          "The original script uses the complete Root_VE tested-protein ",
-          "result, moderated t ranking, no significance pre-filter, ",
-          "weighted GSEA (p = 1), fgseaMultilevel, minSize = 5, ",
-          "maxSize = 500 and eps = 0."
         )
       ),
 
@@ -215,6 +504,8 @@ gsea_ui <- function(id) {
       )
     ),
 
+    gsea_css,
+
     shiny::conditionalPanel(
       condition = "input.analysis_mode === 'standard'",
       ns = ns,
@@ -245,42 +536,57 @@ gsea_ui <- function(id) {
     shiny::conditionalPanel(
       condition = "input.analysis_mode === 'archived'",
       ns = ns,
-      bslib::card(
-        bslib::card_header(
-          "Previous DEP → GSEA"
-        ),
-        bslib::card_body(
-          shiny::uiOutput(ns("archive_status"))
-        )
-      ),
-      bslib::layout_columns(
-        col_widths = c(7, 5),
+
+      shiny::div(
+        class = "pv-gsea-main",
+
         bslib::card(
-          bslib::card_header(
-            "Selected-comparison GSEA summary"
-          ),
+          fill = FALSE,
+          class = "pv-gsea-status-card",
           bslib::card_body(
-            DT::DTOutput(ns("archive_table"))
+            shiny::uiOutput(ns("archive_status"))
           )
         ),
-        bslib::card(
-          bslib::card_header(
-            "Focus comparison metadata"
-          ),
-          bslib::card_body(
-            DT::DTOutput(ns("archive_metadata"))
+
+        shiny::div(
+          class = "pv-gsea-details",
+
+          bslib::navset_card_tab(
+            id = ns("archive_details_tab"),
+
+            bslib::nav_panel(
+              "Comparison summary",
+              shiny::div(
+                class = "pv-gsea-summary-table",
+                DT::DTOutput(ns("archive_table"))
+              )
+            ),
+
+            bslib::nav_panel(
+              "Focus metadata",
+              shiny::uiOutput(ns("archive_metadata_ui"))
+            )
           )
-        )
-      ),
-      bslib::card(
-        full_screen = TRUE,
-        bslib::card_header(
-          shiny::uiOutput(ns("archive_curve_title"))
         ),
-        bslib::card_body(
-          shiny::plotOutput(
-            ns("archive_curve"),
-            height = "650px"
+
+        bslib::card(
+          full_screen = TRUE,
+          fill = FALSE,
+          class = "pv-gsea-plot-card",
+
+          bslib::card_header(
+            shiny::uiOutput(ns("archive_curve_title"))
+          ),
+
+          bslib::card_body(
+            shiny::div(
+              class = "pv-gsea-plot-wrap",
+              shiny::plotOutput(
+                ns("archive_curve"),
+                height = "760px",
+                width = "100%"
+              )
+            )
           )
         )
       )
@@ -288,6 +594,8 @@ gsea_ui <- function(id) {
   )
 }
 
+
+.protvis_gsea_base36 <- function
 
 .protvis_gsea_base36 <- function(x) {
   alphabet <- c(as.character(0:9), letters)
@@ -1303,6 +1611,43 @@ gsea_server <- function(id, shared_state = NULL) {
       )
     })
 
+    output$dep_selected_count <- shiny::renderText({
+      comparisons <- names(
+        previous_dep_val()$results %||% list()
+      )
+      selected <- intersect(
+        input$dep_comparisons %||% character(),
+        comparisons
+      )
+      paste0(length(selected), " selected")
+    })
+
+    shiny::observeEvent(input$dep_root_only, {
+      comparisons <- names(
+        previous_dep_val()$results %||% list()
+      )
+      if (!length(comparisons)) return()
+
+      rootve <- .protvis_gsea_rootve_comparison(
+        comparisons
+      )
+      if (is.na(rootve) || !nzchar(rootve)) return()
+
+      shiny::updateCheckboxGroupInput(
+        session,
+        "dep_comparisons",
+        choices = comparisons,
+        selected = rootve,
+        inline = FALSE
+      )
+      shiny::updateSelectInput(
+        session,
+        "focus_comparison",
+        choices = rootve,
+        selected = rootve
+      )
+    }, ignoreInit = TRUE)
+
     shiny::observeEvent(input$dep_select_all, {
       comparisons <- names(
         previous_dep_val()$results %||% list()
@@ -1702,23 +2047,30 @@ gsea_server <- function(id, shared_state = NULL) {
       bundle <- previous_dep_val()
 
       if (is.null(run)) {
-        loaded <- length(bundle$results %||% list())
+        loaded <- length(
+          bundle$results %||% list()
+        )
         return(
-          shiny::span(
+          shiny::div(
+            class = "pv-gsea-status-wrap",
+            shiny::div(
+              if (loaded) {
+                paste0(
+                  "✓ ", loaded,
+                  " previous DEP comparison(s) loaded"
+                )
+              } else {
+                "Load previous DEP results to start GSEA."
+              },
+              class = "pv-gsea-status-title"
+            ),
             if (loaded) {
-              paste0(
-                "Loaded ", loaded,
-                " comparison(s). Select comparisons and click Run Analysis. ",
-                "Root_VE is the default focus when available."
+              shiny::div(
+                "Select comparisons and run GSEA. ",
+                "Root_VE is used as the default focus.",
+                class = "text-muted small"
               )
-            } else {
-              paste0(
-                "Load previous DEP results first. ",
-                "The module can load multiple comparisons; ",
-                "the final figure can focus on Root_VE."
-              )
-            },
-            class = "text-muted"
+            }
           )
         )
       }
@@ -1726,65 +2078,115 @@ gsea_server <- function(id, shared_state = NULL) {
       focus <- run$focus
       result <- run$results[[focus]]
       fg <- result$fgsea_result
+
+      nes <- if (nrow(fg)) {
+        signif(fg$NES[[1L]], 4)
+      } else {
+        NA_real_
+      }
+      padj <- if (nrow(fg)) {
+        signif(fg$padj[[1L]], 4)
+      } else {
+        NA_real_
+      }
+
       compatible <- isTRUE(
-        result$metadata$Historical_DEP_compatible[[1L]]
+        result$metadata$
+          Historical_DEP_compatible[[1L]]
       )
 
-      shiny::tagList(
-        shiny::span(
-          class = "text-success fw-semibold",
+      shiny::div(
+        class = "pv-gsea-status-wrap",
+
+        shiny::div(
           paste0(
-            "✓ ", length(run$results),
-            " comparison(s) analysed · focus: ",
+            "✓ GSEA completed · focus: ",
             focus
+          ),
+          class = "pv-gsea-status-title"
+        ),
+
+        shiny::div(
+          class = "pv-gsea-kpis",
+
+          shiny::span(
+            class = "pv-gsea-kpi",
+            shiny::span("Comparisons"),
+            shiny::tags$strong(
+              length(run$results)
+            )
+          ),
+
+          shiny::span(
+            class = "pv-gsea-kpi",
+            shiny::span("Rank metric"),
+            shiny::tags$strong(
+              result$metadata$Rank_metric[[1L]]
+            )
+          ),
+
+          shiny::span(
+            class = "pv-gsea-kpi",
+            shiny::span("Proteins"),
+            shiny::tags$strong(
+              format(
+                nrow(result$rank_tbl),
+                big.mark = ","
+              )
+            )
+          ),
+
+          shiny::span(
+            class = "pv-gsea-kpi",
+            shiny::span("Pathway hits"),
+            shiny::tags$strong(
+              sum(result$rank_tbl$in_pathway)
+            )
+          ),
+
+          shiny::span(
+            class = "pv-gsea-kpi",
+            shiny::span("NES"),
+            shiny::tags$strong(
+              if (is.finite(nes)) nes else "—"
+            )
+          ),
+
+          shiny::span(
+            class = "pv-gsea-kpi",
+            shiny::span("padj"),
+            shiny::tags$strong(
+              if (is.finite(padj)) padj else "—"
+            )
+          ),
+
+          shiny::span(
+            class = paste(
+              "pv-gsea-kpi",
+              if (compatible) {
+                "pv-gsea-kpi-success"
+              } else {
+                "pv-gsea-kpi-warning"
+              }
+            ),
+            shiny::span("Historical"),
+            shiny::tags$strong(
+              if (compatible) {
+                "compatible"
+              } else {
+                "different DEP"
+              }
+            )
           )
         ),
-        shiny::tags$br(),
-        shiny::span(
-          paste0(
-            "Rank metric: ",
-            result$metadata$Rank_metric[[1L]],
-            " · ranked proteins: ",
-            format(
-              nrow(result$rank_tbl),
-              big.mark = ","
-            ),
-            " · pathway hits: ",
-            sum(result$rank_tbl$in_pathway),
-            " · ES: ",
-            signif(result$extreme_es, 4),
-            if (nrow(fg)) {
-              paste0(
-                " · NES: ",
-                signif(fg$NES[[1L]], 4),
-                " · padj: ",
-                signif(fg$padj[[1L]], 4)
-              )
-            } else {
-              ""
-            }
-          ),
-          class = "text-muted"
-        ),
-        shiny::tags$br(),
-        shiny::span(
-          result$compatibility$label,
-          class = if (compatible) {
-            "text-success"
-          } else {
-            "text-warning"
-          }
-        ),
+
         if (length(run$errors)) {
-          shiny::tagList(
-            shiny::tags$br(),
-            shiny::span(
-              paste0(
-                "Failed comparisons: ",
-                paste(names(run$errors), collapse = ", ")
-              ),
-              class = "text-warning"
-            )
+          shiny::div(
+            paste0(
+              "Failed comparisons: ",
+              paste(names(run$errors), collapse = ", ")
+            ),
+            class = "text-warning small"
           )
         }
       )
@@ -1793,48 +2195,133 @@ gsea_server <- function(id, shared_state = NULL) {
     output$archive_table <- DT::renderDT({
       run <- archived_val()
       shiny::req(run)
+
       DT::datatable(
         run$summary,
         rownames = FALSE,
         extensions = "Buttons",
+        class = "compact stripe hover",
         options = list(
+          dom = "Btip",
+          buttons = c("copy", "csv"),
+          paging = FALSE,
+          searching = FALSE,
+          info = FALSE,
           scrollX = TRUE,
-          pageLength = max(5L, nrow(run$summary)),
-          dom = "Bfrtip",
-          buttons = c("copy", "csv")
+          autoWidth = TRUE
         )
       )
     })
 
-    output$archive_metadata <- DT::renderDT({
+    output$archive_metadata_ui <- shiny::renderUI({
       run <- archived_val()
       shiny::req(run)
+
       result <- run$results[[run$focus]]
       meta <- result$metadata
-      display <- data.frame(
-        Parameter = names(meta),
-        Value = vapply(
-          meta,
-          function(x) as.character(x[[1L]]),
-          character(1)
-        ),
-        stringsAsFactors = FALSE
+
+      field_map <- c(
+        Comparison = "Comparison",
+        Group1 = "Group 1",
+        Group2 = "Group 2",
+        Pathway = "Pathway",
+        KEGG_term = "KEGG term",
+        Rank_metric = "Ranking metric",
+        Protein_filter = "Protein filter",
+        P_filter = "P filter",
+        P_cutoff = "P cutoff",
+        Min_abs_log2FC = "Minimum |log2FC|",
+        Ranked_proteins = "Ranked proteins",
+        Pathway_members = "Pathway members",
+        Extreme_position = "Extreme position",
+        Extreme_ES = "Extreme ES",
+        Seed = "Random seed",
+        Historical_DEP_compatible =
+          "Historical DEP compatible"
       )
-      DT::datatable(
-        display,
-        rownames = FALSE,
-        options = list(
-          dom = "t",
-          pageLength = nrow(display),
-          scrollX = TRUE
-        )
+
+      available <- intersect(
+        names(field_map),
+        names(meta)
+      )
+
+      format_meta_value <- function(field, value) {
+        if (!length(value) || is.na(value[[1L]])) {
+          return("—")
+        }
+
+        value <- value[[1L]]
+
+        if (is.logical(value)) {
+          return(if (isTRUE(value)) "TRUE" else "FALSE")
+        }
+
+        if (is.numeric(value)) {
+          if (field %in% c(
+            "Extreme_ES",
+            "P_cutoff",
+            "Min_abs_log2FC"
+          )) {
+            return(
+              format(
+                signif(value, 5),
+                scientific = FALSE,
+                trim = TRUE
+              )
+            )
+          }
+
+          if (field %in% c(
+            "Ranked_proteins",
+            "Pathway_members",
+            "Extreme_position",
+            "Seed"
+          )) {
+            return(
+              format(
+                value,
+                big.mark = ",",
+                scientific = FALSE,
+                trim = TRUE
+              )
+            )
+          }
+        }
+
+        as.character(value)
+      }
+
+      cells <- lapply(
+        available,
+        function(field) {
+          shiny::tagList(
+            shiny::div(
+              field_map[[field]],
+              class = "pv-gsea-meta-label"
+            ),
+            shiny::div(
+              format_meta_value(
+                field,
+                meta[[field]]
+              ),
+              class = "pv-gsea-meta-value"
+            )
+          )
+        }
+      )
+
+      shiny::div(
+        class = "pv-gsea-meta-grid",
+        cells
       )
     })
 
     output$archive_curve_title <- shiny::renderUI({
       run <- archived_val()
       if (is.null(run)) {
-        return("Phenylpropanoid biosynthesis · focus comparison")
+        return(
+          "Phenylpropanoid biosynthesis · focus comparison"
+        )
       }
       result <- run$results[[run$focus]]
       shiny::tags$span(
@@ -1853,7 +2340,7 @@ gsea_server <- function(id, shared_state = NULL) {
       print(.protvis_gsea_archived_plot(result))
     }, res = 110)
 
-    output$download_csv <- shiny::downloadHandler(
+    output$download_csv <- shiny::downloadHandler(    output$download_csv <- shiny::downloadHandler(
       filename = function() {
         if (identical(
           input$analysis_mode,
