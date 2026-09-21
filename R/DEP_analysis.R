@@ -1112,6 +1112,8 @@ DEP_analysis_server <- function(id, shared_state) {
     reset_dep <- function() {
       rv$dep_results <- list()
       rv$presence_absence <- list()
+      shared_state$dep_results <- list()
+      shared_state$presence_absence <- list()
       rv$dep_analysis_matrix <- NULL
       rv$dep_summary <- data.frame()
       rv$evidence_summary <- data.frame()
@@ -1655,6 +1657,10 @@ DEP_analysis_server <- function(id, shared_state) {
         comparison_order
       )
       rv$dep_ready <- length(rv$dep_results) > 0
+      # Make the just-computed results immediately available to downstream
+      # modules (including Directional KEGG) without requiring a file reload.
+      shared_state$dep_results <- rv$dep_results
+      shared_state$presence_absence <- rv$presence_absence
 
       if (inherits(shared_state$dataset, "ProtVis_dataset") && rv$dep_ready) {
         dataset <- shared_state$dataset

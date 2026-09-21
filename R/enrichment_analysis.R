@@ -598,6 +598,220 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
     )
 }
 
+.protvis_load_builtin_enrichment_background <- function() {
+  locate <- function(file_name) {
+    candidates <- c(
+      system.file("extdata", file_name, package = "ProtVis"),
+      file.path("inst", "extdata", file_name),
+      file.path(getwd(), "inst", "extdata", file_name)
+    )
+    candidates <- candidates[nzchar(candidates) & file.exists(candidates)]
+    if (!length(candidates)) {
+      stop("The built-in maize-teosinte enrichment background is unavailable.",
+           call. = FALSE)
+    }
+    candidates[[1L]]
+  }
+  read_table <- function(file_name) {
+    utils::read.delim(
+      locate(file_name), sep = "\t", header = TRUE, quote = "",
+      comment.char = "", stringsAsFactors = FALSE, check.names = FALSE
+    )
+  }
+  list(
+    GO_background = read_table("maize_teosinte_GO_background.tsv.xz"),
+    KEGG_background = read_table("maize_teosinte_KEGG_background.tsv.xz")
+  )
+}
+
+.protvis_read_enrichment_background <- function(file) {
+  sheets <- readxl::excel_sheets(file)
+  standard <- c("GO_background", "KEGG_background")
+  legacy <- c("t2g.go", "t2n.go", "t2g.kegg", "t2n.kegg")
+
+  if (all(standard %in% sheets)) {
+    out <- lapply(standard, function(sheet) {
+      as.data.frame(readxl::read_excel(file, sheet = sheet),
+                    stringsAsFactors = FALSE)
+    })
+    names(out) <- standard
+  } else if (all(legacy %in% sheets)) {
+    combine_legacy <- function(t2g_sheet, t2n_sheet) {
+      t2g <- as.data.frame(readxl::read_excel(file, sheet = t2g_sheet),
+                           stringsAsFactors = FALSE)
+      t2n <- as.data.frame(readxl::read_excel(file, sheet = t2n_sheet),
+                           stringsAsFactors = FALSE)
+      if (!all(c("TERM", "GENE") %in% names(t2g)) ||
+          !all(c("TERM", "NAME") %in% names(t2n))) {
+        stop("Legacy annotation sheets must contain TERM/GENE and TERM/NAME.",
+             call. = FALSE)
+      }
+      t2n <- t2n[!duplicated(t2n$TERM), c("TERM", "NAME"), drop = FALSE]
+      merge(t2g[, c("TERM", "GENE"), drop = FALSE], t2n,
+            by = "TERM", all.x = TRUE, sort = FALSE)
+    }
+    out <- list(
+      GO_background = combine_legacy("t2g.go", "t2n.go"),
+      KEGG_background = combine_legacy("t2g.kegg", "t2n.kegg")
+    )
+  } else {
+    stop(
+      "Background workbook needs GO_background/KEGG_background sheets or ",
+      "legacy t2g.go/t2n.go/t2g.kegg/t2n.kegg sheets.",
+      call. = FALSE
+    )
+  }
+
+  for (name in names(out)) {
+    table <- out[[name]]
+    if (!all(c("TERM", "GENE", "NAME") %in% names(table))) {
+      stop(name, " must contain TERM, GENE, and NAME columns.", call. = FALSE)
+    }
+    table <- table[, c("TERM", "GENE", "NAME"), drop = FALSE]
+    table[] <- lapply(table, function(x) trimws(as.character(x)))
+    table <- table[
+      !is.na(table$TERM) & nzchar(table$TERM) &
+        !is.na(table$GENE) & nzchar(table$GENE) &
+        !is.na(table$NAME) & nzchar(table$NAME),
+      , drop = FALSE
+    ]
+    out[[name]] <- unique(table)
+  }
+  out
+}
+
+.protvis_directional_kegg_data <- function(
+    dep_results, kegg_background, top_n = 5L, p_adjust_cutoff = 0.05) {
+  if (!is.list(dep_results) || !length(dep_results)) return(data.frame())
+  background <- as.data.frame(kegg_background, stringsAsFactors = FALSE)
+  if (!all(c("TERM", "GENE", "NAME") %in% names(background))) {
+    stop("KEGG background must contain TERM, GENE, and NAME columns.",
+         call. = FALSE)
+  }
+  t2g <- unique(background[, c("TERM", "GENE"), drop = FALSE])
+  t2g$TERM <- trimws(as.character(t2g$TERM))
+  t2g$GENE <- trimws(as.character(t2g$GENE))
+  t2g <- t2g[nzchar(t2g$TERM) & nzchar(t2g$GENE), , drop = FALSE]
+  t2n <- unique(background[, c("TERM", "NAME"), drop = FALSE])
+  t2n$TERM <- trimws(as.character(t2n$TERM))
+  t2n$NAME <- trimws(as.character(t2n$NAME))
+  t2n <- t2n[!duplicated(t2n$TERM) & nzchar(t2n$NAME), , drop = FALSE]
+
+  # MaxQuant protein groups can contain several identifiers separated by
+  # semicolons.  Enrichment must test each mapped identifier, rather than
+  # treating the entire protein-group string as a new, unmatched ID.
+  expand_ids <- function(x) {
+    ids <- unlist(strsplit(as.character(x), "[,;|]", perl = TRUE), use.names = FALSE)
+    ids <- trimws(ids)
+    ids <- sub("^CON__", "", ids)
+    unique(ids[!is.na(ids) & nzchar(ids)])
+  }
+
+  top_n <- max(1L, as.integer(top_n))
+  p_adjust_cutoff <- as.numeric(p_adjust_cutoff)
+  rows <- lapply(names(dep_results), function(comparison) {
+    result <- as.data.frame(dep_results[[comparison]], stringsAsFactors = FALSE)
+    id_col <- c("ID", "protein_id", "Protein", "Gene")[
+      c("ID", "protein_id", "Protein", "Gene") %in% names(result)
+    ][1L]
+    if (is.na(id_col) || !"regulation" %in% names(result)) return(NULL)
+    tested <- expand_ids(result[[id_col]])
+    if (!length(tested)) return(NULL)
+    first_label <- function(x, fallback) {
+      x <- unique(trimws(as.character(x)))
+      x <- x[!is.na(x) & nzchar(x)]
+      if (length(x)) x[[1L]] else fallback
+    }
+    labels <- c(
+      Upregulated = first_label(result$Group1 %||% character(), "Group 1"),
+      Downregulated = first_label(result$Group2 %||% character(), "Group 2")
+    )
+    lapply(names(labels), function(direction) {
+      genes <- expand_ids(
+        result[[id_col]][as.character(result$regulation) == direction]
+      )
+      if (!length(genes)) return(NULL)
+      enriched <- tryCatch(
+        clusterProfiler::enricher(
+          gene = genes,
+          universe = tested,
+          TERM2GENE = t2g,
+          TERM2NAME = t2n,
+          pAdjustMethod = "BH",
+          pvalueCutoff = 1,
+          qvalueCutoff = 1,
+          minGSSize = 1,
+          maxGSSize = Inf
+        ),
+        error = function(e) NULL
+      )
+      out <- tryCatch(as.data.frame(enriched@result), error = function(e) NULL)
+      if (is.null(out) || !nrow(out)) return(NULL)
+      out <- out[is.finite(out$p.adjust) & out$p.adjust <= p_adjust_cutoff, , drop = FALSE]
+      if (!nrow(out)) return(NULL)
+      out <- out[order(out$p.adjust, out$pvalue, -out$Count), , drop = FALSE]
+      out <- utils::head(out, top_n)
+      out$Comparison <- comparison
+      out$Cluster <- .protvis_dep_stage_label(labels[[direction]])
+      out$Direction <- direction
+      out$Direction_label <- paste0(labels[[direction]], " higher")
+      out
+    })
+  })
+  rows <- unlist(rows, recursive = FALSE)
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  if (!length(rows)) return(data.frame())
+  do.call(rbind, rows)
+}
+
+.protvis_directional_kegg_panel <- function(data, direction) {
+  df <- data[as.character(data$Direction) == direction, , drop = FALSE]
+  if (!nrow(df)) {
+    return(ggplot2::ggplot() + ggplot2::theme_void() +
+      ggplot2::annotate("text", x = 0, y = 0,
+                        label = paste("No significant", tolower(direction), "KEGG pathways.")))
+  }
+  x_levels <- unique(df$Cluster)
+  y_levels <- unique(df$Description[order(df$p.adjust, df$pvalue)])
+  df$Cluster <- factor(df$Cluster, levels = x_levels)
+  df$Description <- factor(df$Description, levels = rev(y_levels))
+  label <- unique(df$Direction_label)
+  title <- if (length(label) == 1L) {
+    paste(label, "– enriched")
+  } else {
+    paste(direction, "proteins – enriched")
+  }
+  ggplot2::ggplot(df, ggplot2::aes(
+    x = Cluster, y = Description, size = Count, fill = pvalue
+  )) +
+    ggplot2::geom_point(shape = 21, colour = "black", stroke = 0.45) +
+    ggplot2::scale_fill_gradient(low = "red", high = "blue", name = "p value") +
+    ggplot2::scale_size_continuous(range = c(3.5, 10.5), name = "Count") +
+    ggplot2::guides(
+      fill = ggplot2::guide_colorbar(order = 1, reverse = TRUE),
+      size = ggplot2::guide_legend(order = 2, override.aes = list(fill = "white"))
+    ) +
+    ggplot2::labs(title = title, x = NULL, y = NULL) +
+    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, colour = "black"),
+      axis.text.y = ggplot2::element_text(colour = "black"),
+      plot.title = ggplot2::element_text(hjust = 0.5, face = "italic"),
+      panel.grid.minor = ggplot2::element_blank()
+    )
+}
+
+.protvis_plot_directional_kegg <- function(data) {
+  patchwork::wrap_plots(
+    .protvis_directional_kegg_panel(data, "Upregulated"),
+    .protvis_directional_kegg_panel(data, "Downregulated"),
+    ncol = 2
+  ) + patchwork::plot_annotation(
+    title = "Directional KEGG enrichment across DEP comparisons",
+    subtitle = "Each direction uses the proteins tested in that comparison as its enrichment universe."
+  )
+}
+
 
 #' Enrichment Analysis Module UI
 #'
@@ -938,112 +1152,39 @@ enrichment_analysis_ui <- function(id) {
       ),
 
       bslib::nav_panel(
-        "Maize-teosinte reproduction",
-      bslib::card(
-        class = "pv-maize-kegg-repro-card",
-        bslib::card_header(
-          shiny::div(
-            class = "d-flex align-items-center justify-content-between flex-wrap gap-2",
-            shiny::div(
-              shiny::tags$strong("Figure 3C-D reproduction"),
-              shiny::tags$small(
-                "  Archived directional KEGG enrichment",
-                class = "text-muted ms-2"
-              )
+        "Directional KEGG",
+        bslib::card(
+          bslib::card_header("Directional KEGG enrichment across DEP comparisons"),
+          bslib::card_body(
+            shiny::tags$p(
+              "Run this after DEP. Upregulated and downregulated proteins are enriched separately for every comparison; the tested proteins from that comparison define the universe.",
+              class = "text-muted"
             ),
-            shiny::tags$span(
-              "Built-in verified data",
-              class = "badge rounded-pill text-bg-light border"
-            )
-          )
-        ),
-        bslib::card_body(
-          shiny::div(
-            class = "d-flex flex-wrap align-items-end gap-3",
-            style = paste0(
-              "padding: 14px 16px; margin-bottom: 14px;",
-              "border: 1px solid #dbe7ee; border-radius: 12px;",
-              "background: #f8fbfd;"
-            ),
-
-            shiny::div(
-              style = "flex: 1 1 300px; min-width: 260px;",
-              shiny::uiOutput(ns("maize_kegg_repro_status"))
-            ),
-
-            shiny::div(
-              style = "width: 150px;",
-              shiny::numericInput(
-                ns("maize_kegg_width"),
-                "PDF/PNG width",
-                value = 17,
-                min = 8,
-                max = 30,
-                width = "100%"
-              )
-            ),
-
-            shiny::div(
-              style = "width: 150px;",
-              shiny::numericInput(
-                ns("maize_kegg_height"),
-                "PDF/PNG height",
-                value = 8,
-                min = 4,
-                max = 20,
-                width = "100%"
-              )
-            ),
-
-            shiny::div(
-              class = "d-flex flex-wrap gap-2",
-              style = "margin-left: auto;",
-              shiny::downloadButton(
-                ns("download_maize_kegg_pdf"),
-                "PDF",
-                class = "btn btn-outline-secondary btn-sm"
+            bslib::layout_column_wrap(
+              width = 1 / 4,
+              shiny::actionButton(
+                ns("load_maize_teosinte_background"),
+                "LOAD BUILT-IN BACKGROUND",
+                class = "btn btn-outline-primary fw-bold"
               ),
-              shiny::downloadButton(
-                ns("download_maize_kegg_png"),
-                "PNG 600 dpi",
-                class = "btn btn-outline-secondary btn-sm"
-              ),
-              shiny::downloadButton(
-                ns("download_maize_kegg_data"),
-                "Source data",
-                class = "btn btn-outline-secondary btn-sm"
-              )
-            )
-          ),
-
-          shiny::tabsetPanel(
-            id = ns("maize_kegg_repro_tabs"),
-            type = "tabs",
-            shiny::tabPanel(
-              "Figure",
-              shiny::div(
-                style = paste0(
-                  "padding: 14px 10px 4px;",
-                  "min-height: 590px;",
-                  "overflow: visible;"
-                ),
-                shiny::plotOutput(
-                  ns("maize_kegg_reproduction_plot"),
-                  width = "100%",
-                  height = "570px"
-                )
+              shiny::numericInput(ns("directional_top_n"), "Top pathways per direction", 5, min = 1, max = 20),
+              shiny::numericInput(ns("directional_p_adjust"), "BH adjusted P-value cutoff", 0.05, min = 0, max = 1, step = 0.01),
+              shiny::actionButton(
+                ns("run_directional_kegg"), "RUN DIRECTIONAL KEGG",
+                class = "btn btn-primary fw-bold"
               )
             ),
-            shiny::tabPanel(
-              "Built-in data",
-              shiny::div(
-                style = "padding-top: 12px;",
-                DT::DTOutput(ns("maize_kegg_reproduction_table"))
-              )
+            shiny::textOutput(ns("directional_kegg_status")),
+            shiny::br(),
+            shiny::downloadButton(ns("download_directional_kegg_pdf"), "DOWNLOAD FIGURE (PDF)"),
+            shiny::downloadButton(ns("download_directional_kegg_data"), "DOWNLOAD RESULT TABLE (CSV)"),
+            shiny::br(), shiny::br(),
+            shiny::tabsetPanel(
+              shiny::tabPanel("Figure", shiny::plotOutput(ns("directional_kegg_plot"), height = "580px")),
+              shiny::tabPanel("Result table", DT::DTOutput(ns("directional_kegg_table")))
             )
           )
         )
-      )
       )
     )
   )
@@ -1051,7 +1192,8 @@ enrichment_analysis_ui <- function(id) {
 
 utils::globalVariables(c(
   "regulation", "V3", "Pathway_ID", "TERM", "GENE", "NAME",
-  "Panel", "Cluster_label", "Description", "Count", "pvalue"
+  "Panel", "Cluster_label", "Cluster", "Description", "Count", "pvalue",
+  "Direction"
 ))
 
 # Store the complete, validated enrichment workbook in the project object.
@@ -1115,113 +1257,60 @@ enrichment_analysis_server <- function(id, shared_state) {
       background_data = NULL,
       go_res = NULL,
       kegg_res = NULL,
+      directional_kegg = NULL,
+      directional_kegg_message = NULL,
       analysis_message = NULL,
       pasted_genelist = NULL
     )
 
-    maize_kegg_builtin <- shiny::reactive({
-      .protvis_maize_teosinte_kegg_data()
-    })
-
-    output$maize_kegg_repro_status <- shiny::renderUI({
-      df <- maize_kegg_builtin()
-      n_c <- sum(df$Panel == "C")
-      n_d <- sum(df$Panel == "D")
-      shiny::tags$div(
-        class = "d-flex align-items-center gap-2",
-        shiny::tags$span(
-          "✓",
-          style = paste0(
-            "display:inline-flex;align-items:center;justify-content:center;",
-            "width:26px;height:26px;border-radius:50%;",
-            "background:#e8f7ef;color:#198754;font-weight:700;"
+    set_background <- function(background, file_name, message) {
+      rv$background_data <- background
+      shared_state$pending_enrichment_background <- background
+      shared_state$pending_enrichment_background_name <- file_name
+      if (inherits(shared_state$dataset, "ProtVis_dataset")) {
+        saved <- tryCatch({
+          dataset <- .protvis_add_enrichment_background(
+            shared_state$dataset, background, file_name
           )
-        ),
-        shiny::tags$div(
-          shiny::tags$strong("Built-in data verified"),
-          shiny::tags$div(
-            paste0(
-              nrow(df), " enrichment points · Panel C ",
-              n_c, " · Panel D ", n_d
-            ),
-            class = "text-muted small"
-          )
-        )
-      )
-    })
-
-    output$maize_kegg_reproduction_plot <- shiny::renderPlot({
-      print(
-        plot_maize_teosinte_kegg_reproduction(
-          maize_kegg_builtin()
-        )
-      )
-    }, res = 120)
-
-    output$maize_kegg_reproduction_table <- DT::renderDT({
-      df <- maize_kegg_builtin()
-      DT::datatable(
-        df,
-        rownames = FALSE,
-        options = list(
-          pageLength = 29,
-          scrollX = TRUE,
-          ordering = TRUE
-        )
-      )
-    })
-
-    output$download_maize_kegg_pdf <- shiny::downloadHandler(
-      filename = function() {
-        paste0("maize_teosinte_KEGG_Figure3C_D_", Sys.Date(), ".pdf")
-      },
-      content = function(file) {
-        p <- plot_maize_teosinte_kegg_reproduction(
-          maize_kegg_builtin()
-        )
-        ggplot2::ggsave(
-          file,
-          plot = p,
-          device = "pdf",
-          width = input$maize_kegg_width %||% 17,
-          height = input$maize_kegg_height %||% 8,
-          units = "in"
+          if (!base::is.null(shared_state$workdir) &&
+              base::dir.exists(shared_state$workdir)) {
+            dataset <- protvis_auto_export_dataset(
+              dataset, directory = shared_state$workdir
+            )
+          }
+          .protvis_ui_sync_state(dataset, shared_state)
+          TRUE
+        }, error = function(e) {
+          rv$file_check_msg <- paste("❌ Background valid but could not be saved:", e$message)
+          FALSE
+        })
+        if (!saved) return(FALSE)
+        rv$file_check_msg <- paste0(message, " Saved to ProtVis_dataset.")
+      } else {
+        rv$file_check_msg <- paste0(
+          message,
+          " It will be added to ProtVis_dataset when Project init is completed."
         )
       }
-    )
+      TRUE
+    }
 
-    output$download_maize_kegg_png <- shiny::downloadHandler(
-      filename = function() {
-        paste0("maize_teosinte_KEGG_Figure3C_D_", Sys.Date(), ".png")
-      },
-      content = function(file) {
-        p <- plot_maize_teosinte_kegg_reproduction(
-          maize_kegg_builtin()
-        )
-        ggplot2::ggsave(
-          file,
-          plot = p,
-          device = "png",
-          width = input$maize_kegg_width %||% 17,
-          height = input$maize_kegg_height %||% 8,
-          units = "in",
-          dpi = 600
-        )
+    shiny::observeEvent(input$load_maize_teosinte_background, {
+      background <- tryCatch(
+        .protvis_load_builtin_enrichment_background(),
+        error = function(e) e
+      )
+      if (inherits(background, "error")) {
+        shiny::showNotification(conditionMessage(background), type = "error")
+        return()
       }
-    )
-
-    output$download_maize_kegg_data <- shiny::downloadHandler(
-      filename = function() {
-        "maize_teosinte_KEGG_Figure3C_D_source_data.csv"
-      },
-      content = function(file) {
-        utils::write.csv(
-          maize_kegg_builtin(),
-          file,
-          row.names = FALSE
-        )
-      }
-    )
+      set_background(
+        background,
+        "maize_teosinte_background.tsv.xz",
+        "✅ Built-in maize-teosinte GO/KEGG background loaded."
+      )
+      shiny::showNotification("Maize-teosinte enrichment background loaded.", type = "message")
+    }, ignoreInit = TRUE)
 
     get_result_df <- function(enrich_obj) {
       if (base::is.null(enrich_obj)) {
@@ -1275,8 +1364,13 @@ enrichment_analysis_server <- function(id, shared_state) {
 
       # ProtVis_dataset is the canonical source for saved analyses.
       if (base::is.null(dep_obj) && inherits(shared_state$dataset, "ProtVis_dataset")) {
+        stored_dep <- shared_state$dataset@analysis_results$DEP
+        if (base::is.list(stored_dep) && base::is.list(stored_dep$results)) {
+          dep_obj <- normalize_dep_results(stored_dep$results)
+          if (!base::is.null(dep_obj)) source_label <- "ProtVis_dataset DEP"
+        }
         stored <- shared_state$dataset@analysis_results$differential_analysis
-        if (base::is.list(stored) && base::is.list(stored$comparisons)) {
+        if (base::is.null(dep_obj) && base::is.list(stored) && base::is.list(stored$comparisons)) {
           dep_obj <- normalize_dep_results(stored$comparisons)
           if (!base::is.null(dep_obj)) source_label <- "ProtVis_dataset"
         }
@@ -1345,7 +1439,7 @@ enrichment_analysis_server <- function(id, shared_state) {
         shiny::showNotification(
           paste0(
             "No DEP results are available for the standard enrichment workflow. ",
-            "You can upload a genelist, or use the independent Maize-teosinte reproduction tab."
+            "Run DEP first, or upload a gene list for an independent analysis."
           ),
           type = "message"
         )
@@ -1577,90 +1671,20 @@ enrichment_analysis_server <- function(id, shared_state) {
 
       file <- input$enrichment_analysis_file$datapath
 
-      sheets <- tryCatch(
-        readxl::excel_sheets(file),
-        error = function(e) NULL
+      background <- tryCatch(
+        .protvis_read_enrichment_background(file),
+        error = function(e) e
       )
-
-      if (base::is.null(sheets)) {
-        rv$file_check_msg <- "❌ Failed to read the Excel file."
+      if (inherits(background, "error")) {
+        rv$file_check_msg <- paste("❌", conditionMessage(background))
         rv$background_data <- NULL
         return()
       }
-
-      required_sheets <- c("GO_background", "KEGG_background")
-      if (!base::all(required_sheets %in% sheets)) {
-        rv$file_check_msg <- "❌ Missing required sheets: GO_background and/or KEGG_background."
-        rv$background_data <- NULL
-        return()
-      }
-
-      GO_background <- tryCatch(
-        readxl::read_excel(file, sheet = "GO_background"),
-        error = function(e) NULL
+      set_background(
+        background,
+        input$enrichment_analysis_file$name,
+        "✅ Background file valid."
       )
-      KEGG_background <- tryCatch(
-        readxl::read_excel(file, sheet = "KEGG_background"),
-        error = function(e) NULL
-      )
-
-      if (base::is.null(GO_background) || base::is.null(KEGG_background)) {
-        rv$file_check_msg <- "❌ Failed to read GO_background or KEGG_background."
-        rv$background_data <- NULL
-        return()
-      }
-
-      GO_background <- base::as.data.frame(GO_background, stringsAsFactors = FALSE)
-      KEGG_background <- base::as.data.frame(KEGG_background, stringsAsFactors = FALSE)
-
-      if (!base::all(c("TERM", "GENE", "NAME") %in% base::colnames(GO_background))) {
-        rv$file_check_msg <- "❌ GO_background must contain TERM, GENE, and NAME columns."
-        rv$background_data <- NULL
-        return()
-      }
-
-      if (!base::all(c("TERM", "GENE", "NAME") %in% base::colnames(KEGG_background))) {
-        rv$file_check_msg <- "❌ KEGG_background must contain TERM, GENE, and NAME columns."
-        rv$background_data <- NULL
-        return()
-      }
-
-      rv$background_data <- base::list(
-        GO_background = GO_background,
-        KEGG_background = KEGG_background
-      )
-
-      # Preserve a complete copy of both validated worksheets in the active
-      # ProtVis_dataset.  If the workbook is selected before Project init, it
-      # is retained and attached as soon as the project object is created.
-      shared_state$pending_enrichment_background <- rv$background_data
-      shared_state$pending_enrichment_background_name <- input$enrichment_analysis_file$name
-      if (inherits(shared_state$dataset, "ProtVis_dataset")) {
-        saved <- tryCatch({
-          dataset <- .protvis_add_enrichment_background(
-            shared_state$dataset,
-            rv$background_data,
-            input$enrichment_analysis_file$name
-          )
-          if (!base::is.null(shared_state$workdir) &&
-              base::dir.exists(shared_state$workdir)) {
-            dataset <- protvis_auto_export_dataset(
-              dataset, directory = shared_state$workdir
-            )
-          }
-          .protvis_ui_sync_state(dataset, shared_state)
-          TRUE
-        }, error = function(e) {
-          rv$file_check_msg <- paste("❌ Background valid but could not be saved:", e$message)
-          FALSE
-        })
-        if (!saved) return()
-        rv$file_check_msg <- "✅ Background file valid and saved to ProtVis_dataset."
-      } else {
-        rv$file_check_msg <- paste(
-          "✅ Background file valid. It will be added to ProtVis_dataset when Project init is completed."
-        )
-      }
     })
 
     output$file_check_result <- shiny::renderText({
@@ -1804,6 +1828,105 @@ enrichment_analysis_server <- function(id, shared_state) {
     output$analysis_message <- shiny::renderText({
       rv$analysis_message %||% ""
     })
+
+    shiny::observeEvent(input$run_directional_kegg, {
+      if (base::is.null(rv$background_data)) {
+        rv$directional_kegg <- NULL
+        rv$directional_kegg_message <- "Load or validate a background workbook first."
+        shiny::showNotification(rv$directional_kegg_message, type = "error")
+        return()
+      }
+
+      dep_obj <- normalize_dep_results(shared_state$dep_results)
+      if (base::is.null(dep_obj) && base::length(rv$dep_results) > 0L) {
+        dep_obj <- rv$dep_results
+      }
+      if (base::is.null(dep_obj) && inherits(shared_state$dataset, "ProtVis_dataset")) {
+        stored_dep <- shared_state$dataset@analysis_results$DEP
+        if (base::is.list(stored_dep) && base::is.list(stored_dep$results)) {
+          dep_obj <- normalize_dep_results(stored_dep$results)
+        }
+      }
+      if (base::is.null(dep_obj)) {
+        rv$directional_kegg <- NULL
+        rv$directional_kegg_message <- "Run DEP first, then open this panel."
+        shiny::showNotification(rv$directional_kegg_message, type = "error")
+        return()
+      }
+
+      result <- tryCatch(
+        .protvis_directional_kegg_data(
+          dep_obj,
+          rv$background_data$KEGG_background,
+          top_n = input$directional_top_n,
+          p_adjust_cutoff = input$directional_p_adjust
+        ),
+        error = function(e) e
+      )
+      if (inherits(result, "error")) {
+        rv$directional_kegg <- NULL
+        rv$directional_kegg_message <- conditionMessage(result)
+        shiny::showNotification(rv$directional_kegg_message, type = "error")
+        return()
+      }
+      rv$directional_kegg <- result
+      if (!nrow(result)) {
+        rv$directional_kegg_message <- paste0(
+          "No directional KEGG pathways passed BH ≤ ", input$directional_p_adjust,
+          ". The comparison-specific tested protein universes were still applied."
+        )
+      } else {
+        rv$directional_kegg_message <- paste0(
+          "Directional KEGG completed: ", nrow(result),
+          " pathways retained across ", length(unique(result$Comparison)),
+          " DEP comparisons."
+        )
+      }
+    }, ignoreInit = TRUE)
+
+    output$directional_kegg_status <- shiny::renderText({
+      rv$directional_kegg_message %||%
+        "Load the built-in background, then run this after DEP."
+    })
+
+    output$directional_kegg_plot <- shiny::renderPlot({
+      data <- rv$directional_kegg
+      if (base::is.null(data) || !nrow(data)) {
+        plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
+        text(0, 0, rv$directional_kegg_message %||% "No directional KEGG result available.")
+        return(invisible(NULL))
+      }
+      print(.protvis_plot_directional_kegg(data))
+    })
+
+    output$directional_kegg_table <- DT::renderDT({
+      data <- rv$directional_kegg
+      if (base::is.null(data) || !nrow(data)) {
+        return(DT::datatable(
+          base::data.frame(Message = rv$directional_kegg_message %||% "No result available."),
+          options = base::list(dom = "t"), rownames = FALSE
+        ))
+      }
+      DT::datatable(data, options = base::list(pageLength = 15, scrollX = TRUE), rownames = FALSE)
+    })
+
+    output$download_directional_kegg_pdf <- shiny::downloadHandler(
+      filename = function() paste0("directional_KEGG_", Sys.Date(), ".pdf"),
+      content = function(file) {
+        shiny::req(rv$directional_kegg)
+        grDevices::pdf(file, width = 14, height = 7)
+        print(.protvis_plot_directional_kegg(rv$directional_kegg))
+        grDevices::dev.off()
+      }
+    )
+
+    output$download_directional_kegg_data <- shiny::downloadHandler(
+      filename = function() paste0("directional_KEGG_", Sys.Date(), ".csv"),
+      content = function(file) {
+        shiny::req(rv$directional_kegg)
+        utils::write.csv(rv$directional_kegg, file, row.names = FALSE)
+      }
+    )
 
     output$go_plot <- shiny::renderPlot({
       go_df <- get_result_df(rv$go_res)
