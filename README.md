@@ -1,7 +1,7 @@
 # ProtVis
 
 [![](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
-[![](https://img.shields.io/badge/GitHub-ProtVis-blue.svg)](https://github.com/xuebinzhang-lab/ProtVis)
+[![](https://img.shields.io/badge/GitHub-ProtVis-blue.svg)](https://github.com/anhuikylin/ProtVis)
 [![](https://img.shields.io/badge/R-Shiny-orange.svg)](https://github.com/xuebinzhang-lab/ProtVis)
 [![](https://img.shields.io/badge/platform-all-brightgreen.svg)](https://github.com/xuebinzhang-lab/ProtVis)
 [![](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/xuebinzhang-lab/ProtVis/blob/dev/LICENSE)
@@ -28,7 +28,7 @@ The application is designed for researchers who need publication-ready visual su
 -   **PSM Explorer** for Protein → Peptide → PSM → MS/MS inspection with mzIdentML/MGF loading, searchable PSM selection, PTM-aware theoretical fragments, matched b/y ions, and exportable annotated spectra.
 -   **Headless/CLI mode** via `ProtVis::run_protvis_cli()` or the installed `exec/protvis` script, using the same import, Sage, processing, checkpoint, provenance, and export backend as Shiny.
 -   **MaxQuant output preparation** as the first item in **Pre-processing** for MaxQuant-specific filtering and matrix handoff; other sources use their own parser-backed import path.
--   **Protein-level downstream analysis** including the preserved DEP workflow plus limma/DEqMS/proDA/MSstats comparison. Each completed statistical engine keeps its own result table, volcano plot, significant-protein heatmap, and DEP-count plot, followed by enrichment analysis, GSEA, KEGG/pathway visualization, PPI, WGCNA, co-enrichment, Venn analysis, and expression profiling.
+-   **Protein-level downstream analysis** including Recommended DEP plus limma/DEqMS/proDA/MSstats comparison. Recommended DEP keeps two parallel evidence streams: quantitative differential abundance for proteins reliably detected in both groups, and a separate presence/absence candidate set for proteins detected in only one group. Each stream has matched result tables and count visualizations, while the archived reproduction workflow remains available for historical comparison. Completed engines retain their own tables, volcano plots, significant-protein heatmaps, and count plots, followed by enrichment analysis, GSEA, KEGG/pathway visualization, PPI, WGCNA, co-enrichment, Venn analysis, and expression profiling.
 -   **Metaproteomics workflow** that can start from the active `ProtVis_dataset` or uploaded protein abundance, sample metadata, taxonomy, function, and optional peptide tables. Taxonomic ranks and functional categories are detected dynamically.
 -   **Metaproteomics architecture inspired by conduitR + QFeatures + pepFunk**, with `metaprotr`-style taxonomy visualization and conventional metaproteomics summaries added at the presentation/analysis layer. These packages provide design references; ProtVis keeps its own unified `ProtVis_dataset` state model.
 -   **Protein-, taxonomy-, function-, taxon × function-, and peptide-centric interpretation** with abundance composition, rank plots, group differential tables, Sankey/heatmap views, and weighted peptide-to-function summaries. Each run is appended under `analysis_results$metaproteomics$runs` without changing the active protein matrix.
@@ -45,7 +45,7 @@ ProtVis supports the following data-source options from **Project init → Selec
 
 | Data source | Expected input | Notes |
 |---|---|---|
-| Raw | Generic expression matrix | Use when data are already organized as `ID + sample intensity columns`. |
+| Raw | Validated mzML files plus a protein FASTA | Use **Search** to run Sage or FragPipe, then continue with the generated protein matrix. |
 | MaxQuant | MaxQuant protein group/expression output | Includes MaxQuant-specific unreliable peptide filtering. |
 | DIA-NN | DIA-NN report files | Supports long Protein.Group/Run/quantity reports and wide matrices. |
 | Spectronaut | Spectronaut report files | Supports PG.ProteinGroups and quantity/intensity columns. |
@@ -104,8 +104,8 @@ versions, logs, and parsed search results for reproducibility.
 For a Sage-only project, register the built-in or uploaded sample information,
 the FASTA, and the validated mzML directory, then click **Project init**. ProtVis
 first saves a `Sage_staging` `ProtVis_dataset` containing the sample metadata and
-input-file registration, without inventing an expression matrix. Open the
-top-level **Sage search** tab to continue. ProtVis uses the registered FASTA and
+input-file registration, without inventing an expression matrix. Open
+**Search → Sage** to continue. ProtVis uses the registered FASTA and
 validated mzML directory, shows the resolved paths and bundled Sage executable,
 and exposes the standard Sage parameters.
 Click **Run Sage Search** to generate `sage_config.json`, `results.sage.tsv`,
@@ -270,8 +270,17 @@ an R library directory. For a first installation, use:
 ``` r
 options(repos = c(CRAN = "https://mirrors.tuna.tsinghua.edu.cn/CRAN/"))
 install.packages("pak")
-pak::pak("xuebinzhang-lab/ProtVis@dev")
+
+# Current development repository
+pak::pak("anhuikylin/ProtVis@dev")
+
+# Alternative maintained repository
+# pak::pak("xuebinzhang-lab/ProtVis@dev")
 ```
+
+Both repositories can be installed. Use `anhuikylin/ProtVis@dev` to receive
+the current development updates. The `xuebinzhang-lab/ProtVis@dev` repository
+remains available as an alternative installation source.
 
 When updating an existing installation, especially after an interrupted copy
 or installation, start a fresh R session and run the repository's clean
@@ -280,9 +289,12 @@ lock before reinstalling:
 
 ``` r
 source(
-  "https://raw.githubusercontent.com/xuebinzhang-lab/ProtVis/dev/install_ProtVis.R"
+  "https://raw.githubusercontent.com/anhuikylin/ProtVis/dev/install_ProtVis.R"
 )
 ```
+
+To reinstall from the alternative repository, replace `anhuikylin` in the URL
+above with `xuebinzhang-lab`.
 
 ### Optional WGCNA helper
 
