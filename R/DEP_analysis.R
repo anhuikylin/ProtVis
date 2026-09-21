@@ -960,37 +960,17 @@ DEP_analysis_ui <- function(id) {
 
   ggplot2::ggplot(
     counts,
-    ggplot2::aes(x = Direction, y = Protein_number, fill = Direction)
+    ggplot2::aes(x = "", y = Protein_number, fill = Direction)
   ) +
-    ggplot2::geom_col(
-      colour = "black", linewidth = 0.3, width = 0.68
-    ) +
-    ggplot2::geom_text(
-      ggplot2::aes(label = Protein_number),
-      vjust = -0.45,
-      colour = "#243447",
-      fontface = "bold",
-      size = 4
-    ) +
+    ggplot2::geom_col(colour = "black", linewidth = 0.3) +
     ggplot2::coord_flip() +
     ggplot2::scale_fill_manual(values = colours, drop = FALSE) +
-    ggplot2::expand_limits(
-      y = max(c(counts$Protein_number, 1L)) * 1.15
-    ) +
     ggplot2::theme_bw() +
     ggplot2::labs(
       x = NULL,
       y = "Protein number",
       fill = NULL,
-      title = title,
-      subtitle = "Proteins detected in one group and absent from the other"
-    ) +
-    ggplot2::theme(
-      plot.title = ggplot2::element_text(face = "bold", hjust = 0.5),
-      plot.subtitle = ggplot2::element_text(
-        hjust = 0.5, colour = "#6c757d"
-      ),
-      legend.position = "none"
+      title = title
     )
 }
 
@@ -2193,7 +2173,7 @@ DEP_analysis_server <- function(id, shared_state) {
               height = "560px",
               bslib::card_header(
                 paste(
-                  "Evidence 2 · Count overview -",
+                  "Evidence 2 · Presence/absence count -",
                   g1, "vs", g2
                 )
               ),
@@ -2219,7 +2199,7 @@ DEP_analysis_server <- function(id, shared_state) {
                     ),
                     shiny::downloadButton(
                       ns(presence_count_download_id),
-                      "DOWNLOAD EVIDENCE 2 COUNT"
+                      "DOWNLOAD PRESENCE/ABSENCE COUNT"
                     )
                   ),
                   shiny::plotOutput(
