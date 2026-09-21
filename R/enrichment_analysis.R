@@ -1449,10 +1449,32 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 }
 
 
+.protvis_directional_plot_colour <- function(
+    value, fallback) {
+  value <- as.character(value %||% "")
+  if (length(value) != 1L || !nzchar(value)) {
+    return(fallback)
+  }
+  ok <- tryCatch({
+    grDevices::col2rgb(value)
+    TRUE
+  }, error = function(e) FALSE)
+  if (isTRUE(ok)) value else fallback
+}
+
+
 .protvis_directional_kegg_panel <- function(
     data, direction,
     show_legend = TRUE,
-    top_n = NULL) {
+    top_n = NULL,
+    colour_low = "#2C7FB8",
+    colour_high = "#F7FBFF") {
+  colour_low <- .protvis_directional_plot_colour(
+    colour_low, "#2C7FB8"
+  )
+  colour_high <- .protvis_directional_plot_colour(
+    colour_high, "#F7FBFF"
+  )
   method <- attr(data, "analysis_method") %||% "standard_ora"
 
   if (method %in% c("figure3_archive", "archived_comparecluster")) {
@@ -1489,6 +1511,11 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       color = "pvalue",
       label_format = 100
     ) +
+      ggplot2::scale_colour_gradient(
+        low = colour_low,
+        high = colour_high,
+        name = "pvalue"
+      ) +
       ggplot2::labs(
         title = .protvis_directional_archived_title(
           data,
@@ -1599,8 +1626,8 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       alpha = 0.95
     ) +
     ggplot2::scale_fill_gradient(
-      low = "#0B79B7",
-      high = "#D8EEF8",
+      low = colour_low,
+      high = colour_high,
       name = "BH-adjusted P"
     ) +
     ggplot2::scale_size_continuous(
@@ -1658,7 +1685,9 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 
 
 .protvis_plot_directional_kegg <- function(
-    data, ncol = 2L, top_n = NULL) {
+    data, ncol = 2L, top_n = NULL,
+    colour_low = "#2C7FB8",
+    colour_high = "#F7FBFF") {
   method <- attr(data, "analysis_method") %||% "standard_ora"
 
   if (method %in% c("figure3_archive", "archived_comparecluster")) {
@@ -1667,12 +1696,16 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
         .protvis_directional_kegg_panel(
           data,
           "Upregulated",
-          top_n = top_n
+          top_n = top_n,
+          colour_low = colour_low,
+          colour_high = colour_high
         ),
         .protvis_directional_kegg_panel(
           data,
           "Downregulated",
-          top_n = top_n
+          top_n = top_n,
+          colour_low = colour_low,
+          colour_high = colour_high
         ),
         ncol = ncol,
         widths = c(1.05, 0.95)
@@ -1698,11 +1731,15 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
   plot <- patchwork::wrap_plots(
     .protvis_directional_kegg_panel(
       data,
-      "Upregulated"
+      "Upregulated",
+      colour_low = colour_low,
+      colour_high = colour_high
     ),
     .protvis_directional_kegg_panel(
       data,
-      "Downregulated"
+      "Downregulated",
+      colour_low = colour_low,
+      colour_high = colour_high
     ),
     ncol = ncol
   ) +
@@ -2209,6 +2246,35 @@ enrichment_analysis_ui <- function(id) {
               grid-template-columns: 1fr;
               gap: 2px;
             }
+            .protvis-directional-kegg .directional-colour-block {
+              margin-top: 8px;
+              padding-top: 10px;
+              border-top: 1px solid #E7EEF4;
+            }
+            .protvis-directional-kegg .directional-colour-title {
+              font-size: 0.78rem;
+              font-weight: 700;
+              color: #24384D;
+              margin-bottom: 6px;
+            }
+            .protvis-directional-kegg .directional-colour-controls {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 8px;
+              align-items: end;
+            }
+            .protvis-directional-kegg .directional-colour-controls .form-group {
+              margin-bottom: 4px;
+            }
+            .protvis-directional-kegg .directional-colour-controls label {
+              font-size: 0.74rem;
+              color: var(--pv-muted);
+              margin-bottom: 3px;
+            }
+            .protvis-directional-kegg .directional-colour-reset {
+              width: 100%;
+              margin-top: 4px;
+            }
             .protvis-directional-kegg .directional-run-button {
               width: 100%;
               min-height: 42px;
@@ -2477,12 +2543,45 @@ enrichment_analysis_ui <- function(id) {
                       condition = paste0(
                         "input['",
                         ns("directional_method"),
-                        "'] == 'archived_comparecluster'"
+                        "'] == 'figure3_archive'"
                       ),
                       shiny::div(
                         class = "directional-fixed-settings",
                         shiny::tags$small(
-                          "Fixed to the archived code: original DEP lists; pvalueCutoff = 0.05; qvalueCutoff = 1; raw pvalue colour; bundled Enrichmentdb2."
+                          "Fixed to the archived code: original DEP lists; pvalueCutoff = 0.05; qvalueCutoff = 1; raw pvalue statistic; bundled Enrichmentdb2."
+                        )
+                      )
+                    ),
+                    shiny::div(
+                      class = "directional-colour-block",
+                      shiny::div(
+                        "Colour gradient",
+                        class = "directional-colour-title"
+                      ),
+                      shiny::div(
+                        class = "directional-colour-controls",
+                        colourpicker::colourInput(
+                          ns("directional_colour_low"),
+                          "Low value",
+                          value = "#2C7FB8",
+                          showColour = "background",
+                          allowTransparent = FALSE
+                        ),
+                        colourpicker::colourInput(
+                          ns("directional_colour_high"),
+                          "High value",
+                          value = "#F7FBFF",
+                          showColour = "background",
+                          allowTransparent = FALSE
+                        )
+                      ),
+                      shiny::actionButton(
+                        ns("reset_directional_colours"),
+                        "RESET BLUE",
+                        icon = shiny::icon("rotate-left"),
+                        class = paste(
+                          "btn-outline-secondary btn-sm",
+                          "directional-colour-reset"
                         )
                       )
                     ),
@@ -3082,6 +3181,19 @@ enrichment_analysis_server <- function(id, shared_state) {
       }
     }, ignoreInit = TRUE)
 
+    shiny::observeEvent(input$reset_directional_colours, {
+      colourpicker::updateColourInput(
+        session,
+        "directional_colour_low",
+        value = "#2C7FB8"
+      )
+      colourpicker::updateColourInput(
+        session,
+        "directional_colour_high",
+        value = "#F7FBFF"
+      )
+    }, ignoreInit = TRUE)
+
     shiny::observeEvent(input$directional_select_all, {
       choices <- directional_available_comparisons()
       shiny::updateCheckboxGroupInput(
@@ -3656,7 +3768,11 @@ enrichment_analysis_server <- function(id, shared_state) {
       .protvis_directional_kegg_panel(
         data,
         direction,
-        top_n = input$directional_top_n %||% 10L
+        top_n = input$directional_top_n %||% 10L,
+        colour_low =
+          input$directional_colour_low %||% "#2C7FB8",
+        colour_high =
+          input$directional_colour_high %||% "#F7FBFF"
       )
     }
 
@@ -3689,7 +3805,11 @@ enrichment_analysis_server <- function(id, shared_state) {
       print(
         .protvis_plot_directional_kegg(
           data,
-          top_n = input$directional_top_n %||% 10L
+          top_n = input$directional_top_n %||% 10L,
+          colour_low =
+            input$directional_colour_low %||% "#2C7FB8",
+          colour_high =
+            input$directional_colour_high %||% "#F7FBFF"
         )
       )
     }, res = 96)
@@ -3712,7 +3832,11 @@ enrichment_analysis_server <- function(id, shared_state) {
         grDevices::pdf(file, width = 14, height = 7)
         print(.protvis_plot_directional_kegg(
           rv$directional_kegg,
-          top_n = input$directional_top_n %||% 10L
+          top_n = input$directional_top_n %||% 10L,
+          colour_low =
+            input$directional_colour_low %||% "#2C7FB8",
+          colour_high =
+            input$directional_colour_high %||% "#F7FBFF"
         ))
         grDevices::dev.off()
       }
@@ -3725,7 +3849,11 @@ enrichment_analysis_server <- function(id, shared_state) {
         grDevices::svg(file, width = 14, height = 7, onefile = TRUE)
         print(.protvis_plot_directional_kegg(
           rv$directional_kegg,
-          top_n = input$directional_top_n %||% 10L
+          top_n = input$directional_top_n %||% 10L,
+          colour_low =
+            input$directional_colour_low %||% "#2C7FB8",
+          colour_high =
+            input$directional_colour_high %||% "#F7FBFF"
         ))
         grDevices::dev.off()
       }

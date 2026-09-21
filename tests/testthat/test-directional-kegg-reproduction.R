@@ -287,3 +287,28 @@ test_that("exact Figure 3 archive reproduces the historical KEGG pathway sets", 
     ))
   )
 })
+
+
+test_that("directional color controls default to blue without changing the statistic", {
+  expect_identical(
+    ProtVis:::.protvis_directional_plot_colour(
+      "#2C7FB8", "#000000"
+    ),
+    "#2C7FB8"
+  )
+  expect_identical(
+    ProtVis:::.protvis_directional_plot_colour(
+      "not-a-colour", "#F7FBFF"
+    ),
+    "#F7FBFF"
+  )
+
+  source <- paste(
+    deparse(ProtVis:::.protvis_directional_kegg_panel),
+    collapse = "\n"
+  )
+  expect_match(source, 'color = "pvalue"', fixed = TRUE)
+  expect_match(source, 'name = "pvalue"', fixed = TRUE)
+  expect_match(source, 'fill = p.adjust', fixed = TRUE)
+  expect_match(source, 'name = "BH-adjusted P"', fixed = TRUE)
+})
