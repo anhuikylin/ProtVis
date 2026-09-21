@@ -478,17 +478,43 @@
   structural
 }
 
-.protvis_pw_external_links <- function(accession) {
+.protvis_pw_primary_gene <- function(entry) {
+  genes <- entry$genes %||% base::list()
+  if (!base::length(genes)) return("")
+  primary <- genes[[1]]$geneName$value %||% ""
+  base::as.character(primary[[1]] %||% "")
+}
+
+.protvis_pw_is_maize <- function(entry) {
+  organism <- base::as.character(entry$organism$scientificName %||% "")
+  base::grepl("^Zea mays\\b", organism, ignore.case = TRUE)
+}
+
+.protvis_pw_external_links <- function(accession, entry = NULL, query = NULL) {
   if (base::is.null(accession) || !base::nzchar(accession)) return(base::list())
   id <- utils::URLencode(accession, reserved = TRUE)
-  base::list(
+  gene_id <- .protvis_pw_primary_gene(entry)
+  search_id <- base::trimws(query %||% "")
+  if (!base::nzchar(search_id)) search_id <- gene_id
+  if (!base::nzchar(search_id)) search_id <- accession
+  search_id <- utils::URLencode(search_id, reserved = TRUE)
+
+  links <- base::list(
     UniProt = base::paste0("https://www.uniprot.org/uniprotkb/", id, "/entry"),
     InterPro = base::paste0("https://www.ebi.ac.uk/interpro/protein/UniProt/", id, "/"),
     AlphaFold_DB = base::paste0("https://alphafold.ebi.ac.uk/entry/", id),
     SWISS_MODEL_Repository = base::paste0("https://swissmodel.expasy.org/repository/uniprot/", id),
     STRING = base::paste0("https://string-db.org/network/", id),
-    PDBe_KB = base::paste0("https://www.ebi.ac.uk/pdbe/pdbe-kb/proteins/", id)
+    PDBe_KB = base::paste0("https://www.ebi.ac.uk/pdbe/pdbe-kb/proteins/", id),
+    Ensembl = base::paste0("https://www.ensembl.org/Multi/Search/Results?q=", search_id),
+    NCBI_Gene = base::paste0("https://www.ncbi.nlm.nih.gov/gene/?term=", search_id),
+    KEGG_Genes = base::paste0("https://www.kegg.jp/dbget-bin/www_bfind?dbkey=genes&keywords=", search_id),
+    Plant_Reactome = base::paste0("https://plantreactome.gramene.org/PathwayBrowser/#/search?query=", search_id)
   )
+  if (.protvis_pw_is_maize(entry)) {
+    links$MaizeGDB <- base::paste0("https://www.maizegdb.org/gene_center/gene/", search_id)
+  }
+  links
 }
 
 .protvis_pw_model_view <- function(pdb_text) {
@@ -979,14 +1005,19 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       if (!base::nzchar(accession)) {
         return(shiny::div(class = "pw-note", "Resolve a UniProt accession to enable linked protein resources."))
       }
-      links <- .protvis_pw_external_links(accession)
+      links <- .protvis_pw_external_links(accession, entry = rv$entry, query = input$query)
       descriptions <- c(
         UniProt = "Curated sequence and functional annotation",
         InterPro = "Domains, families and signatures",
         AlphaFold_DB = "Predicted protein structures and confidence",
         SWISS_MODEL_Repository = "Homology models and experimental structure links",
         STRING = "Protein association network",
-        PDBe_KB = "Experimental structural knowledge"
+        PDBe_KB = "Experimental structural knowledge",
+        Ensembl = "Genome-linked gene and comparative annotation",
+        NCBI_Gene = "NCBI gene record and linked reference resources",
+        KEGG_Genes = "Pathway, orthology and gene annotation search",
+        Plant_Reactome = "Plant pathway and reaction annotation",
+        MaizeGDB = "Maize genome, gene and community annotation"
       )
       shiny::div(
         class = "pw-resource-grid",
