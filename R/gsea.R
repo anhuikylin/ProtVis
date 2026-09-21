@@ -386,89 +386,122 @@ gsea_ui <- function(id) {
           ),
 
           shiny::selectInput(
-            ns("archive_rank_metric"),
-            "Ranking metric",
+            ns("archive_reproduction_source"),
+            "Root_VE reproduction source",
             choices = c(
-              "Moderated t statistic (script default)" = "t",
-              "log2 fold change" = "logFC",
-              "Signed -log10(P-value)" = "signed_log10_p"
+              "Exact supplied figure (historical Root_VE)" =
+                "figure_archive",
+              "Recalculate from loaded DEP result" =
+                "previous_dep"
             ),
-            selected = "t"
+            selected = "figure_archive"
           ),
 
-          shiny::radioButtons(
-            ns("archive_filter_mode"),
-            "Protein inclusion",
-            choices = c(
-              "All tested proteins (GSEA default)" = "all",
-              "Custom thresholds" = "custom"
-            ),
-            selected = "all"
-          ),
-
-          shiny::tags$details(
-            class = "pv-gsea-advanced",
-
-            shiny::tags$summary(
-              shiny::tagList(
-                shiny::icon("sliders"),
-                " Advanced settings"
-              )
-            ),
-
+          shiny::conditionalPanel(
+            condition =
+              "input.archive_reproduction_source === 'figure_archive'",
+            ns = ns,
             shiny::div(
-              class = "pv-gsea-advanced-body",
+              class = "alert alert-success py-2 small",
+              shiny::tags$b("Exact figure target"),
+              shiny::tags$br(),
+              "Root_VE uses the frozen historical full retained-protein ",
+              "ranking that matches the supplied panel: 11,049 ranked ",
+              "proteins, 196 map00940 hits, historical B73−Y12 log2FC ",
+              "metric, weighted GSEA p = 1. Other selected comparisons ",
+              "can still be recalculated from the loaded DEP results."
+            )
+          ),
 
-              shiny::conditionalPanel(
-                condition =
-                  "input.archive_filter_mode === 'custom'",
-                ns = ns,
+          shiny::conditionalPanel(
+            condition =
+              "input.archive_reproduction_source === 'previous_dep'",
+            ns = ns,
 
-                shiny::selectInput(
-                  ns("archive_p_metric"),
-                  "P-value filter",
-                  choices = c(
-                    "None" = "none",
-                    "Raw P-value" = "P.Value",
-                    "BH-adjusted P-value" = "adj.P.Val"
-                  ),
-                  selected = "none"
-                ),
+            shiny::selectInput(
+              ns("archive_rank_metric"),
+              "Ranking metric",
+              choices = c(
+                "Moderated t statistic (script method)" = "t",
+                "log2 fold change" = "logFC",
+                "Signed -log10(P-value)" = "signed_log10_p"
+              ),
+              selected = "t"
+            ),
 
-                shiny::numericInput(
-                  ns("archive_p_cutoff"),
-                  "P-value cutoff",
-                  value = 0.05,
-                  min = 0,
-                  max = 1,
-                  step = 0.01
-                ),
+            shiny::radioButtons(
+              ns("archive_filter_mode"),
+              "Protein inclusion",
+              choices = c(
+                "All tested proteins (GSEA default)" = "all",
+                "Custom thresholds" = "custom"
+              ),
+              selected = "all"
+            ),
 
-                shiny::numericInput(
-                  ns("archive_abs_logfc"),
-                  "Minimum |log2FC|",
-                  value = 0,
-                  min = 0,
-                  step = 0.1
+            shiny::tags$details(
+              class = "pv-gsea-advanced",
+
+              shiny::tags$summary(
+                shiny::tagList(
+                  shiny::icon("sliders"),
+                  " Advanced settings"
                 )
               ),
 
-              shiny::numericInput(
-                ns("archive_seed"),
-                "Random seed",
-                value = 20260920,
-                min = 1,
-                max = .Machine$integer.max,
-                step = 1
-              ),
-
               shiny::div(
-                class = "small text-muted",
-                "Figure defaults: moderated t · all tested proteins · ",
-                "weighted GSEA p = 1 · minSize = 5 · maxSize = 500 · ",
-                "eps = 0."
+                class = "pv-gsea-advanced-body",
+
+                shiny::conditionalPanel(
+                  condition =
+                    "input.archive_filter_mode === 'custom'",
+                  ns = ns,
+
+                  shiny::selectInput(
+                    ns("archive_p_metric"),
+                    "P-value filter",
+                    choices = c(
+                      "None" = "none",
+                      "Raw P-value" = "P.Value",
+                      "BH-adjusted P-value" = "adj.P.Val"
+                    ),
+                    selected = "none"
+                  ),
+
+                  shiny::numericInput(
+                    ns("archive_p_cutoff"),
+                    "P-value cutoff",
+                    value = 0.05,
+                    min = 0,
+                    max = 1,
+                    step = 0.01
+                  ),
+
+                  shiny::numericInput(
+                    ns("archive_abs_logfc"),
+                    "Minimum |log2FC|",
+                    value = 0,
+                    min = 0,
+                    step = 0.1
+                  )
+                ),
+
+                shiny::div(
+                  class = "small text-muted",
+                  "Script-method defaults: moderated t · all tested ",
+                  "proteins · KEGG-annotated background intersection."
+                )
               )
             )
+          ),
+
+          shiny::numericInput(
+            ns("archive_seed"),
+            "Random seed",
+            value = 20260920,
+            min = 1,
+            max = .Machine$integer.max,
+            step = 1
           )
         )
       ),
@@ -840,18 +873,30 @@ gsea_ui <- function(id) {
   }
 
   metadata <- data.frame(
+    Comparison = "B73_Root_VE_vs_Y12_Root_VE",
     Stage = archive$stage,
+    Group1 = "B73_Root_VE",
+    Group2 = "Y12_Root_VE",
     Contrast = "B73 - Y12",
     Pathway = archive$pathway,
     KEGG_term = archive$term,
     Rank_metric = "historical B73 - Y12 log2FC",
+    Protein_filter = "all historical retained proteins",
+    P_filter = "none",
+    P_cutoff = NA_real_,
+    Min_abs_log2FC = 0,
     Ranked_proteins = length(archive$rank_metric),
     Pathway_members = sum(archive$hit_mask),
     Weighted_ES_extreme = prepared$extreme_es,
+    Extreme_ES = prepared$extreme_es,
     Extreme_position = prepared$extreme_position,
     Seed = as.integer(seed),
     minSize = 5L,
     maxSize = 500L,
+    Historical_DEP_compatible = TRUE,
+    Source = "Exact supplied Root_VE figure archive",
+    Background_policy =
+      "Full historical retained ranking; map00940 hits only",
     stringsAsFactors = FALSE
   )
 
@@ -1357,6 +1402,8 @@ gsea_ui <- function(id) {
     Extreme_ES = running_es[[extreme_position]],
     Seed = as.integer(seed),
     Historical_DEP_compatible = compatibility$exact,
+    Source = "Loaded previous DEP",
+    Background_policy = "KEGG-annotated tested-protein intersection",
     stringsAsFactors = FALSE
   )
 
@@ -1380,44 +1427,71 @@ gsea_ui <- function(id) {
 
 .protvis_gsea_combined_summary <- function(results) {
   if (!length(results)) return(data.frame())
+
+  meta_value <- function(meta, column, default = NA) {
+    if (!column %in% names(meta) || !nrow(meta)) {
+      return(default)
+    }
+    meta[[column]][[1L]]
+  }
+
   rows <- lapply(names(results), function(comparison) {
     item <- results[[comparison]]
     fg <- item$fgsea_result
     meta <- item$metadata
+    source <- as.character(
+      meta_value(meta, "Source", "Loaded previous DEP")
+    )
+    compatible <- isTRUE(
+      meta_value(meta, "Historical_DEP_compatible", FALSE)
+    )
+
     if (is.null(fg) || !nrow(fg)) {
       return(data.frame(
         Comparison = comparison,
-        Pathway = meta$Pathway[[1L]],
+        Source = source,
+        Pathway = as.character(
+          meta_value(meta, "Pathway", NA_character_)
+        ),
         ES = NA_real_,
         NES = NA_real_,
         pval = NA_real_,
         padj = NA_real_,
-        size = meta$Pathway_members[[1L]],
-        Ranked_proteins = meta$Ranked_proteins[[1L]],
-        Historical_DEP_compatible =
-          meta$Historical_DEP_compatible[[1L]],
+        size = as.integer(
+          meta_value(meta, "Pathway_members", NA_integer_)
+        ),
+        Ranked_proteins = as.integer(
+          meta_value(meta, "Ranked_proteins", NA_integer_)
+        ),
+        Historical_DEP_compatible = compatible,
         stringsAsFactors = FALSE
       ))
     }
+
     data.frame(
       Comparison = comparison,
+      Source = source,
       Pathway = as.character(fg$pathway[[1L]]),
       ES = as.numeric(fg$ES[[1L]]),
       NES = as.numeric(fg$NES[[1L]]),
       pval = as.numeric(fg$pval[[1L]]),
       padj = as.numeric(fg$padj[[1L]]),
       size = as.integer(fg$size[[1L]]),
-      Ranked_proteins = meta$Ranked_proteins[[1L]],
-      Historical_DEP_compatible =
-        meta$Historical_DEP_compatible[[1L]],
+      Ranked_proteins = as.integer(
+        meta_value(meta, "Ranked_proteins", NA_integer_)
+      ),
+      Historical_DEP_compatible = compatible,
       stringsAsFactors = FALSE
     )
   })
+
   do.call(rbind, rows)
 }
 
 
-#' GSEA module server#' GSEA module server
+#' GSEA module server
+
+#' GSEA module server
 #' @import shiny
 #' @name gsea_server
 #' @export
@@ -1543,11 +1617,27 @@ gsea_server <- function(id, shared_state = NULL) {
     output$dep_load_status <- shiny::renderUI({
       bundle <- previous_dep_val()
       results <- bundle$results %||% list()
+      exact_focus <- identical(
+        input$archive_reproduction_source %||% "figure_archive",
+        "figure_archive"
+      )
+
       if (!length(results)) {
         return(
           shiny::div(
-            class = "text-muted small mt-2",
-            "No previous DEP results loaded."
+            class = "small mt-2",
+            shiny::span(
+              if (exact_focus) {
+                "✓ Exact Root_VE figure archive is available."
+              } else {
+                "No previous DEP results loaded."
+              },
+              class = if (exact_focus) {
+                "text-success"
+              } else {
+                "text-muted"
+              }
+            )
           )
         )
       }
@@ -1556,6 +1646,7 @@ gsea_server <- function(id, shared_state = NULL) {
       root_status <- .protvis_gsea_dep_compatibility(
         results[[rootve]]
       )
+
       shiny::div(
         class = "small mt-2",
         shiny::span(
@@ -1571,16 +1662,29 @@ gsea_server <- function(id, shared_state = NULL) {
           class = "text-muted"
         ),
         shiny::tags$br(),
-        shiny::span(
-          root_status$label,
-          class = if (isTRUE(root_status$exact)) {
-            "text-success"
-          } else {
-            "text-warning"
-          }
-        )
+        if (exact_focus) {
+          shiny::span(
+            paste0(
+              "Root_VE focus uses the exact historical figure archive; ",
+              "loaded DEP is used for the other selected comparisons."
+            ),
+            class = "text-success"
+          )
+        } else {
+          shiny::span(
+            root_status$label,
+            class = if (isTRUE(root_status$exact)) {
+              "text-success"
+            } else {
+              "text-warning"
+            }
+          )
+        }
       )
     })
+
+
+    output$dep_comparisons_ui <- shiny::renderUI({
 
     output$dep_comparisons_ui <- shiny::renderUI({
       comparisons <- names(
@@ -1706,23 +1810,40 @@ gsea_server <- function(id, shared_state = NULL) {
       if (identical(mode, "archived")) {
         bundle <- previous_dep_val()
         dep_results <- bundle$results %||% list()
+        source_mode <- input$archive_reproduction_source %||%
+          "figure_archive"
 
-        if (!length(dep_results)) {
+        if (!length(dep_results) &&
+            !identical(source_mode, "figure_archive")) {
           shiny::showNotification(
-            paste0(
-              "Load previous DEP results first. Multiple comparisons ",
-              "can be loaded; Root_VE will be used as the default focus."
-            ),
+            "Load previous DEP results first.",
             type = "error",
             duration = 7
           )
           return()
         }
 
+        available <- names(dep_results)
+        root_name <- "B73_Root_VE_vs_Y12_Root_VE"
+        if (identical(source_mode, "figure_archive") &&
+            !root_name %in% available) {
+          available <- c(root_name, available)
+        }
+
         selected <- intersect(
           input$dep_comparisons %||% character(),
-          names(dep_results)
+          available
         )
+        if (!length(selected)) {
+          selected <- if (identical(
+            source_mode,
+            "figure_archive"
+          )) {
+            root_name
+          } else {
+            character()
+          }
+        }
         if (!length(selected)) {
           shiny::showNotification(
             "Select at least one DEP comparison.",
@@ -1734,21 +1855,11 @@ gsea_server <- function(id, shared_state = NULL) {
 
         focus <- input$focus_comparison %||%
           .protvis_gsea_rootve_comparison(selected)
-        if (!focus %in% selected) {
+        if (identical(source_mode, "figure_archive") &&
+            root_name %in% selected) {
+          focus <- root_name
+        } else if (!focus %in% selected) {
           focus <- .protvis_gsea_rootve_comparison(selected)
-        }
-
-        built_in <- tryCatch(
-          .protvis_load_builtin_enrichment_background(),
-          error = function(e) e
-        )
-        if (inherits(built_in, "error")) {
-          shiny::showNotification(
-            conditionMessage(built_in),
-            type = "error",
-            duration = 8
-          )
-          return()
         }
 
         seed <- suppressWarnings(
@@ -1758,32 +1869,77 @@ gsea_server <- function(id, shared_state = NULL) {
           seed <- 20260920L
         }
 
-        results <- list()
-        errors <- character()
-        for (comparison in selected) {
-          item <- tryCatch(
-            .protvis_gsea_run_dep_comparison(
-              dep_result = dep_results[[comparison]],
-              comparison = comparison,
-              kegg_background =
-                built_in$KEGG_background,
-              pathway_name =
-                input$archive_pathway %||%
-                  "Phenylpropanoid biosynthesis",
-              rank_metric =
-                input$archive_rank_metric %||% "t",
-              filter_mode =
-                input$archive_filter_mode %||% "all",
-              p_metric =
-                input$archive_p_metric %||% "none",
-              p_cutoff =
-                input$archive_p_cutoff %||% 0.05,
-              abs_logfc =
-                input$archive_abs_logfc %||% 0,
-              seed = seed
-            ),
+        built_in <- NULL
+        needs_dep_recalc <- any(
+          selected != root_name |
+            !identical(source_mode, "figure_archive")
+        )
+        if (needs_dep_recalc) {
+          built_in <- tryCatch(
+            .protvis_load_builtin_enrichment_background(),
             error = function(e) e
           )
+          if (inherits(built_in, "error")) {
+            shiny::showNotification(
+              conditionMessage(built_in),
+              type = "error",
+              duration = 8
+            )
+            return()
+          }
+        }
+
+        results <- list()
+        errors <- character()
+
+        for (comparison in selected) {
+          use_exact_root <- identical(
+            source_mode,
+            "figure_archive"
+          ) && identical(comparison, root_name)
+
+          item <- if (use_exact_root) {
+            tryCatch(
+              .protvis_gsea_run_archived(seed = seed),
+              error = function(e) e
+            )
+          } else if (comparison %in% names(dep_results)) {
+            tryCatch(
+              .protvis_gsea_run_dep_comparison(
+                dep_result = dep_results[[comparison]],
+                comparison = comparison,
+                kegg_background =
+                  built_in$KEGG_background,
+                pathway_name =
+                  input$archive_pathway %||%
+                    "Phenylpropanoid biosynthesis",
+                rank_metric =
+                  input$archive_rank_metric %||% "t",
+                filter_mode =
+                  input$archive_filter_mode %||% "all",
+                p_metric =
+                  input$archive_p_metric %||% "none",
+                p_cutoff =
+                  input$archive_p_cutoff %||% 0.05,
+                abs_logfc =
+                  input$archive_abs_logfc %||% 0,
+                seed = seed
+              ),
+              error = function(e) e
+            )
+          } else {
+            structure(
+              list(
+                message = paste0(
+                  "No loaded DEP result is available for ",
+                  comparison, "."
+                ),
+                call = NULL
+              ),
+              class = c("simpleError", "error", "condition")
+            )
+          }
+
           if (inherits(item, "error")) {
             errors[[comparison]] <- conditionMessage(item)
           } else {
@@ -1813,34 +1969,43 @@ gsea_server <- function(id, shared_state = NULL) {
           )
         }
 
+        summary <- .protvis_gsea_combined_summary(results)
         archived_val(list(
           results = results,
-          summary = .protvis_gsea_combined_summary(results),
+          summary = summary,
           focus = focus,
-          source = bundle$source,
-          errors = errors
+          source = if (identical(
+            source_mode,
+            "figure_archive"
+          )) {
+            "Exact historical Root_VE + loaded DEP"
+          } else {
+            bundle$source
+          },
+          errors = errors,
+          reproduction_source = source_mode
         ))
 
         focus_result <- results[[focus]]
         .protvis_record_shared_run(
           shared_state,
           module = "gsea",
-          method = "previous_DEP_weighted_GSEA",
+          method = if (identical(
+            source_mode,
+            "figure_archive"
+          )) {
+            "exact_Root_VE_figure_plus_previous_DEP_GSEA"
+          } else {
+            "previous_DEP_weighted_GSEA"
+          },
           category = "enrichment",
           parameters = list(
             comparisons = names(results),
             focus_comparison = focus,
+            reproduction_source = source_mode,
             pathway = focus_result$archive$pathway,
             rank_metric =
-              input$archive_rank_metric %||% "t",
-            filter_mode =
-              input$archive_filter_mode %||% "all",
-            p_metric =
-              input$archive_p_metric %||% "none",
-            p_cutoff =
-              input$archive_p_cutoff %||% 0.05,
-            minimum_abs_log2FC =
-              input$archive_abs_logfc %||% 0,
+              focus_result$metadata$Rank_metric[[1L]],
             weighted_p = 1,
             seed = seed,
             minSize = 5L,
@@ -1848,8 +2013,7 @@ gsea_server <- function(id, shared_state = NULL) {
             eps = 0
           ),
           tables = list(
-            gsea_summary =
-              .protvis_gsea_combined_summary(results),
+            gsea_summary = summary,
             focus_gsea_results =
               focus_result$fgsea_result,
             focus_metadata =
@@ -1863,6 +2027,7 @@ gsea_server <- function(id, shared_state = NULL) {
           ),
           plot_config = list(
             focus_comparison = focus,
+            reproduction_source = source_mode,
             extreme_position =
               focus_result$extreme_position,
             left_label = "Zea mays ssp. mays",
@@ -1876,7 +2041,7 @@ gsea_server <- function(id, shared_state = NULL) {
               "Completed ", length(results),
               " comparison(s); ",
               length(errors),
-              " comparison(s) failed. See the summary/status."
+              " comparison(s) failed."
             ),
             type = "warning",
             duration = 7
@@ -1886,6 +2051,7 @@ gsea_server <- function(id, shared_state = NULL) {
       }
 
       shiny::req(
+        input$expr_file,      shiny::req(
         input$expr_file,
         input$group_file,
         input$ko_file
@@ -2170,7 +2336,7 @@ gsea_server <- function(id, shared_state = NULL) {
             shiny::span("Historical"),
             shiny::tags$strong(
               if (compatible) {
-                "compatible"
+                "exact"
               } else {
                 "different DEP"
               }
@@ -2235,7 +2401,9 @@ gsea_server <- function(id, shared_state = NULL) {
         Extreme_ES = "Extreme ES",
         Seed = "Random seed",
         Historical_DEP_compatible =
-          "Historical DEP compatible"
+          "Historical DEP compatible",
+        Source = "Source",
+        Background_policy = "Background policy"
       )
 
       available <- intersect(

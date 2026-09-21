@@ -128,3 +128,37 @@ testthat::test_that("GSEA reproduction layout exposes compact controls and focus
     fixed = TRUE
   )
 })
+
+
+testthat::test_that("exact Root_VE figure source remains distinct from loaded DEP recalculation", {
+  exact <- ProtVis:::.protvis_gsea_prepare_archived()
+
+  testthat::expect_equal(nrow(exact$rank_tbl), 11049L)
+  testthat::expect_equal(sum(exact$rank_tbl$in_pathway), 196L)
+  testthat::expect_equal(exact$extreme_position, 9893L)
+  testthat::expect_equal(
+    exact$extreme_es,
+    -0.3064468069,
+    tolerance = 1e-6
+  )
+
+  ui_source <- paste(
+    deparse(ProtVis::gsea_ui),
+    collapse = "\n"
+  )
+  testthat::expect_match(
+    ui_source,
+    "archive_reproduction_source",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    ui_source,
+    "Exact supplied figure",
+    fixed = TRUE
+  )
+  testthat::expect_match(
+    ui_source,
+    "Recalculate from loaded DEP result",
+    fixed = TRUE
+  )
+})
