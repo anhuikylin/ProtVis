@@ -542,6 +542,35 @@
   )
 }
 
+.protvis_pw_maize_versions <- function() {
+  c(
+    "Auto-detect from identifier" = "auto",
+    "B73 RefGen_v5 / NAM v5 (Zm00001eb...)" = "b73_v5",
+    "B73 RefGen_v4 (Zm00001d...)" = "b73_v4",
+    "B73 RefGen_v3 (GRMZM2G...)" = "b73_v3",
+    "PH207 v1 (Zm00008a...)" = "ph207_v1",
+    "W22 v2 (Zm00004b...)" = "w22_v2",
+    "Mo17 v1 (Zm00014a...)" = "mo17_v1",
+    "Other maize gene-model version" = "other"
+  )
+}
+
+.protvis_pw_maize_version_label <- function(version = "auto") {
+  choices <- .protvis_pw_maize_versions()
+  match_index <- base::match(version, choices)
+  if (base::is.na(match_index)) base::names(choices)[[1]] else base::names(choices)[[match_index]]
+}
+
+.protvis_pw_maize_fallback_links <- function(identifier) {
+  query <- utils::URLencode(identifier, reserved = TRUE)
+  maizegdb <- base::paste0("https://www.maizegdb.org/gene_center/gene/", query)
+  phytozome <- base::paste0("https://phytozome-next.jgi.doe.gov/search?query=", query)
+  base::paste0(
+    '<a href="', maizegdb, '" target="_blank">MaizeGDB</a> · ',
+    '<a href="', phytozome, '" target="_blank">Phytozome</a>'
+  )
+}
+
 .protvis_pw_parse_identifiers <- function(text, limit = 100L) {
   ids <- base::unlist(base::strsplit(base::trimws(text %||% ""), "[,;[:space:]]+"), use.names = FALSE)
   ids <- base::unique(ids[base::nzchar(ids)])
@@ -587,7 +616,7 @@
   result
 }
 
-.protvis_pw_batch_sequence_fetch <- function(identifiers, taxon_id = "") {
+.protvis_pw_batch_sequence_fetch <- function(identifiers, taxon_id = "", maize_version = "auto") {
   identifiers <- .protvis_pw_parse_identifiers(base::paste(identifiers, collapse = "\n"))
   taxon_id <- base::trimws(taxon_id %||% "")
   if (base::nzchar(taxon_id) && !base::grepl("^[0-9]+$", taxon_id)) {
@@ -643,12 +672,16 @@
       retrieved <- if (base::nrow(retrieved)) base::rbind(retrieved, base::do.call(base::rbind, fallback_records)) else base::do.call(base::rbind, fallback_records)
     }
   }
+  is_maize <- identical(taxon_id, "4577")
+  maize_reference <- if (is_maize) .protvis_pw_maize_version_label(maize_version) else NA_character_
   empty_row <- function(input_id) {
     base::data.frame(
       input_id = input_id, status = "Not found", record_type = NA_character_, accession = NA_character_,
       entry_name = NA_character_, gene = NA_character_, organism = NA_character_,
       taxon_id = if (base::nzchar(taxon_id)) taxon_id else NA_character_, sequence = NA_character_,
-      length = NA_integer_, stringsAsFactors = FALSE
+      length = NA_integer_, maize_reference = maize_reference,
+      external_resources = if (is_maize) .protvis_pw_maize_fallback_links(input_id) else NA_character_,
+      stringsAsFactors = FALSE
     )
   }
   selected <- base::lapply(identifiers, function(input_id) {
@@ -673,7 +706,9 @@
     row <- retrieved[candidates[[ordering[[1]]]], , drop = FALSE]
     row$input_id <- input_id
     row$status <- "Retrieved"
-    row[, c("input_id", "status", "record_type", "accession", "entry_name", "gene", "organism", "taxon_id", "length", "sequence"), drop = FALSE]
+    row$maize_reference <- maize_reference
+    row$external_resources <- NA_character_
+    row[, c("input_id", "status", "record_type", "accession", "entry_name", "gene", "organism", "taxon_id", "length", "maize_reference", "external_resources", "sequence"), drop = FALSE]
   })
   base::do.call(base::rbind, selected)
 }
@@ -758,6 +793,17 @@ protein_workbench_ui <- function(id) {
         shiny::selectInput(
           ns("batch_species"), "Common species",
           choices = .protvis_pw_common_species(), selected = "4577"
+        ),
+        shiny::conditionalPanel(
+          condition = base::sprintf("input['%s'] === '4577'", ns("batch_species")),
+          shiny::selectInput(
+            ns("batch_maize_version"), "Maize reference version",
+            choices = .protvis_pw_maize_versions(), selected = "auto"
+          ),
+          shiny::p(
+            "Choose the gene-model version when known; auto-detect remains suitable for mixed identifier lists.",
+            class = "pw-note"
+          )
         ),
         shiny::textInput(
           ns("batch_taxon"), "NCBI taxon ID override (optional)",
@@ -947,16 +993,29 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         if (!base::length(identifiers)) base::stop("Enter at least one gene ID or UniProt accession.")
         taxon_id <- base::trimws(input$batch_taxon %||% "")
         if (!base::nzchar(taxon_id)) taxon_id <- input$batch_species %||% ""
+        maize_version <- input$batch_maize_version %||% "auto"
         rv$batch_requested <- identifiers
-        rv$batch_results <- .protvis_pw_batch_sequence_fetch(identifiers, taxon_id)
+        rv$batch_results <- .protvis_pw_batch_sequence_fetch(identifiers, taxon_id, maize_version)
         retrieved <- base::sum(rv$batch_results$status == "Retrieved", na.rm = TRUE)
+        missing <- base::sum(rv$batch_results$status == "Not found", na.rm = TRUE)
         rv$message <- base::sprintf("Batch sequence retrieval completed: %d of %d identifiers matched.", retrieved, base::length(identifiers))
+        shiny::showNotification(
+          base::sprintf(
+            "Sequence retrieval completed: %d retrieved, %d not found (%d requested).",
+            retrieved, missing, base::length(identifiers)
+          ),
+          type = if (retrieved > 0L) "message" else "warning",
+          duration = 8
+        )
         .protvis_record_shared_run(
           shared_state,
           module = "protein_workbench",
           method = "batch_uniprot_sequence_retrieval",
           category = "toolkits",
-          parameters = list(taxon_id = taxon_id, requested_identifiers = identifiers),
+          parameters = list(
+            taxon_id = taxon_id, maize_reference_version = maize_version,
+            requested_identifiers = identifiers
+          ),
           tables = list(batch_sequence_results = rv$batch_results),
           statistics = list(requested = base::length(identifiers), retrieved = retrieved)
         )
@@ -1156,6 +1215,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       DT::datatable(
         table,
         rownames = FALSE,
+        escape = base::which(base::names(table) != "external_resources"),
         filter = if (base::nrow(table) > 1L) "top" else "none",
         options = base::list(pageLength = 15, scrollX = TRUE)
       )
