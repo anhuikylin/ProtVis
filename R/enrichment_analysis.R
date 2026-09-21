@@ -3134,7 +3134,7 @@ enrichment_analysis_server <- function(id, shared_state) {
       )
     }, res = 96)
 
-    output$directional_kegg_table <- DT::renderDT({    output$directional_kegg_table <- DT::renderDT({
+    output$directional_kegg_table <- DT::renderDT({
       data <- rv$directional_kegg
       if (base::is.null(data) || !nrow(data)) {
         return(DT::datatable(
