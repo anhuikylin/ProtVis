@@ -141,3 +141,104 @@ testthat::test_that("Recommended limma uses robust trend eBayes without positive
   testthat::expect_true(all(diff(out$P.Value) >= 0))
   testthat::expect_gt(stats::median(out$logFC[out$ID %in% paste0("P", 1:10)]), 1)
 })
+
+
+testthat::test_that("parallel evidence summary separates quantitative and presence-absence evidence", {
+  results <- list(
+    A_vs_B = data.frame(
+      ID = c("P1", "P2", "P3", "P4"),
+      regulation = c(
+        "Upregulated",
+        "Downregulated",
+        "Not significant",
+        "Upregulated"
+      ),
+      stringsAsFactors = FALSE
+    )
+  )
+  presence <- list(
+    A_vs_B = data.frame(
+      ID = c("P5", "P6", "P7"),
+      Pattern = c(
+        "Detected in Group1 only",
+        "Detected in Group2 only",
+        "Detected in Group1 only"
+      ),
+      stringsAsFactors = FALSE
+    )
+  )
+
+  out <- ProtVis:::.protvis_dep_evidence_summary(
+    results,
+    presence,
+    "A_vs_B"
+  )
+
+  testthat::expect_equal(
+    out$Protein_number[
+      out$Evidence == "Quantitative DEP" &
+        out$Direction == "Upregulated"
+    ],
+    2L
+  )
+  testthat::expect_equal(
+    out$Protein_number[
+      out$Evidence == "Quantitative DEP" &
+        out$Direction == "Downregulated"
+    ],
+    1L
+  )
+  testthat::expect_equal(
+    out$Protein_number[
+      out$Evidence == "Presence/absence" &
+        out$Direction == "Detected in Group1 only"
+    ],
+    2L
+  )
+  testthat::expect_equal(
+    out$Protein_number[
+      out$Evidence == "Presence/absence" &
+        out$Direction == "Detected in Group2 only"
+    ],
+    1L
+  )
+})
+
+testthat::test_that("presence-absence evidence retains observed-intensity context", {
+  mat <- matrix(
+    c(
+      5, 6, 7, NA, NA, NA,
+      NA, NA, NA, 8, 9, 10
+    ),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(
+      c("P1", "P2"),
+      c("A1", "A2", "A3", "B1", "B2", "B3")
+    )
+  )
+
+  out <- ProtVis:::.protvis_dep_presence_absence(
+    mat,
+    c("A1", "A2", "A3"),
+    c("B1", "B2", "B3"),
+    min_detected = 2L
+  )
+
+  testthat::expect_true(all(c(
+    "Group1_median_observed",
+    "Group2_median_observed",
+    "Detection_difference"
+  ) %in% names(out)))
+  testthat::expect_equal(
+    out$Group1_median_observed[out$ID == "P1"],
+    6
+  )
+  testthat::expect_true(
+    is.na(out$Group2_median_observed[out$ID == "P1"])
+  )
+  testthat::expect_equal(
+    out$Detection_difference[out$ID == "P1"],
+    3
+  )
+})
