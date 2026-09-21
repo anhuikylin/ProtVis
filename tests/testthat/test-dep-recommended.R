@@ -262,7 +262,10 @@ testthat::test_that("Evidence 2 count overview uses the candidate table", {
 
   testthat::expect_identical(
     as.character(counts$Direction),
-    c("B73_Root_VE only", "Y12_Root_VE only")
+    c(
+      "B73_Root_VE detected / Y12_Root_VE not detected",
+      "Y12_Root_VE detected / B73_Root_VE not detected"
+    )
   )
   testthat::expect_equal(counts$Protein_number, c(3L, 2L))
 
