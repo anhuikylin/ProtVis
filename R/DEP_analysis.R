@@ -1,9 +1,9 @@
 #' Differential protein analysis UI
 #'
-#' The default limma workflow reproduces the archived
-#' 03.Maize_Teosinte_Jul02_2024 settings: Step6 normalized intensities,
-#' B73-minus-Y12 contrasts, historical positive shift, BH adjustment,
-#' adjusted-P < 0.05 and |log2FC| > 1.
+#' The default workflow is Recommended DEP: observed Step4 log2 intensities,
+#' sample-wise median centering, no imputation, detection filtering, and
+#' limma empirical-Bayes statistics with BH FDR control. The historical
+#' Step6 workflow is retained as an explicit Archived reproduction mode.
 #'
 #' @param id Module namespace.
 #' @return Shiny UI.
@@ -37,21 +37,29 @@ DEP_analysis_ui <- function(id) {
             title = "Analysis parameters",
             icon = bsicons::bs_icon("sliders"),
             shiny::tags$small(
-              "Defaults reproduce the archived 03.Maize_Teosinte_Jul02_2024 limma workflow.",
+              "Recommended DEP is the default. Archived reproduction remains available for historical comparability.",
               style = "color:#6c757d;"
+            ),
+            shiny::selectInput(
+              ns("dep_mode"), "DEP mode",
+              choices = c(
+                "Recommended DEP" = "recommended",
+                "Archived reproduction" = "archived"
+              ),
+              selected = "recommended"
             ),
             shiny::numericInput(
               ns("dep_logfc"), "|log2FC| threshold",
               value = 1, min = 0, max = 10, step = 0.1
             ),
             shiny::numericInput(
-              ns("dep_fdr"), "P-value/FDR threshold",
+              ns("dep_fdr"), "FDR threshold",
               value = 0.05, min = 0, max = 1, step = 0.01
             ),
             shiny::selectInput(
-              ns("dep_p_metric"), "Significance P-value",
+              ns("dep_p_metric"), "Significance criterion",
               choices = c(
-                "Adjusted P-value / FDR (archived default)" = "adj.P.Val",
+                "Adjusted P-value / FDR (recommended)" = "adj.P.Val",
                 "Raw P-value" = "P.Value"
               ),
               selected = "adj.P.Val"
@@ -59,7 +67,7 @@ DEP_analysis_ui <- function(id) {
             shiny::selectInput(
               ns("dep_adjust_method"), "Multiple-testing adjustment",
               choices = c(
-                "BH (archived default)" = "BH",
+                "BH (recommended)" = "BH",
                 "BY" = "BY",
                 "Bonferroni" = "bonferroni",
                 "Holm" = "holm",
@@ -68,39 +76,85 @@ DEP_analysis_ui <- function(id) {
               selected = "BH"
             ),
             shiny::selectInput(
-              ns("dep_sort_by"), "topTable sorting",
+              ns("dep_sort_by"), "Result sorting",
               choices = c(
-                "logFC (archived default)" = "logFC",
-                "P-value" = "P",
+                "P-value (recommended)" = "P",
+                "logFC" = "logFC",
                 "B-statistic" = "B",
                 "None" = "none"
               ),
-              selected = "logFC"
+              selected = "P"
             ),
-            shiny::checkboxInput(
-              ns("dep_matrix_shift"),
-              "Apply historical x + abs(min(x)) shift",
-              value = TRUE
+            shiny::conditionalPanel(
+              condition = paste0(
+                "input['", ns("dep_mode"), "'] == 'recommended'"
+              ),
+              shiny::tags$div(
+                class = "alert alert-info py-2 px-3",
+                shiny::tags$small(
+                  "Input: Step4 observed log2 matrix. No KNN imputation, no row-wise positive shift, and no zero-to-one replacement."
+                )
+              ),
+              shiny::selectInput(
+                ns("dep_test_method"), "Statistical test",
+                choices = c(
+                  "limma robust eBayes (recommended)" = "ebayes_robust",
+                  "limma treat (minimum effect-size test)" = "treat"
+                ),
+                selected = "ebayes_robust"
+              ),
+              shiny::checkboxInput(
+                ns("dep_center_samples"),
+                "Median-center samples before DEP",
+                value = TRUE
+              )
+            ),
+            shiny::conditionalPanel(
+              condition = paste0(
+                "input['", ns("dep_mode"), "'] == 'archived'"
+              ),
+              shiny::tags$div(
+                class = "alert alert-secondary py-2 px-3",
+                shiny::tags$small(
+                  "Uses the historical Step6 normalized matrix and archived limma settings."
+                )
+              ),
+              shiny::checkboxInput(
+                ns("dep_matrix_shift"),
+                "Apply historical x + abs(min(x)) shift",
+                value = TRUE
+              )
             ),
             shiny::selectInput(
-              ns("dep_protein_universe"), "Protein universe",
+              ns("dep_protein_universe"), "Detection filter",
               choices = c(
-                "Archived default: detected in any of the 6 comparison samples" = "archived_any_detected",
-                "Strict: detected in both genotypes" = "both_genotypes",
-                "All proteins in Step6 normalized matrix" = "all"
+                "Detected in >=2 replicates in both groups (recommended)" = "both_genotypes",
+                "Detected in >=2 replicates in either group" = "either_genotype",
+                "Detected in any comparison sample (archived)" = "archived_any_detected",
+                "All proteins" = "all"
               ),
-              selected = "archived_any_detected"
+              selected = "both_genotypes"
             ),
             shiny::conditionalPanel(
               condition = paste0(
                 "input['", ns("dep_protein_universe"),
-                "'] == 'both_genotypes'"
+                "'] == 'both_genotypes' || input['",
+                ns("dep_protein_universe"), "'] == 'either_genotype'"
               ),
               shiny::numericInput(
                 ns("dep_min_detected"),
-                "Minimum detected replicates per genotype",
-                value = 2, min = 1, max = 3, step = 1
+                "Minimum detected replicates per group",
+                value = 2, min = 1, max = 10, step = 1
               )
+            ),
+            shiny::selectInput(
+              ns("dep_volcano_p_metric"), "Volcano y-axis",
+              choices = c(
+                "Raw P-value (recommended display)" = "P.Value",
+                "Adjusted P-value / FDR" = "adj.P.Val"
+              ),
+              selected = "P.Value"
+            )
             )
           )
         ),
@@ -176,7 +230,7 @@ DEP_analysis_ui <- function(id) {
             )
           ),
           bslib::nav_panel(
-            "Normalized Data",
+            "DEP Input Data",
             shiny::div(
               style = "height:640px;overflow:auto;",
               DT::DTOutput(ns("normalized_data"))
@@ -245,11 +299,155 @@ DEP_analysis_ui <- function(id) {
   )
 }
 
-.protvis_dep_archived_defaults <- function() {
+.protvis_dep_recommended_defaults <- function() {
   list(
+    mode = "recommended",
     logfc = 1,
     fdr = 0.05,
     p_metric = "adj.P.Val",
+    volcano_p_metric = "P.Value",
+    adjust_method = "BH",
+    sort_by = "P",
+    test_method = "ebayes_robust",
+    center_samples = TRUE,
+    matrix_shift = FALSE,
+    protein_universe = "both_genotypes",
+    min_detected = 2L,
+    matrix_source = "Step4_data_transformed"
+  )
+}
+
+.protvis_dep_prepare_recommended_matrix <- function(
+    matrix, center_samples = TRUE) {
+  x <- as.matrix(matrix)
+  storage.mode(x) <- "numeric"
+  x[!is.finite(x)] <- NA_real_
+
+  if (!nrow(x) || !ncol(x)) {
+    stop("Recommended DEP input matrix is empty.", call. = FALSE)
+  }
+
+  if (isTRUE(center_samples)) {
+    medians <- apply(x, 2L, stats::median, na.rm = TRUE)
+    if (any(!is.finite(medians))) {
+      stop(
+        "At least one DEP sample contains no finite observed values.",
+        call. = FALSE
+      )
+    }
+    x <- sweep(x, 2L, medians, FUN = "-")
+  }
+  x
+}
+
+.protvis_dep_presence_absence <- function(
+    observed_matrix, group1_samples, group2_samples, min_detected = 2L) {
+  if (is.null(observed_matrix)) return(data.frame())
+  x <- as.matrix(observed_matrix)
+  storage.mode(x) <- "numeric"
+  required <- c(group1_samples, group2_samples)
+  if (!all(required %in% colnames(x))) return(data.frame())
+
+  min_detected <- max(1L, as.integer(min_detected))
+  d1 <- rowSums(is.finite(x[, group1_samples, drop = FALSE]))
+  d2 <- rowSums(is.finite(x[, group2_samples, drop = FALSE]))
+  keep <- (d1 >= min_detected & d2 == 0L) |
+    (d2 >= min_detected & d1 == 0L)
+  if (!any(keep)) return(data.frame())
+
+  data.frame(
+    ID = rownames(x)[keep],
+    Group1_detected = d1[keep],
+    Group2_detected = d2[keep],
+    Pattern = ifelse(
+      d1[keep] >= min_detected & d2[keep] == 0L,
+      "Detected in Group1 only",
+      "Detected in Group2 only"
+    ),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
+.protvis_dep_run_limma_recommended <- function(
+    matrix, group1_samples, group2_samples, group1, group2,
+    adjust_method = "BH", sort_by = "P",
+    test_method = "ebayes_robust", lfc = 1) {
+  x <- as.matrix(matrix[, c(group1_samples, group2_samples), drop = FALSE])
+  storage.mode(x) <- "numeric"
+
+  groups <- factor(
+    c(rep("G1", length(group1_samples)), rep("G2", length(group2_samples))),
+    levels = c("G1", "G2")
+  )
+  design <- stats::model.matrix(~ 0 + groups)
+  colnames(design) <- c("G1", "G2")
+  rownames(design) <- colnames(x)
+
+  fit <- limma::lmFit(x, design)
+  contrast <- limma::makeContrasts(G1 - G2, levels = design)
+  fit <- limma::contrasts.fit(fit, contrast)
+
+  fc_threshold_tested <- FALSE
+  if (identical(test_method, "treat")) {
+    fit <- limma::treat(
+      fit,
+      lfc = as.numeric(lfc),
+      trend = TRUE,
+      robust = TRUE
+    )
+    out <- limma::topTreat(
+      fit,
+      coef = 1,
+      n = Inf,
+      adjust.method = adjust_method,
+      sort.by = "none"
+    )
+    fc_threshold_tested <- TRUE
+  } else {
+    fit <- limma::eBayes(
+      fit,
+      trend = TRUE,
+      robust = TRUE
+    )
+    out <- limma::topTable(
+      fit,
+      coef = 1,
+      n = Inf,
+      adjust.method = adjust_method,
+      sort.by = "none"
+    )
+  }
+
+  if (identical(sort_by, "P") && "P.Value" %in% names(out)) {
+    out <- out[order(out$P.Value, na.last = TRUE), , drop = FALSE]
+  } else if (identical(sort_by, "logFC") && "logFC" %in% names(out)) {
+    out <- out[order(out$logFC, decreasing = TRUE, na.last = TRUE), ,
+               drop = FALSE]
+  } else if (identical(sort_by, "B") && "B" %in% names(out)) {
+    out <- out[order(out$B, decreasing = TRUE, na.last = TRUE), ,
+               drop = FALSE]
+  }
+
+  out <- as.data.frame(out, stringsAsFactors = FALSE, check.names = FALSE)
+  out <- out[stats::complete.cases(out[, intersect(
+    c("logFC", "P.Value", "adj.P.Val"), names(out)
+  ), drop = FALSE]), , drop = FALSE]
+  out <- tibble::rownames_to_column(out, "ID")
+  out$FC <- 2 ^ out$logFC
+  out$Group1 <- group1
+  out$Group2 <- group2
+  out$fc_threshold_tested <- fc_threshold_tested
+  out
+}
+
+.protvis_dep_archived_defaults <- function() {
+  list(
+    mode = "archived",
+    logfc = 1,
+    fdr = 0.05,
+    p_metric = "adj.P.Val",
+    volcano_p_metric = "adj.P.Val",
     adjust_method = "BH",
     sort_by = "logFC",
     matrix_shift = TRUE,
@@ -268,22 +466,35 @@ DEP_analysis_ui <- function(id) {
 }
 
 .protvis_dep_classify <- function(result, logfc = 1, cutoff = 0.05,
-                                  p_metric = "adj.P.Val") {
+                                  p_metric = "adj.P.Val",
+                                  fc_threshold_tested = FALSE) {
   result <- as.data.frame(result, stringsAsFactors = FALSE, check.names = FALSE)
   if (!p_metric %in% names(result)) {
     stop("Significance column not found: ", p_metric, call. = FALSE)
   }
   p <- suppressWarnings(as.numeric(result[[p_metric]]))
   lfc <- suppressWarnings(as.numeric(result$logFC))
-  result$regulation <- ifelse(
-    is.finite(p) & is.finite(lfc) & p < cutoff & lfc > logfc,
-    "Upregulated",
-    ifelse(
-      is.finite(p) & is.finite(lfc) & p < cutoff & lfc < -logfc,
-      "Downregulated",
-      "Not significant"
+  if (isTRUE(fc_threshold_tested)) {
+    result$regulation <- ifelse(
+      is.finite(p) & is.finite(lfc) & p < cutoff & lfc > 0,
+      "Upregulated",
+      ifelse(
+        is.finite(p) & is.finite(lfc) & p < cutoff & lfc < 0,
+        "Downregulated",
+        "Not significant"
+      )
     )
-  )
+  } else {
+    result$regulation <- ifelse(
+      is.finite(p) & is.finite(lfc) & p < cutoff & lfc > logfc,
+      "Upregulated",
+      ifelse(
+        is.finite(p) & is.finite(lfc) & p < cutoff & lfc < -logfc,
+        "Downregulated",
+        "Not significant"
+      )
+    )
+  }
   result
 }
 
@@ -316,6 +527,9 @@ DEP_analysis_ui <- function(id) {
   g2 <- rowSums(is.finite(
     mat[, group2_samples, drop = FALSE]
   )) >= min_detected
+  if (identical(mode, "either_genotype")) {
+    return(rownames(mat)[g1 | g2])
+  }
   rownames(mat)[g1 & g2]
 }
 
@@ -489,7 +703,7 @@ DEP_analysis_ui <- function(id) {
 }
 
 .protvis_dep_volcano_plot <- function(result, params, up, down, ns) {
-  p_metric <- params$p_metric
+  p_metric <- params$volcano_p_metric %||% params$p_metric
   p <- suppressWarnings(as.numeric(result[[p_metric]]))
   p[p <= 0 | !is.finite(p)] <- .Machine$double.xmin
   plot_df <- result
@@ -507,10 +721,16 @@ DEP_analysis_ui <- function(id) {
         "Not significant" = ns
       )
     ) +
-    ggplot2::geom_hline(
-      yintercept = -log10(params$fdr),
-      linetype = "dashed", colour = "black"
-    ) +
+    {
+      if (identical(p_metric, params$p_metric)) {
+        ggplot2::geom_hline(
+          yintercept = -log10(params$fdr),
+          linetype = "dashed", colour = "black"
+        )
+      } else {
+        NULL
+      }
+    } +
     ggplot2::geom_vline(
       xintercept = c(-params$logfc, params$logfc),
       linetype = "dashed", colour = "black"
