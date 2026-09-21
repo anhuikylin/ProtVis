@@ -123,6 +123,19 @@ test_that("Protein Workbench confirms completed batch retrieval", {
   )
   expect_match(module_source, "Sequence retrieval completed:", fixed = TRUE)
   expect_match(module_source, 'type = if (retrieved > 0L) "message" else "warning"', fixed = TRUE)
+  expect_match(module_source, "pw-batch-status-success", fixed = TRUE)
+})
+
+test_that("Protein Workbench shows batch completion directly below the action", {
+  module_source <- base::paste(
+    base::readLines(testthat::test_path("..", "..", "R", "protein_workbench.R")),
+    collapse = "\n"
+  )
+  button_at <- regexpr('ns\\("batch_run"\\)', module_source)[[1]]
+  status_at <- regexpr('shiny::uiOutput\\(ns\\("batch_status"\\)\\)', module_source)[[1]]
+  download_at <- regexpr('ns\\("download_batch_fasta"\\)', module_source)[[1]]
+  expect_gt(status_at, button_at)
+  expect_lt(status_at, download_at)
 })
 
 test_that("Protein Workbench provides maize fallback resource links", {
