@@ -48,6 +48,7 @@ Imports:
     edgeR,
     enrichplot,
     fs,
+    fgsea,
     ggplot2,
     ggprism,
     ggpubr,
