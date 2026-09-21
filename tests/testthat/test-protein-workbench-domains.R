@@ -40,3 +40,12 @@ test_that("Protein Workbench selects species-aware annotation resources", {
   expect_false("MaizeGDB" %in% names(human_links))
   expect_match(human_links$Ensembl, "HBB", fixed = TRUE)
 })
+
+test_that("Protein Workbench uses a server namespace for adaptive domain output", {
+  module_source <- base::paste(
+    base::readLines(testthat::test_path("..", "..", "R", "protein_workbench.R")),
+    collapse = "\n"
+  )
+  expect_match(module_source, 'plotOutput\\(session\\$ns\\("domain_plot"\\)')
+  expect_match(module_source, "protvis_pw_empty_plot", fixed = TRUE)
+})
