@@ -55,13 +55,21 @@ data_imputation_ui <- function(id) {
               ns("choice_method"),
               "Method",
               choices = c(
-                "kNN (MaxQuant recommended; seed 12345)" = "kNN",
+                "kNN (MaxQuant recommended)" = "kNN",
                 "RF" = "RF",
                 "Mean" = "Mean",
                 "Median" = "Median",
                 "Minimum" = "Minimum"
               ),
               selected = "kNN"
+            ),
+            shiny::numericInput(
+              ns("random_seed"),
+              "Random seed",
+              value = 12345,
+              min = 1,
+              max = .Machine$integer.max,
+              step = 1
             ),
             shiny::actionButton(
               ns("run_impute"),
@@ -173,6 +181,16 @@ data_imputation_ui <- function(id) {
     df <- df[, base::setdiff(base::colnames(df), id_columns), drop = FALSE]
   }
   df
+}
+
+
+.protvis_imputation_seed <- function(x, default = 12345L) {
+  value <- suppressWarnings(as.integer(x))
+  if (length(value) != 1L || is.na(value) ||
+      value < 1L || value > .Machine$integer.max) {
+    return(as.integer(default))
+  }
+  value
 }
 
 
@@ -459,7 +477,8 @@ data_imputation_server <- function(id, shared_state) {
         )
       }
 
-      set.seed(12345)
+      seed <- .protvis_imputation_seed(input$random_seed)
+      set.seed(seed)
 
       result <- tryCatch({
         if (method == "kNN") {
@@ -561,7 +580,11 @@ data_imputation_server <- function(id, shared_state) {
       dataset <- .protvis_new_analysis_dataset(
         dataset, "imputation", list(
           method = input$choice_method,
-          seed = if (identical(input$choice_method, "kNN")) 12345L else NULL,
+          seed = if (input$choice_method %in% c("kNN", "RF")) {
+            .protvis_imputation_seed(input$random_seed)
+          } else {
+            NULL
+          },
           engine = if (identical(input$choice_method, "kNN")) "impute::impute.knn" else NULL
         )
       )
@@ -574,7 +597,11 @@ data_imputation_server <- function(id, shared_state) {
         dataset, "imputation", status = "success",
         parameters = list(
           method = input$choice_method,
-          seed = if (identical(input$choice_method, "kNN")) 12345L else NULL,
+          seed = if (input$choice_method %in% c("kNN", "RF")) {
+            .protvis_imputation_seed(input$random_seed)
+          } else {
+            NULL
+          },
           engine = if (identical(input$choice_method, "kNN")) "impute::impute.knn" else NULL
         )
       )
