@@ -939,8 +939,14 @@ DEP_analysis_ui <- function(id) {
   }
   counts <- as.integer(table(factor(observed, levels = patterns)))
   labels <- c(
-    paste(as.character(group1), "only"),
-    paste(as.character(group2), "only")
+    paste(
+      as.character(group1), "detected /",
+      as.character(group2), "not detected"
+    ),
+    paste(
+      as.character(group2), "detected /",
+      as.character(group1), "not detected"
+    )
   )
   data.frame(
     Direction = factor(labels, levels = labels),
@@ -1806,9 +1812,15 @@ DEP_analysis_server <- function(id, shared_state) {
           if (!nrow(presence)) {
             presence <- data.frame(
               Message = if (identical(rv$dep_params$mode, "recommended")) {
-                "No presence/absence candidate met the current detection rule."
+                paste(
+                  "No retained detected/undetected differential protein met",
+                  "the current detection rule."
+                )
               } else {
-                "Presence/absence candidates are reported only in Recommended DEP."
+                paste(
+                  "Detected/undetected differential proteins are reported",
+                  "only in Recommended DEP."
+                )
               },
               stringsAsFactors = FALSE
             )
@@ -2148,13 +2160,17 @@ DEP_analysis_server <- function(id, shared_state) {
             bslib::card(
               height = "560px",
               bslib::card_header(
-                paste("Evidence 2 · Presence/absence candidates -", g1, "vs", g2)
+                paste(
+                  "Evidence 2 · Retained detected/undetected proteins -",
+                  g1, "vs", g2
+                )
               ),
               bslib::card_body(
                 shiny::tags$small(
                   paste0(
-                    "Recommended DEP does not impute proteins that are absent ",
-                    "from one group. Such candidates are reported separately."
+                    "Proteins detected in one group and not detected in the ",
+                    "other are retained as separate differential evidence; ",
+                    "they are not imputed or included in Evidence 1 testing."
                   ),
                   style = "color:#6c757d;"
                 ),
@@ -2162,7 +2178,7 @@ DEP_analysis_server <- function(id, shared_state) {
                 shiny::br(),
                 shiny::downloadButton(
                   ns(presence_download_id),
-                  "DOWNLOAD CANDIDATES"
+                  "DOWNLOAD RETAINED PROTEINS"
                 ),
                 shiny::br(),
                 shiny::br(),
@@ -2173,7 +2189,7 @@ DEP_analysis_server <- function(id, shared_state) {
               height = "560px",
               bslib::card_header(
                 paste(
-                  "Evidence 2 · Presence/absence count -",
+                  "Evidence 2 · Detected/undetected count -",
                   g1, "vs", g2
                 )
               ),
@@ -2183,11 +2199,11 @@ DEP_analysis_server <- function(id, shared_state) {
                     width = 240,
                     colourpicker::colourInput(
                       ns(paste0("presence_count_group1_", i)),
-                      paste(g1, "only"), "#E76F51"
+                      paste(g1, "detected /", g2, "not detected"), "#E76F51"
                     ),
                     colourpicker::colourInput(
                       ns(paste0("presence_count_group2_", i)),
-                      paste(g2, "only"), "#2A9D8F"
+                      paste(g2, "detected /", g1, "not detected"), "#2A9D8F"
                     ),
                     shiny::numericInput(
                       ns(paste0("presence_count_width_", i)),
@@ -2199,7 +2215,7 @@ DEP_analysis_server <- function(id, shared_state) {
                     ),
                     shiny::downloadButton(
                       ns(presence_count_download_id),
-                      "DOWNLOAD PRESENCE/ABSENCE COUNT"
+                      "DOWNLOAD DETECTED/UNDETECTED COUNT"
                     )
                   ),
                   shiny::plotOutput(
