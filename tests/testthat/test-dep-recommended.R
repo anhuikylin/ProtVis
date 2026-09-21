@@ -202,6 +202,17 @@ testthat::test_that("parallel evidence summary separates quantitative and presen
     ],
     1L
   )
+  total <- out[
+    out$Evidence == "All retained differential evidence",
+    , drop = FALSE
+  ]
+  testthat::expect_equal(
+    total$Protein_number[
+      total$Direction == "Quantitative DEP tested"
+    ],
+    4L
+  )
+  testthat::expect_equal(total$Total_proteins, rep(7L, 3L))
 })
 
 testthat::test_that("presence-absence evidence retains observed-intensity context", {
