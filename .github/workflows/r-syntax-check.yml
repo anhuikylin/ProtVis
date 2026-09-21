@@ -53,6 +53,30 @@ jobs:
           )
           cat("Archived Root_VE phenylpropanoid GSEA geometry validated.\n")
 
+      - name: Validate transcriptome GSEA bundled assets
+        shell: Rscript {0}
+        run: |
+          source("R/DEG.R")
+          bg <- .protvis_deg_load_gsea_background()
+          ref <- .protvis_deg_load_gsea_reference()
+          stopifnot(
+            all(c("TERM", "GENE") %in% names(bg$TERM2GENE)),
+            all(c("TERM", "NAME") %in% names(bg$TERM2NAME)),
+            nrow(bg$TERM2GENE) > 50000L,
+            nrow(bg$TERM2NAME) > 150L,
+            "00940" %in% bg$TERM2NAME$TERM,
+            ref$ID[[1L]] == "00940",
+            abs(ref$NES[[1L]] - (-1.360826149505172)) < 1e-12,
+            abs(ref$p.adjust[[1L]] - 0.1009765165855614) < 1e-12
+          )
+          forbidden <- list.files(
+            "inst/extdata/transcriptome_gsea",
+            pattern = "expression|group|sample",
+            ignore.case = TRUE
+          )
+          stopifnot(length(forbidden) == 0L)
+          cat("Transcriptome GSEA bundled assets validated.\n")
+
       - name: Validate DESCRIPTION and new help pages
         shell: Rscript {0}
         run: |
