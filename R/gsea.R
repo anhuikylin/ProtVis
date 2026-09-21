@@ -290,11 +290,6 @@ gsea_ui <- function(id) {
 }
 
 
-.protvis_gsea_base36    )
-  )
-}
-
-
 .protvis_gsea_base36 <- function(x) {
   alphabet <- c(as.character(0:9), letters)
   decode_one <- function(value) {
