@@ -745,7 +745,7 @@ utils::globalVariables(c("Residue", "Count", "position", "hydropathy", "start", 
 protein_workbench_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
-    shiny::tags$style(shiny::HTML("\n      .pw-note {color:#657789;font-size:12px;line-height:1.55;}\n      .pw-kpis {display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-bottom:14px;}\n      .pw-kpi {border:1px solid #dbe8f3;border-radius:14px;background:#f8fbff;padding:13px 15px;}\n      .pw-kpi strong {display:block;color:#1787c9;font-size:19px;line-height:1.2;overflow-wrap:anywhere;}\n      .pw-kpi span {display:block;color:#657789;font-size:11px;margin-top:5px;text-transform:uppercase;letter-spacing:.05em;}\n      .pw-resource-grid {display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px;}\n      .pw-resource {display:block;border:1px solid #dbe8f3;border-radius:14px;background:#fff;padding:16px;text-decoration:none!important;}\n      .pw-resource:hover {border-color:#9ccce8;background:#f8fbff;}\n      .pw-resource strong {display:block;color:#1f3447;margin-bottom:5px;}\n      .pw-resource span {color:#657789;font-size:12px;}\n      @media(max-width:1000px){.pw-kpis{grid-template-columns:repeat(2,1fr)}.pw-resource-grid{grid-template-columns:1fr 1fr}}\n    ")),
+    shiny::tags$style(shiny::HTML("\n      .pw-note {color:#657789;font-size:12px;line-height:1.55;}\n      .pw-kpis {display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-bottom:14px;}\n      .pw-kpi {border:1px solid #dbe8f3;border-radius:14px;background:#f8fbff;padding:13px 15px;}\n      .pw-kpi strong {display:block;color:#1787c9;font-size:19px;line-height:1.2;overflow-wrap:anywhere;}\n      .pw-kpi span {display:block;color:#657789;font-size:11px;margin-top:5px;text-transform:uppercase;letter-spacing:.05em;}\n      .pw-resource-grid {display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px;}\n      .pw-resource {display:block;border:1px solid #dbe8f3;border-radius:14px;background:#fff;padding:16px;text-decoration:none!important;}\n      .pw-resource:hover {border-color:#9ccce8;background:#f8fbff;}\n      .pw-resource strong {display:block;color:#1f3447;margin-bottom:5px;}\n      .pw-resource span {color:#657789;font-size:12px;}\n      .pw-batch-status {margin-top:10px;padding:10px 12px;border:1px solid;border-radius:10px;font-size:12px;line-height:1.5;}\n      .pw-batch-status-success {color:#17764d;background:#eef9f2;border-color:#bde5cc;}\n      .pw-batch-status-warning {color:#825b12;background:#fff8e6;border-color:#f1d79c;}\n      @media(max-width:1000px){.pw-kpis{grid-template-columns:repeat(2,1fr)}.pw-resource-grid{grid-template-columns:1fr 1fr}}\n    ")),
     bslib::layout_sidebar(
       sidebar = bslib::sidebar(
         width = 550,
@@ -818,10 +818,10 @@ protein_workbench_ui <- function(id) {
           ns("batch_run"), "RETRIEVE SEQUENCES",
           icon = bsicons::bs_icon("cloud-download"), class = "btn-primary pv-run-button"
         ),
+        shiny::uiOutput(ns("batch_status")),
         shiny::br(), shiny::br(),
         shiny::downloadButton(ns("download_batch_fasta"), "Download batch FASTA"),
-        shiny::downloadButton(ns("download_batch_table"), "Download result table"),
-        shiny::uiOutput(ns("batch_status"))
+        shiny::downloadButton(ns("download_batch_table"), "Download result table")
       ),
       bslib::card(
         full_screen = TRUE,
@@ -1199,9 +1199,16 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       retrieved <- base::sum(table$status == "Retrieved", na.rm = TRUE)
       missing <- base::sum(table$status == "Not found", na.rm = TRUE)
       shiny::div(
-        class = "pw-note",
-        shiny::strong(base::sprintf("%d retrieved", retrieved)),
-        base::sprintf(" · %d not found · %d requested", missing, base::length(rv$batch_requested))
+        class = base::paste(
+          "pw-batch-status",
+          if (retrieved > 0L) "pw-batch-status-success" else "pw-batch-status-warning"
+        ),
+        shiny::strong("Sequence retrieval completed"),
+        shiny::br(),
+        base::sprintf(
+          "%d retrieved · %d not found · %d requested",
+          retrieved, missing, base::length(rv$batch_requested)
+        )
       )
     })
 
