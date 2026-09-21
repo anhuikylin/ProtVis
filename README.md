@@ -2,11 +2,11 @@
 
 [![](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![](https://img.shields.io/badge/GitHub-ProtVis-blue.svg)](https://github.com/anhuikylin/ProtVis)
-[![](https://img.shields.io/badge/R-Shiny-orange.svg)](https://github.com/xuebinzhang-lab/ProtVis)
-[![](https://img.shields.io/badge/platform-all-brightgreen.svg)](https://github.com/xuebinzhang-lab/ProtVis)
-[![](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/xuebinzhang-lab/ProtVis/blob/dev/LICENSE)
+[![](https://img.shields.io/badge/R-Shiny-orange.svg)](https://github.com/anhuikylin/ProtVis)
+[![](https://img.shields.io/badge/platform-all-brightgreen.svg)](https://github.com/anhuikylin/ProtVis)
+[![](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/anhuikylin/ProtVis/blob/dev/LICENSE)
 
-<img src="https://github.com/xuebinzhang-lab/ProtVis/blob/dev/app/www/ProtVis_ico.png?raw=true" alt="ProtVis Logo" align="right" width="180"/>
+<img src="https://raw.githubusercontent.com/anhuikylin/ProtVis/dev/app/www/ProtVis_ico.png" alt="ProtVis Logo" align="right" width="180"/>
 
 **ProtVis: interactive visualization and downstream interpretation for proteomics and metaproteomics data**
 
@@ -35,7 +35,7 @@ The application is designed for researchers who need publication-ready visual su
 -   **Interactive Shiny interface** for users who prefer GUI-driven analysis and figure generation.
 -   **Dual raw-data Search backends**: bundled Sage for lightweight FASTA + mzML searching, plus an integrated FragPipe headless backend with official runtime installation/detection, workflow and manifest generation, PSM/peptide/protein ingestion, and provenance. FragPipe companion binaries with separate licenses are not redistributed inside the ProtVis R package.
 -   **RAW/mzML registration and search preparation** with built-in PXD065315 sample metadata, directory/file consistency checks, and protein FASTA upload.
--   **Uploadable Sage sample metadata**: a sample table containing `sample_id`, `mzml_file`, and grouping fields automatically enters the Sage staging workflow and can be downloaded as [`PXD065315_sample_info_template.csv`](https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/PXD065315_sample_info_template.csv).
+-   **Uploadable Sage sample metadata**: a sample table containing `sample_id`, `mzml_file`, and grouping fields automatically enters the Sage staging workflow and can be downloaded as [`PXD065315_sample_info_template.csv`](https://github.com/anhuikylin/ProtVis/blob/dev/inst/extdata/PXD065315_sample_info_template.csv).
 
 ------------------------------------------------------------------------
 
