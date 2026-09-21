@@ -19,11 +19,14 @@ sheets. Rows without a term, gene, or name are not included.
 No precomputed enrichment result or static plot is included. Directional KEGG
 is calculated from the current DEP result.
 
-"Figure 3 reproduction (compareCluster)" requires DEP > Archived reproduction
-and reconstructs the historical workflow: archived Step6 limma, BH < 0.05 and
+"Figure 3 reproduction (compareCluster)" reconstructs the historical workflow:
+archived Step6 limma, the Step4 any-detected protein filter, BH < 0.05 and
 |log2FC| > 1 directional lists, compareCluster/enricher with pvalueCutoff =
 0.05 and qvalueCutoff = 1, no user-supplied universe, raw pvalue colour, and
-clusterProfiler-compatible dotplot selection.
+clusterProfiler-compatible dotplot selection. If the current DEP was produced
+with the recommended workflow, Directional KEGG automatically rebuilds the
+archived DEP from Step4_data_transformed.rda + Step6_data_normalization.rda
+without overwriting the user's current DEP results.
 
 "Standard ORA" remains available for general datasets and uses each
 comparison's retained tested proteins as the enrichment universe with BH FDR

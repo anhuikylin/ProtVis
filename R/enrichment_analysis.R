@@ -603,6 +603,188 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 }
 
 
+.protvis_directional_rebuild_archived_dep <- function(
+    dep_results, comparisons,
+    normalized_matrix, detection_matrix,
+    sample_info) {
+  if (!is.list(dep_results) || !length(dep_results)) {
+    stop(
+      "Current DEP results are required to define the selected comparisons.",
+      call. = FALSE
+    )
+  }
+
+  comparisons <- intersect(
+    as.character(comparisons),
+    names(dep_results)
+  )
+  if (!length(comparisons)) {
+    stop("Select at least one DEP comparison.", call. = FALSE)
+  }
+
+  normalized_matrix <- as.matrix(normalized_matrix)
+  detection_matrix <- as.matrix(detection_matrix)
+  storage.mode(normalized_matrix) <- "numeric"
+  storage.mode(detection_matrix) <- "numeric"
+
+  sample_info <- as.data.frame(
+    sample_info,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  if (!all(c("sample_id", "group") %in% names(sample_info))) {
+    stop(
+      "Archived reproduction requires sample_info columns: sample_id and group.",
+      call. = FALSE
+    )
+  }
+
+  if (is.null(rownames(normalized_matrix)) ||
+      is.null(rownames(detection_matrix))) {
+    stop(
+      "Archived reproduction requires protein IDs as matrix row names.",
+      call. = FALSE
+    )
+  }
+
+  rebuilt <- list()
+
+  first_label <- function(x, fallback) {
+    x <- unique(trimws(as.character(x)))
+    x <- x[!is.na(x) & nzchar(x)]
+    if (length(x)) x[[1L]] else fallback
+  }
+
+  for (comparison in comparisons) {
+    source <- as.data.frame(
+      dep_results[[comparison]],
+      stringsAsFactors = FALSE
+    )
+
+    group1 <- first_label(
+      source$Group1 %||% character(),
+      NA_character_
+    )
+    group2 <- first_label(
+      source$Group2 %||% character(),
+      NA_character_
+    )
+
+    if (is.na(group1) || is.na(group2)) {
+      parts <- strsplit(
+        comparison,
+        "_vs_",
+        fixed = TRUE
+      )[[1L]]
+      if (length(parts) == 2L) {
+        group1 <- parts[[1L]]
+        group2 <- parts[[2L]]
+      }
+    }
+
+    if (is.na(group1) || is.na(group2) ||
+        !nzchar(group1) || !nzchar(group2)) {
+      stop(
+        "Could not recover Group1/Group2 for comparison: ",
+        comparison,
+        call. = FALSE
+      )
+    }
+
+    group1_samples <- as.character(
+      sample_info$sample_id[
+        as.character(sample_info$group) == group1
+      ]
+    )
+    group2_samples <- as.character(
+      sample_info$sample_id[
+        as.character(sample_info$group) == group2
+      ]
+    )
+
+    group1_samples <- intersect(
+      group1_samples,
+      colnames(normalized_matrix)
+    )
+    group2_samples <- intersect(
+      group2_samples,
+      colnames(normalized_matrix)
+    )
+
+    if (!length(group1_samples) || !length(group2_samples)) {
+      stop(
+        "Archived reproduction could not find samples for ",
+        group1, " vs ", group2, ".",
+        call. = FALSE
+      )
+    }
+
+    required_samples <- c(
+      group1_samples,
+      group2_samples
+    )
+    if (!all(required_samples %in% colnames(detection_matrix))) {
+      stop(
+        "Step4 detection matrix is missing samples required for ",
+        comparison, ".",
+        call. = FALSE
+      )
+    }
+
+    keep_ids <- .protvis_dep_shared_ids(
+      detection_matrix,
+      group1_samples,
+      group2_samples,
+      mode = "archived_any_detected"
+    )
+    keep_ids <- intersect(
+      keep_ids,
+      rownames(normalized_matrix)
+    )
+    if (!length(keep_ids)) {
+      stop(
+        "No proteins passed the archived detection filter for ",
+        comparison, ".",
+        call. = FALSE
+      )
+    }
+
+    result <- .protvis_dep_run_limma_archived(
+      normalized_matrix[
+        keep_ids,
+        ,
+        drop = FALSE
+      ],
+      group1_samples,
+      group2_samples,
+      group1,
+      group2,
+      adjust_method = "BH",
+      sort_by = "logFC",
+      matrix_shift = TRUE
+    )
+
+    result <- .protvis_dep_classify(
+      result,
+      logfc = 1,
+      cutoff = 0.05,
+      p_metric = "adj.P.Val",
+      fc_threshold_tested = FALSE
+    )
+    result$analysis_mode <- "archived"
+    result$protein_universe <- "archived_any_detected"
+    result$matrix_source <- "Step6_data_normalization"
+    result$test_method <- "archived_eBayes"
+    result$reproduction_source <-
+      "Directional KEGG auto-rebuild from Step4 + Step6"
+
+    rebuilt[[comparison]] <- result
+  }
+
+  rebuilt
+}
+
+
 .protvis_directional_archived_lists <- function(
     dep_results, comparisons) {
   compatibility <- .protvis_directional_archived_compatibility(
@@ -1945,7 +2127,7 @@ enrichment_analysis_ui <- function(id) {
                     shiny::div(
                       class = "directional-fixed-settings",
                       shiny::tags$small(
-                        "Requires DEP > Archived reproduction. Uses quantitative DEP only."
+                        "Rebuilds the archived DEP automatically from Step4 + Step6 when needed."
                       ),
                       shiny::uiOutput(
                         ns("directional_dep_compatibility")
@@ -2310,6 +2492,81 @@ enrichment_analysis_server <- function(id, shared_state) {
       list(results = results, presence = presence)
     }
 
+    directional_archived_stage_inputs <- function(load = FALSE) {
+      workdir <- as.character(shared_state$workdir %||% "")
+      if (!nzchar(workdir) || !dir.exists(workdir)) {
+        return(list(
+          ok = FALSE,
+          message = paste0(
+            "Working directory is unavailable; exact archived ",
+            "Step4/Step6 inputs cannot be reconstructed."
+          )
+        ))
+      }
+
+      step4_path <- file.path(
+        workdir,
+        "Step4_data_transformed.rda"
+      )
+      step6_path <- file.path(
+        workdir,
+        "Step6_data_normalization.rda"
+      )
+
+      missing <- c(
+        if (!file.exists(step4_path)) {
+          "Step4_data_transformed.rda"
+        },
+        if (!file.exists(step6_path)) {
+          "Step6_data_normalization.rda"
+        }
+      )
+
+      if (length(missing)) {
+        return(list(
+          ok = FALSE,
+          message = paste0(
+            "Exact Figure 3 reproduction needs ",
+            paste(missing, collapse = " + "),
+            " in the project working directory."
+          )
+        ))
+      }
+
+      if (!isTRUE(load)) {
+        return(list(
+          ok = TRUE,
+          message = paste0(
+            "✓ Step4 + Step6 available · archived DEP will ",
+            "be rebuilt automatically"
+          ),
+          step4_path = step4_path,
+          step6_path = step6_path
+        ))
+      }
+
+      step4 <- .protvis_load_stage_dataset(
+        step4_path,
+        expression_names = "transformed"
+      )
+      step6 <- .protvis_load_stage_dataset(
+        step6_path,
+        expression_names = "normalized_data"
+      )
+
+      list(
+        ok = TRUE,
+        message = paste0(
+          "✓ Step4 + Step6 loaded · archived DEP rebuilt ",
+          "inside Directional KEGG"
+        ),
+        step4 = step4,
+        step6 = step6,
+        step4_path = step4_path,
+        step6_path = step6_path
+      )
+    }
+
     normalise_term2gene <- function(background) {
       background <- base::as.data.frame(background, stringsAsFactors = FALSE)
       if (!base::all(c("TERM", "GENE") %in% base::names(background))) {
@@ -2497,13 +2754,31 @@ enrichment_analysis_server <- function(id, shared_state) {
         selected <- choices
       }
 
-      status <- .protvis_directional_archived_compatibility(
-        bundle$results,
-        selected
+      current_status <-
+        .protvis_directional_archived_compatibility(
+          bundle$results,
+          selected
+        )
+
+      if (isTRUE(current_status$ok)) {
+        return(
+          shiny::span(
+            paste0(
+              "✓ Current DEP already matches archived workflow; ",
+              "it will be reused."
+            ),
+            class = "directional-state directional-state-loaded"
+          )
+        )
+      }
+
+      stage_status <- directional_archived_stage_inputs(
+        load = FALSE
       )
+
       shiny::span(
-        status$message,
-        class = if (isTRUE(status$ok)) {
+        stage_status$message,
+        class = if (isTRUE(stage_status$ok)) {
           "directional-state directional-state-loaded"
         } else {
           "directional-state directional-state-waiting"
@@ -2534,8 +2809,8 @@ enrichment_analysis_server <- function(id, shared_state) {
       )) {
         paste0(
           "Archived reproduction selected. ",
-          "Run DEP in Archived reproduction mode first, ",
-          "then run KEGG."
+          "ProtVis will reuse compatible archived DEP or rebuild it ",
+          "automatically from Step4 + Step6 when RUN KEGG is clicked."
         )
       } else {
         paste0(
@@ -2996,21 +3271,73 @@ enrichment_analysis_server <- function(id, shared_state) {
         input$directional_evidence %||% "quantitative"
       }
 
-      result <- tryCatch(
-        .protvis_directional_kegg_data(
-          dep_obj,
-          rv$background_data$KEGG_background,
-          presence_absence = bundle$presence,
-          evidence_mode = evidence,
-          comparisons = selected_comparisons,
-          top_n = input$directional_top_n %||% 10L,
-          p_adjust_cutoff =
-            input$directional_p_adjust %||% 0.05,
-          method = method,
-          pvalue_cutoff = 0.05
-        ),
-        error = function(e) e
-      )
+      dep_for_kegg <- dep_obj
+      presence_for_kegg <- bundle$presence
+      rebuilt_archived_dep <- FALSE
+      result <- NULL
+
+      if (identical(
+        method,
+        "archived_comparecluster"
+      )) {
+        archived_status <-
+          .protvis_directional_archived_compatibility(
+            dep_obj,
+            selected_comparisons
+          )
+
+        if (!isTRUE(archived_status$ok)) {
+          stage_inputs <- tryCatch(
+            directional_archived_stage_inputs(load = TRUE),
+            error = function(e) e
+          )
+
+          if (inherits(stage_inputs, "error")) {
+            result <- stage_inputs
+          } else if (!isTRUE(stage_inputs$ok)) {
+            result <- simpleError(stage_inputs$message)
+          } else {
+            rebuilt <- tryCatch(
+              .protvis_directional_rebuild_archived_dep(
+                dep_results = dep_obj,
+                comparisons = selected_comparisons,
+                normalized_matrix =
+                  stage_inputs$step6$expression_data,
+                detection_matrix =
+                  stage_inputs$step4$expression_data,
+                sample_info = stage_inputs$step6$sample_info
+              ),
+              error = function(e) e
+            )
+
+            if (inherits(rebuilt, "error")) {
+              result <- rebuilt
+            } else {
+              dep_for_kegg <- rebuilt
+              presence_for_kegg <- list()
+              rebuilt_archived_dep <- TRUE
+            }
+          }
+        }
+      }
+
+      if (is.null(result)) {
+        result <- tryCatch(
+          .protvis_directional_kegg_data(
+            dep_for_kegg,
+            rv$background_data$KEGG_background,
+            presence_absence = presence_for_kegg,
+            evidence_mode = evidence,
+            comparisons = selected_comparisons,
+            top_n = input$directional_top_n %||% 10L,
+            p_adjust_cutoff =
+              input$directional_p_adjust %||% 0.05,
+            method = method,
+            pvalue_cutoff = 0.05
+          ),
+          error = function(e) e
+        )
+      }
 
       if (inherits(result, "error")) {
         rv$directional_kegg <- NULL
@@ -3048,7 +3375,13 @@ enrichment_analysis_server <- function(id, shared_state) {
         "archived_comparecluster"
       )) {
         rv$directional_kegg_message <- paste0(
-          "Figure 3 workflow reproduced: ",
+          "Figure 3 workflow reproduced",
+          if (isTRUE(rebuilt_archived_dep)) {
+            " · archived DEP auto-rebuilt from Step4 + Step6"
+          } else {
+            " · compatible archived DEP reused"
+          },
+          ": ",
           length(unique(result$Description)),
           " pathways across ",
           length(unique(result$Cluster)),
