@@ -1,0 +1,41 @@
+name: Sync latest ProtVis
+
+on:
+  push:
+    branches:
+      - ProtVis
+    paths:
+      - ".github/workflows/sync-latest-protvis.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          ref: ProtVis
+          fetch-depth: 0
+
+      - name: Clone latest source repository
+        run: |
+          git clone --depth 1 --branch dev https://github.com/xuebinzhang-lab/ProtVis.git /tmp/protvis-source
+
+      - name: Replace target files with latest source files
+        run: |
+          rsync -a --delete --exclude=".git/" /tmp/protvis-source/ ./
+
+      - name: Commit and push synchronized code
+        run: |
+          git config user.name "anhuikylin"
+          git config user.email "103125590+anhuikylin@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Target repository already matches source."
+            exit 0
+          fi
+          git commit -m "Sync latest code from xuebinzhang-lab/ProtVis dev"
+          git push origin HEAD:ProtVis
