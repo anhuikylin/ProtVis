@@ -742,6 +742,14 @@ DEP_analysis_ui <- function(id) {
       } else {
         "-Log10(P-value)"
       },
+      subtitle = paste0(
+        "Point classification: ", params$p_metric, " < ", params$fdr,
+        if (identical(params$test_method %||% "", "treat")) {
+          paste0("; limma treat tests |log2FC| > ", params$logfc)
+        } else {
+          paste0("; |log2FC| > ", params$logfc)
+        }
+      ),
       colour = NULL
     ) +
     ggplot2::theme(legend.position = "top")
@@ -1617,9 +1625,10 @@ DEP_analysis_server <- function(id, shared_state) {
                 as.character(rv$sample_info$group) == g2
               ])
             )
-            samples <- intersect(samples, colnames(rv$normalized_matrix))
-            mat <- rv$normalized_matrix[
-              intersect(sig$ID, rownames(rv$normalized_matrix)),
+            heatmap_source <- rv$dep_analysis_matrix %||% rv$normalized_matrix
+            samples <- intersect(samples, colnames(heatmap_source))
+            mat <- heatmap_source[
+              intersect(sig$ID, rownames(heatmap_source)),
               samples,
               drop = FALSE
             ]
