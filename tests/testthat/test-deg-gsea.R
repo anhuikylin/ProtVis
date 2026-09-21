@@ -75,3 +75,20 @@ testthat::test_that("transcriptome GSEA assets do not bundle expression or group
     ignore.case = TRUE
   )))
 })
+
+
+testthat::test_that("transcriptome GSEA keeps the complete DESeq2 ranked universe", {
+  source <- paste(
+    deparse(ProtVis:::.protvis_deg_run_gsea),
+    collapse = "\n"
+  )
+  testthat::expect_match(
+    source,
+    "complete",
+    ignore.case = TRUE
+  )
+  testthat::expect_false(grepl(
+    "ranks <- ranks\\[annotated\\]",
+    source
+  ))
+})

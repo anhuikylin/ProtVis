@@ -13,9 +13,11 @@ The transcriptome GSEA implementation follows:
   02.MaizeTeosintePro/01.src/RNAseq.R
 
 The archived code ranks the complete DESeq2 B73-vs-Y12 result by
-log2FoldChange and runs clusterProfiler::GSEA with minGSSize = 5,
-maxGSSize = 500, pvalueCutoff = 1, TERM2GENE = t2g.kegg and
-TERM2NAME = t2n.kegg.
+log2FoldChange and passes that complete ranked universe directly to
+clusterProfiler::GSEA. KEGG annotation defines pathway membership; genes
+without KEGG annotation remain in the ranked list. The historical settings are
+minGSSize = 5, maxGSSize = 500, pvalueCutoff = 1,
+TERM2GENE = t2g.kegg and TERM2NAME = t2n.kegg.
 
 Regression reference
 --------------------

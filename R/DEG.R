@@ -718,19 +718,21 @@ DEG_ui <- function(id) {
     metric = metric
   )
 
-  annotated <- intersect(
+  overlap <- intersect(
     names(ranks),
     unique(background$TERM2GENE$GENE)
   )
-  ranks <- ranks[annotated]
-  ranks <- sort(ranks, decreasing = TRUE)
-
-  if (length(ranks) < 10L) {
+  if (length(overlap) < 5L) {
     stop(
       "Too few ranked genes overlap the built-in KEGG background.",
       call. = FALSE
     )
   }
+
+  # Important for historical reproduction: RNAseq.R passed the complete
+  # DESeq2 ranked list to clusterProfiler::GSEA. Unannotated genes remain in
+  # the ranked universe and only pathway membership comes from TERM2GENE.
+  ranks <- sort(ranks, decreasing = TRUE)
 
   result <- clusterProfiler::GSEA(
     geneList = ranks,
@@ -750,8 +752,6 @@ DEG_ui <- function(id) {
   )
 }
 
-
-#' @title DEG Analysis Server Logic
 
 #' @title DEG Analysis Server Logic
 #' @description This function contains the server-side logic for performing DEG (Differential Expression Analysis), including PCA and volcano plot generation, and DEG result calculations.
