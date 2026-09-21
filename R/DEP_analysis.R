@@ -1468,10 +1468,12 @@ DEP_analysis_server <- function(id, shared_state) {
         volcano_id <- paste0("volcano_plot_", i)
         heatmap_id <- paste0("heatmap_", i)
         bar_id <- paste0("bar_dep_", i)
+        presence_id <- paste0("presence_absence_", i)
         show_id <- paste0("show_volcano_", i)
         volcano_download_id <- paste0("download_volcano_", i)
         heatmap_download_id <- paste0("download_heatmap_", i)
         bar_download_id <- paste0("download_bar_", i)
+        presence_download_id <- paste0("download_presence_absence_", i)
 
         output[[table_id]] <- DT::renderDT({
           DT::datatable(
@@ -1486,6 +1488,38 @@ DEP_analysis_server <- function(id, shared_state) {
             )
           )
         })
+
+        output[[presence_id]] <- DT::renderDT({
+          presence <- rv$presence_absence[[key]] %||% data.frame()
+          if (!nrow(presence)) {
+            presence <- data.frame(
+              Message = if (identical(rv$dep_params$mode, "recommended")) {
+                "No presence/absence candidate met the current detection rule."
+              } else {
+                "Presence/absence candidates are reported only in Recommended DEP."
+              },
+              stringsAsFactors = FALSE
+            )
+          }
+          DT::datatable(
+            presence,
+            rownames = FALSE,
+            options = list(
+              scrollX = TRUE,
+              pageLength = 10
+            )
+          )
+        })
+
+        output[[presence_download_id]] <- shiny::downloadHandler(
+          filename = function() {
+            paste0("Presence_absence_", key, ".csv")
+          },
+          content = function(file) {
+            presence <- rv$presence_absence[[key]] %||% data.frame()
+            utils::write.csv(presence, file, row.names = FALSE)
+          }
+        )
 
         output[[volcano_id]] <- shiny::renderPlot({
           baseline <- rv$volcano_baseline[[show_id]] %||% 0
@@ -1541,9 +1575,10 @@ DEP_analysis_server <- function(id, shared_state) {
               as.character(rv$sample_info$group) == g2
             ])
           )
-          samples <- intersect(samples, colnames(rv$normalized_matrix))
-          mat <- rv$normalized_matrix[
-            intersect(sig$ID, rownames(rv$normalized_matrix)),
+          heatmap_source <- rv$dep_analysis_matrix %||% rv$normalized_matrix
+          samples <- intersect(samples, colnames(heatmap_source))
+          mat <- heatmap_source[
+            intersect(sig$ID, rownames(heatmap_source)),
             samples,
             drop = FALSE
           ]
@@ -1750,6 +1785,30 @@ DEP_analysis_server <- function(id, shared_state) {
                   ),
                   shiny::plotOutput(ns(bar_id), height = "430px")
                 )
+              )
+            ),
+            bslib::card(
+              height = "560px",
+              bslib::card_header(
+                paste("Presence/absence candidates -", g1, "vs", g2)
+              ),
+              bslib::card_body(
+                shiny::tags$small(
+                  paste0(
+                    "Recommended DEP does not impute proteins that are absent ",
+                    "from one group. Such candidates are reported separately."
+                  ),
+                  style = "color:#6c757d;"
+                ),
+                shiny::br(),
+                shiny::br(),
+                shiny::downloadButton(
+                  ns(presence_download_id),
+                  "DOWNLOAD CANDIDATES"
+                ),
+                shiny::br(),
+                shiny::br(),
+                DT::DTOutput(ns(presence_id))
               )
             )
           )
