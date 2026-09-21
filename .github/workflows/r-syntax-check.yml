@@ -37,6 +37,22 @@ jobs:
           if (length(failures)) stop(paste(failures, collapse = "\n"))
           cat("Parsed", length(files), "R files successfully.\n")
 
+      - name: Validate archived GSEA reproduction geometry
+        shell: Rscript {0}
+        run: |
+          source("R/gsea.R")
+          x <- .protvis_gsea_prepare_archived()
+          stopifnot(
+            nrow(x$rank_tbl) == 11049L,
+            sum(x$rank_tbl$in_pathway) == 196L,
+            x$extreme_position == 9893L,
+            abs(x$extreme_es - (-0.3064468069)) < 1e-6,
+            abs(max(x$rank_tbl$running_ES) - 0.2769240517) < 1e-6,
+            abs(max(x$rank_tbl$rank_metric) - 11.324951) < 1e-6,
+            abs(min(x$rank_tbl$rank_metric) - (-7.920156)) < 1e-6
+          )
+          cat("Archived Root_VE phenylpropanoid GSEA geometry validated.\n")
+
       - name: Validate DESCRIPTION and new help pages
         shell: Rscript {0}
         run: |
