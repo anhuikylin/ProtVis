@@ -48,9 +48,10 @@
   jsonlite::fromJSON(text, simplifyVector = FALSE)
 }
 
-.protvis_pw_http_text <- function(url, timeout = 60, not_found = NULL) {
+.protvis_pw_http_text <- function(url, query = NULL, timeout = 60, not_found = NULL) {
   response <- httr::GET(
     url,
+    query = query,
     httr::user_agent("ProtVis Protein Workbench"),
     httr::timeout(timeout)
   )
@@ -525,6 +526,168 @@
   links
 }
 
+.protvis_pw_common_species <- function() {
+  c(
+    "Zea mays (maize)" = "4577",
+    "Arabidopsis thaliana" = "3702",
+    "Oryza sativa (rice)" = "4530",
+    "Triticum aestivum (wheat)" = "4565",
+    "Glycine max (soybean)" = "3847",
+    "Solanum lycopersicum (tomato)" = "4081",
+    "Homo sapiens" = "9606",
+    "Mus musculus" = "10090",
+    "Drosophila melanogaster" = "7227",
+    "Saccharomyces cerevisiae" = "4932",
+    "All species (accession IDs recommended)" = ""
+  )
+}
+
+.protvis_pw_parse_identifiers <- function(text, limit = 100L) {
+  ids <- base::unlist(base::strsplit(base::trimws(text %||% ""), "[,;[:space:]]+"), use.names = FALSE)
+  ids <- base::unique(ids[base::nzchar(ids)])
+  if (!base::length(ids)) return(base::character())
+  if (base::length(ids) > limit) {
+    base::stop(base::sprintf("Enter at most %d identifiers per retrieval.", limit), call. = FALSE)
+  }
+  invalid <- !base::grepl("^[A-Za-z0-9_.-]+$", ids)
+  if (base::any(invalid)) {
+    base::stop("Identifiers may contain only letters, numbers, periods, underscores and hyphens.", call. = FALSE)
+  }
+  ids
+}
+
+.protvis_pw_parse_fasta_records <- function(fasta_text) {
+  if (base::is.null(fasta_text) || !base::nzchar(base::trimws(fasta_text))) return(base::data.frame())
+  lines <- base::strsplit(base::gsub("\\r", "", fasta_text), "\\n", fixed = FALSE)[[1]]
+  starts <- base::which(base::startsWith(lines, ">"))
+  if (!base::length(starts)) return(base::data.frame())
+  ends <- base::c(starts[-1L] - 1L, base::length(lines))
+  rows <- base::lapply(base::seq_along(starts), function(i) {
+    header <- base::substring(lines[[starts[[i]]]], 2L)
+    sequence <- base::paste(lines[base::seq.int(starts[[i]] + 1L, ends[[i]])], collapse = "")
+    fields <- base::strsplit(header, "\\|", fixed = FALSE)[[1]]
+    accession <- if (base::length(fields) >= 2L) fields[[2]] else base::strsplit(header, " ", fixed = TRUE)[[1]][[1]]
+    extract <- function(pattern) {
+      value <- base::sub(pattern, "\\1", header, perl = TRUE)
+      if (identical(value, header)) NA_character_ else value
+    }
+    base::data.frame(
+      record_type = if (base::length(fields)) fields[[1]] else NA_character_,
+      accession = accession,
+      entry_name = if (base::length(fields) >= 3L) base::strsplit(fields[[3]], " ", fixed = TRUE)[[1]][[1]] else NA_character_,
+      gene = extract(".* GN=([^ ]+).*"),
+      organism = extract(".* OS=(.*?) OX=.*"),
+      taxon_id = extract(".* OX=([0-9]+).*"),
+      sequence = .protvis_pw_clean_sequence(sequence),
+      stringsAsFactors = FALSE
+    )
+  })
+  result <- base::do.call(base::rbind, rows)
+  result$length <- base::nchar(result$sequence)
+  result
+}
+
+.protvis_pw_batch_sequence_fetch <- function(identifiers, taxon_id = "") {
+  identifiers <- .protvis_pw_parse_identifiers(base::paste(identifiers, collapse = "\n"))
+  taxon_id <- base::trimws(taxon_id %||% "")
+  if (base::nzchar(taxon_id) && !base::grepl("^[0-9]+$", taxon_id)) {
+    base::stop("NCBI taxon ID must contain digits only.", call. = FALSE)
+  }
+  terms <- base::unlist(base::lapply(identifiers, function(id) {
+    base::paste0("(accession:", id, " OR gene_exact:", id, ")")
+  }), use.names = FALSE)
+  query <- base::paste0("(", base::paste(terms, collapse = " OR "), ")")
+  if (base::nzchar(taxon_id)) query <- base::paste0("(", query, ") AND (organism_id:", taxon_id, ")")
+  fasta_text <- .protvis_pw_http_text(
+    "https://rest.uniprot.org/uniprotkb/stream",
+    query = base::list(format = "fasta", query = query),
+    timeout = 120,
+    not_found = ""
+  )
+  retrieved <- .protvis_pw_parse_fasta_records(fasta_text)
+  has_direct_match <- base::vapply(identifiers, function(input_id) {
+    if (!base::nrow(retrieved)) return(FALSE)
+    id_upper <- base::toupper(input_id)
+    base::any(base::toupper(retrieved$accession) == id_upper | base::toupper(retrieved$gene) == id_upper, na.rm = TRUE)
+  }, logical(1))
+
+  # Many plant gene models are indexed by UniProt but are not retained in the
+  # FASTA GN field. Resolve only those remaining identifiers, then retrieve
+  # their sequences together by accession.
+  fallback_map <- base::do.call(base::rbind, base::lapply(identifiers[!has_direct_match], function(input_id) {
+    hits <- base::tryCatch(
+      .protvis_pw_search_uniprot(input_id, if (base::nzchar(taxon_id)) taxon_id else NULL, size = 1L),
+      error = function(e) base::data.frame()
+    )
+    if (!base::nrow(hits)) {
+      return(base::data.frame(input_id = input_id, accession = NA_character_, stringsAsFactors = FALSE))
+    }
+    base::data.frame(input_id = input_id, accession = hits$accession[[1]], stringsAsFactors = FALSE)
+  }))
+  if (base::is.null(fallback_map)) {
+    fallback_map <- base::data.frame(input_id = base::character(), accession = base::character(), stringsAsFactors = FALSE)
+  }
+  fallback_accessions <- base::unique(fallback_map$accession[!base::is.na(fallback_map$accession) & base::nzchar(fallback_map$accession)])
+  if (base::length(fallback_accessions)) {
+    chunks <- base::split(fallback_accessions, base::ceiling(base::seq_along(fallback_accessions) / 50L))
+    fallback_records <- base::lapply(chunks, function(accessions) {
+      accession_query <- base::paste0("(", base::paste(base::paste0("accession:", accessions), collapse = " OR "), ")")
+      text <- .protvis_pw_http_text(
+        "https://rest.uniprot.org/uniprotkb/stream",
+        query = base::list(format = "fasta", query = accession_query), timeout = 120, not_found = ""
+      )
+      .protvis_pw_parse_fasta_records(text)
+    })
+    fallback_records <- fallback_records[base::vapply(fallback_records, base::nrow, integer(1)) > 0L]
+    if (base::length(fallback_records)) {
+      retrieved <- if (base::nrow(retrieved)) base::rbind(retrieved, base::do.call(base::rbind, fallback_records)) else base::do.call(base::rbind, fallback_records)
+    }
+  }
+  empty_row <- function(input_id) {
+    base::data.frame(
+      input_id = input_id, status = "Not found", record_type = NA_character_, accession = NA_character_,
+      entry_name = NA_character_, gene = NA_character_, organism = NA_character_,
+      taxon_id = if (base::nzchar(taxon_id)) taxon_id else NA_character_, sequence = NA_character_,
+      length = NA_integer_, stringsAsFactors = FALSE
+    )
+  }
+  selected <- base::lapply(identifiers, function(input_id) {
+    if (!base::nrow(retrieved)) return(empty_row(input_id))
+    id_upper <- base::toupper(input_id)
+    accession_match <- base::toupper(retrieved$accession) == id_upper
+    gene_match <- base::toupper(retrieved$gene) == id_upper
+    candidates <- base::which(accession_match | gene_match)
+    mapped_accession <- fallback_map$accession[fallback_map$input_id == input_id]
+    if (!base::length(candidates) && base::length(mapped_accession) && !base::is.na(mapped_accession[[1]])) {
+      candidates <- base::which(retrieved$accession == mapped_accession[[1]])
+      accession_match <- retrieved$accession == mapped_accession[[1]]
+    }
+    if (!base::length(candidates)) return(empty_row(input_id))
+    ordering <- base::order(
+      !accession_match[candidates],
+      !(base::tolower(retrieved$record_type[candidates]) == "sp"),
+      -retrieved$length[candidates],
+      retrieved$accession[candidates],
+      na.last = TRUE
+    )
+    row <- retrieved[candidates[[ordering[[1]]]], , drop = FALSE]
+    row$input_id <- input_id
+    row$status <- "Retrieved"
+    row[, c("input_id", "status", "record_type", "accession", "entry_name", "gene", "organism", "taxon_id", "length", "sequence"), drop = FALSE]
+  })
+  base::do.call(base::rbind, selected)
+}
+
+.protvis_pw_batch_fasta <- function(table) {
+  table <- table[table$status == "Retrieved" & !base::is.na(table$sequence) & base::nzchar(table$sequence), , drop = FALSE]
+  if (!base::nrow(table)) return("")
+  base::paste(base::vapply(base::seq_len(base::nrow(table)), function(i) {
+    name <- table$gene[[i]]
+    if (base::is.na(name) || !base::nzchar(name)) name <- table$input_id[[i]]
+    .protvis_pw_fasta(table$sequence[[i]], base::paste(table$accession[[i]], name, sep = "|"))
+  }, character(1)), collapse = "\n")
+}
+
 .protvis_pw_model_view <- function(pdb_text) {
   if (base::is.null(pdb_text) || !base::nzchar(pdb_text)) return(r3dmol::r3dmol())
   r3dmol::r3dmol() |>
@@ -623,6 +786,39 @@ protein_workbench_ui <- function(id) {
               )
             ),
             bslib::nav_panel(
+              "Batch sequences",
+              bslib::card(
+                bslib::card_header("Batch protein sequence retrieval"),
+                bslib::card_body(
+                  shiny::p(
+                    "Paste gene IDs or UniProt accessions. ProtVis retrieves matching sequences directly from UniProt with fast batch requests; no FASTA upload is needed.",
+                    class = "pw-note"
+                  ),
+                  bslib::layout_columns(
+                    col_widths = c(4, 8),
+                    shiny::div(
+                      shiny::selectInput(ns("batch_species"), "Common species", choices = .protvis_pw_common_species(), selected = "4577"),
+                      shiny::textInput(ns("batch_taxon"), "NCBI taxon ID override (optional)", placeholder = "Overrides the common-species selection"),
+                      shiny::actionButton(ns("batch_run"), "RETRIEVE SEQUENCES", icon = bsicons::bs_icon("cloud-download"), class = "btn-primary pv-run-button"),
+                      shiny::br(), shiny::br(),
+                      shiny::downloadButton(ns("download_batch_fasta"), "Download FASTA"),
+                      shiny::downloadButton(ns("download_batch_table"), "Download result table")
+                    ),
+                    shiny::div(
+                      shiny::textAreaInput(
+                        ns("batch_ids"), "Gene IDs or UniProt accessions",
+                        rows = 8,
+                        placeholder = "One ID per line, or separate IDs with commas\ne.g. Zm00001eb000210\nZm00001eb000440\nA0A1D6JJK6"
+                      ),
+                      shiny::uiOutput(ns("batch_status"))
+                    )
+                  )
+                )
+              ),
+              shiny::br(),
+              bslib::card(bslib::card_header("Retrieved sequences"), DT::DTOutput(ns("batch_table")))
+            ),
+            bslib::nav_panel(
               "Annotations",
               shiny::p("UniProt sequence features including regions, active sites, binding sites, variants and processing features.", class = "pw-note"),
               DT::DTOutput(ns("features_table"))
@@ -677,6 +873,8 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       alphafold = NULL,
       alphafold_pdb = NULL,
       local_sequence = "",
+      batch_results = base::data.frame(),
+      batch_requested = base::character(),
       message = "Enter a protein identifier or sequence to begin."
     )
 
@@ -733,6 +931,30 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       rv$alphafold_pdb <- NULL
       rv$local_sequence <- ""
       rv$message <- "Protein Workbench cleared."
+    })
+
+    shiny::observeEvent(input$batch_run, {
+      base::tryCatch({
+        identifiers <- .protvis_pw_parse_identifiers(input$batch_ids %||% "")
+        if (!base::length(identifiers)) base::stop("Enter at least one gene ID or UniProt accession.")
+        taxon_id <- base::trimws(input$batch_taxon %||% "")
+        if (!base::nzchar(taxon_id)) taxon_id <- input$batch_species %||% ""
+        rv$batch_requested <- identifiers
+        rv$batch_results <- .protvis_pw_batch_sequence_fetch(identifiers, taxon_id)
+        retrieved <- base::sum(rv$batch_results$status == "Retrieved", na.rm = TRUE)
+        rv$message <- base::sprintf("Batch sequence retrieval completed: %d of %d identifiers matched.", retrieved, base::length(identifiers))
+        .protvis_record_shared_run(
+          shared_state,
+          module = "protein_workbench",
+          method = "batch_uniprot_sequence_retrieval",
+          category = "toolkits",
+          parameters = list(taxon_id = taxon_id, requested_identifiers = identifiers),
+          tables = list(batch_sequence_results = rv$batch_results),
+          statistics = list(requested = base::length(identifiers), retrieved = retrieved)
+        )
+      }, error = function(e) {
+        shiny::showNotification(base::conditionMessage(e), type = "error", duration = 8)
+      })
     })
 
     shiny::observeEvent(input$run, {
@@ -902,6 +1124,35 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       base::paste(base::substring(sequence, base::seq(1, base::nchar(sequence), 60), base::seq(60, base::nchar(sequence) + 59, 60)), collapse = "\n")
     })
 
+    output$batch_status <- shiny::renderUI({
+      table <- rv$batch_results
+      if (!base::nrow(table)) {
+        return(shiny::div(class = "pw-note", "Choose a species, paste up to 100 identifiers, then retrieve sequences."))
+      }
+      retrieved <- base::sum(table$status == "Retrieved", na.rm = TRUE)
+      missing <- base::sum(table$status == "Not found", na.rm = TRUE)
+      shiny::div(
+        class = "pw-note",
+        shiny::strong(base::sprintf("%d retrieved", retrieved)),
+        base::sprintf(" · %d not found · %d requested", missing, base::length(rv$batch_requested))
+      )
+    })
+
+    output$batch_table <- DT::renderDT({
+      table <- rv$batch_results
+      if (!base::nrow(table)) {
+        table <- base::data.frame(Message = "No batch retrieval has been run.")
+      } else {
+        table <- table[, base::setdiff(base::names(table), "sequence"), drop = FALSE]
+      }
+      DT::datatable(
+        table,
+        rownames = FALSE,
+        filter = if (base::nrow(table) > 1L) "top" else "none",
+        options = base::list(pageLength = 15, scrollX = TRUE)
+      )
+    })
+
     output$composition_plot <- shiny::renderPlot({
       table <- .protvis_pw_composition(current_sequence())
       if (!base::nrow(table)) {
@@ -1055,6 +1306,23 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       content = function(file) {
         if (base::is.null(rv$entry)) base::stop("No UniProt record available.")
         jsonlite::write_json(rv$entry, file, pretty = TRUE, auto_unbox = TRUE, null = "null")
+      }
+    )
+
+    output$download_batch_fasta <- shiny::downloadHandler(
+      filename = function() base::paste0("ProtVis_batch_sequences_", base::format(base::Sys.Date(), "%Y%m%d"), ".fasta"),
+      content = function(file) {
+        fasta <- .protvis_pw_batch_fasta(rv$batch_results)
+        if (!base::nzchar(fasta)) base::stop("No retrieved sequences are available for FASTA download.")
+        base::writeLines(fasta, file, useBytes = TRUE)
+      }
+    )
+
+    output$download_batch_table <- shiny::downloadHandler(
+      filename = function() base::paste0("ProtVis_batch_sequence_results_", base::format(base::Sys.Date(), "%Y%m%d"), ".csv"),
+      content = function(file) {
+        if (!base::nrow(rv$batch_results)) base::stop("No batch retrieval results are available for download.")
+        utils::write.csv(rv$batch_results, file, row.names = FALSE, na = "")
       }
     )
   })
