@@ -385,6 +385,14 @@
   )
 }
 
+.protvis_pw_empty_plot <- function(message) {
+  ggplot2::ggplot() +
+    ggplot2::annotate("text", x = 0.5, y = 0.5, label = message, colour = "#657789", size = 4) +
+    ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+    ggplot2::theme_void() +
+    ggplot2::theme(plot.margin = ggplot2::margin(12, 12, 12, 12))
+}
+
 .protvis_pw_fasta <- function(sequence, accession = "protein") {
   sequence <- .protvis_pw_clean_sequence(sequence)
   chunks <- base::substring(sequence, base::seq(1, base::nchar(sequence), 60), base::seq(60, base::nchar(sequence) + 59, 60))
@@ -897,7 +905,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
     output$composition_plot <- shiny::renderPlot({
       table <- .protvis_pw_composition(current_sequence())
       if (!base::nrow(table)) {
-        graphics::plot.new(); graphics::text(0.5, 0.5, "No sequence loaded."); return(invisible(NULL))
+        return(.protvis_pw_empty_plot("No sequence loaded."))
       }
       ggplot2::ggplot(table, ggplot2::aes(x = stats::reorder(Residue, -Count), y = Count)) +
         ggplot2::geom_col() +
@@ -909,7 +917,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       table <- .protvis_pw_hydropathy(current_sequence(), input$hydro_window %||% 9L)
       table <- table[!base::is.na(table$hydropathy), , drop = FALSE]
       if (!base::nrow(table)) {
-        graphics::plot.new(); graphics::text(0.5, 0.5, "No sequence loaded."); return(invisible(NULL))
+        return(.protvis_pw_empty_plot("No hydropathy values are available for this sequence and window."))
       }
       ggplot2::ggplot(table, ggplot2::aes(x = position, y = hydropathy)) +
         ggplot2::geom_line(linewidth = 0.6) +
@@ -944,13 +952,13 @@ protein_workbench_server <- function(id, shared_state = NULL) {
 
     output$domain_plot_ui <- shiny::renderUI({
       height <- .protvis_pw_domain_plot_height(base::nrow(domain_plot_data()))
-      shiny::plotOutput(ns("domain_plot"), height = base::paste0(height, "px"))
+      shiny::plotOutput(session$ns("domain_plot"), height = base::paste0(height, "px"))
     })
 
     output$domain_plot <- shiny::renderPlot({
       plot_data <- domain_plot_data()
       if (!base::nrow(plot_data)) {
-        graphics::plot.new(); graphics::text(0.5, 0.5, "InterPro positional domains will appear here when available."); return(invisible(NULL))
+        return(.protvis_pw_empty_plot("InterPro positional domains will appear here when available."))
       }
       ggplot2::ggplot(plot_data) +
         ggplot2::geom_segment(
