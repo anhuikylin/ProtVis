@@ -82,6 +82,7 @@ Imports:
     shinyWidgets,
     shinyjs,
     stats,
+    statmod,
     stringr,
     tibble,
     tidyr,
