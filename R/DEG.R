@@ -1592,8 +1592,6 @@ DEG_server <- function(id, shared_state = NULL) {
 
 
     output$gsea_dotplot <- shiny::renderPlot({
-
-    output$gsea_dotplot <- shiny::renderPlot({
       bundle <- gsea_bundle()
       shiny::validate(
         shiny::need(
