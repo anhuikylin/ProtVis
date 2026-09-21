@@ -713,7 +713,7 @@ protein_workbench_ui <- function(id) {
     shiny::tags$style(shiny::HTML("\n      .pw-note {color:#657789;font-size:12px;line-height:1.55;}\n      .pw-kpis {display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-bottom:14px;}\n      .pw-kpi {border:1px solid #dbe8f3;border-radius:14px;background:#f8fbff;padding:13px 15px;}\n      .pw-kpi strong {display:block;color:#1787c9;font-size:19px;line-height:1.2;overflow-wrap:anywhere;}\n      .pw-kpi span {display:block;color:#657789;font-size:11px;margin-top:5px;text-transform:uppercase;letter-spacing:.05em;}\n      .pw-resource-grid {display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px;}\n      .pw-resource {display:block;border:1px solid #dbe8f3;border-radius:14px;background:#fff;padding:16px;text-decoration:none!important;}\n      .pw-resource:hover {border-color:#9ccce8;background:#f8fbff;}\n      .pw-resource strong {display:block;color:#1f3447;margin-bottom:5px;}\n      .pw-resource span {color:#657789;font-size:12px;}\n      @media(max-width:1000px){.pw-kpis{grid-template-columns:repeat(2,1fr)}.pw-resource-grid{grid-template-columns:1fr 1fr}}\n    ")),
     bslib::layout_sidebar(
       sidebar = bslib::sidebar(
-        width = 365,
+        width = 550,
         open = "open",
         shiny::h4("Protein Workbench"),
         shiny::p(
@@ -748,7 +748,34 @@ protein_workbench_ui <- function(id) {
         shiny::uiOutput(ns("status")),
         shiny::hr(),
         shiny::downloadButton(ns("download_fasta"), "Download FASTA"),
-        shiny::downloadButton(ns("download_json"), "Download UniProt JSON")
+        shiny::downloadButton(ns("download_json"), "Download UniProt JSON"),
+        shiny::hr(),
+        shiny::h5("Batch sequence retrieval"),
+        shiny::p(
+          "Retrieve multiple protein sequences directly from UniProt. No FASTA upload is needed.",
+          class = "pw-note"
+        ),
+        shiny::selectInput(
+          ns("batch_species"), "Common species",
+          choices = .protvis_pw_common_species(), selected = "4577"
+        ),
+        shiny::textInput(
+          ns("batch_taxon"), "NCBI taxon ID override (optional)",
+          placeholder = "Overrides the common-species selection"
+        ),
+        shiny::textAreaInput(
+          ns("batch_ids"), "Gene IDs or UniProt accessions",
+          rows = 8,
+          placeholder = "One ID per line, or separate IDs with commas\ne.g. Zm00001eb000210\nZm00001eb000440\nA0A1D6JJK6"
+        ),
+        shiny::actionButton(
+          ns("batch_run"), "RETRIEVE SEQUENCES",
+          icon = bsicons::bs_icon("cloud-download"), class = "btn-primary pv-run-button"
+        ),
+        shiny::br(), shiny::br(),
+        shiny::downloadButton(ns("download_batch_fasta"), "Download batch FASTA"),
+        shiny::downloadButton(ns("download_batch_table"), "Download result table"),
+        shiny::uiOutput(ns("batch_status"))
       ),
       bslib::card(
         full_screen = TRUE,
@@ -791,27 +818,8 @@ protein_workbench_ui <- function(id) {
                 bslib::card_header("Batch protein sequence retrieval"),
                 bslib::card_body(
                   shiny::p(
-                    "Paste gene IDs or UniProt accessions. ProtVis retrieves matching sequences directly from UniProt with fast batch requests; no FASTA upload is needed.",
+                    "Configure the species and identifiers in the left panel, then select RETRIEVE SEQUENCES. This tab displays the complete retrieval result and supports filtering.",
                     class = "pw-note"
-                  ),
-                  bslib::layout_columns(
-                    col_widths = c(4, 8),
-                    shiny::div(
-                      shiny::selectInput(ns("batch_species"), "Common species", choices = .protvis_pw_common_species(), selected = "4577"),
-                      shiny::textInput(ns("batch_taxon"), "NCBI taxon ID override (optional)", placeholder = "Overrides the common-species selection"),
-                      shiny::actionButton(ns("batch_run"), "RETRIEVE SEQUENCES", icon = bsicons::bs_icon("cloud-download"), class = "btn-primary pv-run-button"),
-                      shiny::br(), shiny::br(),
-                      shiny::downloadButton(ns("download_batch_fasta"), "Download FASTA"),
-                      shiny::downloadButton(ns("download_batch_table"), "Download result table")
-                    ),
-                    shiny::div(
-                      shiny::textAreaInput(
-                        ns("batch_ids"), "Gene IDs or UniProt accessions",
-                        rows = 8,
-                        placeholder = "One ID per line, or separate IDs with commas\ne.g. Zm00001eb000210\nZm00001eb000440\nA0A1D6JJK6"
-                      ),
-                      shiny::uiOutput(ns("batch_status"))
-                    )
                   )
                 )
               ),
