@@ -155,7 +155,6 @@ DEP_analysis_ui <- function(id) {
               ),
               selected = "P.Value"
             )
-            )
           )
         ),
 
