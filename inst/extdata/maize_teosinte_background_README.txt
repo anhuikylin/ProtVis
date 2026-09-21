@@ -17,5 +17,14 @@ t2g.kegg) to the first non-empty pathway/term name in the corresponding t2n
 sheets. Rows without a term, gene, or name are not included.
 
 No precomputed enrichment result or static plot is included. Directional KEGG
-uses the current DEP result and the proteins actually tested in each comparison
-as that comparison's enrichment universe.
+is calculated from the current DEP result.
+
+"Figure 3 reproduction (compareCluster)" requires DEP > Archived reproduction
+and reconstructs the historical workflow: archived Step6 limma, BH < 0.05 and
+|log2FC| > 1 directional lists, compareCluster/enricher with pvalueCutoff =
+0.05 and qvalueCutoff = 1, no user-supplied universe, raw pvalue colour, and
+clusterProfiler-compatible dotplot selection.
+
+"Standard ORA" remains available for general datasets and uses each
+comparison's retained tested proteins as the enrichment universe with BH FDR
+filtering.

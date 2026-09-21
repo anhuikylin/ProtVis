@@ -336,267 +336,9 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 }
 
 
-# Built-in source for the archived maize-teosinte Figure 3C-D KEGG panel.
-# The 29 displayed pathway-stage points were reconstructed from the archived
-# directional DEP/KEGG workflow and checked against
-# 03.Maize_Teosinte_Jul02_2024/04.result/01.Publish_figures/KEGG enrichment.png.
-.protvis_maize_teosinte_kegg_data <- function() {
-  file_name <- "maize_teosinte_kegg_figure3_cd.csv"
-  path <- system.file(
-    "extdata",
-    file_name,
-    package = "ProtVis"
-  )
-
-  if (!nzchar(path)) {
-    candidates <- c(
-      file.path("inst", "extdata", file_name),
-      file.path(getwd(), "inst", "extdata", file_name)
-    )
-    hit <- candidates[file.exists(candidates)]
-    if (length(hit)) path <- hit[[1L]]
-  }
-
-  if (!nzchar(path) || !file.exists(path)) {
-    stop(
-      "Built-in maize-teosinte KEGG reproduction data are unavailable.",
-      call. = FALSE
-    )
-  }
-
-  out <- utils::read.csv(
-    path,
-    stringsAsFactors = FALSE,
-    check.names = FALSE
-  )
-  numeric_cols <- intersect(c("pvalue", "p.adjust", "Count"), names(out))
-  out[numeric_cols] <- lapply(out[numeric_cols], as.numeric)
-  .protvis_validate_maize_teosinte_kegg_data(out)
-  out
-}
-
-
-.protvis_validate_maize_teosinte_kegg_data <- function(data) {
-  required <- c(
-    "Panel", "Direction", "Cluster", "Cluster_label", "ID",
-    "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "Count"
-  )
-  missing <- setdiff(required, names(data))
-  if (length(missing)) {
-    stop(
-      "Built-in maize-teosinte KEGG data are missing columns: ",
-      paste(missing, collapse = ", "),
-      call. = FALSE
-    )
-  }
-
-  if (nrow(data) != 29L ||
-      sum(data$Panel == "C") != 18L ||
-      sum(data$Panel == "D") != 11L) {
-    stop(
-      "Built-in maize-teosinte KEGG data failed the 29-point ",
-      "(Panel C = 18; Panel D = 11) integrity check.",
-      call. = FALSE
-    )
-  }
-
-  expected_c <- c(
-    "Pentose and glucuronate interconversions",
-    "Phenylpropanoid biosynthesis",
-    "Galactose metabolism",
-    "Lipid biosynthesis proteins",
-    "Fatty acid biosynthesis"
-  )
-  expected_d <- c(
-    "Phenylpropanoid biosynthesis",
-    "Metabolism of terpenoids and polyketides",
-    "Monoterpenoid biosynthesis",
-    "Glutathione metabolism",
-    "Photosynthesis"
-  )
-  observed_c <- unique(data$Description[data$Panel == "C"])
-  observed_d <- unique(data$Description[data$Panel == "D"])
-  if (!setequal(observed_c, expected_c) ||
-      !setequal(observed_d, expected_d)) {
-    stop(
-      "Built-in maize-teosinte KEGG pathway labels failed integrity checks.",
-      call. = FALSE
-    )
-  }
-
-  if (any(!is.finite(data$pvalue)) ||
-      any(!is.finite(data$Count)) ||
-      any(data$pvalue <= 0) ||
-      any(data$Count <= 0) ||
-      anyDuplicated(data[c("Panel", "Cluster", "Description")])) {
-    stop(
-      "Built-in maize-teosinte KEGG numeric/key values failed integrity checks.",
-      call. = FALSE
-    )
-  }
-
-  # Publication panel D has no significant Root_V1.V2 pathway point.
-  if (any(data$Panel == "D" & data$Cluster == "Root_V1.V2")) {
-    stop(
-      "Panel D integrity check failed: Root_V1.V2 should be absent.",
-      call. = FALSE
-    )
-  }
-
-  invisible(TRUE)
-}
-
-
-.protvis_maize_teosinte_kegg_panel <- function(data, panel = c("C", "D")) {
-  panel <- match.arg(panel)
-  df <- data[data$Panel == panel, , drop = FALSE]
-
-  if (!nrow(df)) {
-    stop("No built-in KEGG data are available for panel ", panel, ".",
-         call. = FALSE)
-  }
-
-  if (identical(panel, "C")) {
-    x_levels <- c(
-      "Root_VE", "Root_V1.V2", "Root_V4", "Leaf_VE-V2", "Leaf_V4-V8"
-    )
-    y_levels <- c(
-      "Pentose and glucuronate interconversions",
-      "Phenylpropanoid biosynthesis",
-      "Galactose metabolism",
-      "Lipid biosynthesis proteins",
-      "Fatty acid biosynthesis"
-    )
-    p_breaks <- c(0.0005, 0.0010, 0.0015)
-    p_labels <- c("0.0005", "0.0010", "0.0015")
-    count_breaks <- c(20, 30, 40)
-    title <- expression(italic("Zea mays ssp. mays") ~ "– enriched")
-  } else {
-    x_levels <- c("Root_VE", "Root_V4", "Leaf_VE-V2", "Leaf_V4-V8")
-    y_levels <- c(
-      "Phenylpropanoid biosynthesis",
-      "Metabolism of terpenoids and polyketides",
-      "Monoterpenoid biosynthesis",
-      "Glutathione metabolism",
-      "Photosynthesis"
-    )
-    p_breaks <- c(0.0003, 0.0006, 0.0009)
-    p_labels <- c("0.0003", "0.0006", "0.0009")
-    count_breaks <- c(5, 20, 30)
-    title <- expression(italic("Zea mays ssp. mexicana") ~ "– enriched")
-  }
-
-  df$Cluster_label <- factor(df$Cluster_label, levels = x_levels)
-  df$Description <- factor(df$Description, levels = rev(y_levels))
-
-  ggplot2::ggplot(
-    df,
-    ggplot2::aes(
-      x = Cluster_label,
-      y = Description,
-      size = Count,
-      fill = pvalue
-    )
-  ) +
-    ggplot2::geom_point(
-      shape = 21,
-      colour = "black",
-      stroke = 0.45
-    ) +
-    ggplot2::scale_fill_gradient(
-      low = "red",
-      high = "blue",
-      breaks = p_breaks,
-      labels = p_labels,
-      name = "pvalue"
-    ) +
-    ggplot2::scale_size_continuous(
-      range = c(3.5, 10.5),
-      breaks = count_breaks,
-      name = "Count"
-    ) +
-    ggplot2::guides(
-      fill = ggplot2::guide_colorbar(
-        order = 1,
-        reverse = TRUE
-      ),
-      size = ggplot2::guide_legend(
-        order = 2,
-        override.aes = list(
-          fill = "white",
-          colour = "black"
-        )
-      )
-    ) +
-    ggplot2::labs(
-      title = title,
-      x = NULL,
-      y = NULL
-    ) +
-    ggplot2::theme_bw(base_size = 10) +
-    ggplot2::theme(
-      axis.text.x = ggplot2::element_text(
-        size = 9,
-        colour = "black",
-        angle = 90,
-        hjust = 1,
-        vjust = 0.5
-      ),
-      axis.text.y = ggplot2::element_text(
-        size = 9,
-        colour = "black"
-      ),
-      plot.title = ggplot2::element_text(
-        size = 12,
-        hjust = 0.5,
-        colour = "black"
-      ),
-      panel.border = ggplot2::element_rect(
-        colour = "black",
-        linewidth = 0.8
-      ),
-      panel.grid.major = ggplot2::element_line(
-        colour = "#e7e7e7",
-        linewidth = 0.4
-      ),
-      panel.grid.minor = ggplot2::element_blank(),
-      axis.ticks = ggplot2::element_line(
-        linewidth = 0.45,
-        colour = "black"
-      ),
-      legend.text = ggplot2::element_text(size = 9, colour = "black"),
-      legend.title = ggplot2::element_text(size = 10, colour = "black"),
-      legend.position = "right",
-      plot.margin = ggplot2::margin(10, 12, 10, 10)
-    )
-}
-
-
-plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
-  if (is.null(data)) {
-    data <- .protvis_maize_teosinte_kegg_data()
-  }
-
-  panel_c <- .protvis_maize_teosinte_kegg_panel(data, "C")
-  panel_d <- .protvis_maize_teosinte_kegg_panel(data, "D")
-
-  patchwork::wrap_plots(
-    panel_c,
-    panel_d,
-    ncol = 2,
-    widths = c(1.05, 0.95)
-  ) +
-    patchwork::plot_annotation(
-      tag_levels = list(c("C", "D")),
-      theme = ggplot2::theme(
-        plot.tag = ggplot2::element_text(
-          size = 14,
-          face = "bold",
-          colour = "black"
-        )
-      )
-    )
-}
+# Directional KEGG reproduction is calculated from the current archived DEP
+# results and the annotation background. No precomputed Figure 3 enrichment
+# result table or static plot is bundled in ProtVis.
 
 .protvis_load_builtin_enrichment_background <- function() {
   locate <- function(file_name) {
@@ -680,89 +422,540 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
   out
 }
 
-.protvis_directional_kegg_data <- function(
-    dep_results, kegg_background, presence_absence = list(),
-    evidence_mode = c("quantitative", "all_retained"),
-    comparisons = NULL, top_n = 5L, p_adjust_cutoff = 0.05) {
-  if (!is.list(dep_results) || !length(dep_results)) return(data.frame())
-  evidence_mode <- match.arg(evidence_mode)
-  if (!is.list(presence_absence)) presence_absence <- list()
+.protvis_directional_expand_ids <- function(x) {
+  ids <- unlist(
+    strsplit(as.character(x), "[,;|]", perl = TRUE),
+    use.names = FALSE
+  )
+  ids <- trimws(ids)
+  ids <- sub("^CON__", "", ids)
+  unique(ids[!is.na(ids) & nzchar(ids)])
+}
+
+
+.protvis_directional_background <- function(
+    kegg_background, archived = FALSE) {
+  background <- as.data.frame(
+    kegg_background,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  if (!all(c("TERM", "GENE", "NAME") %in% names(background))) {
+    stop(
+      "KEGG background must contain TERM, GENE, and NAME columns.",
+      call. = FALSE
+    )
+  }
+
+  background <- background[, c("TERM", "GENE", "NAME"), drop = FALSE]
+  background[] <- lapply(
+    background,
+    function(x) trimws(as.character(x))
+  )
+  background <- background[
+    !is.na(background$TERM) & nzchar(background$TERM) &
+      !is.na(background$GENE) & nzchar(background$GENE) &
+      !is.na(background$NAME) & nzchar(background$NAME),
+    ,
+    drop = FALSE
+  ]
+
+  if (isTRUE(archived)) {
+    # Exact Enrichmentdb2 preparation used by the archived Figure 3 script:
+    #   t2n: distinct TERM/NAME, then keep the first TERM for each NAME.
+    #   t2g: original TERM/GENE rows restricted to retained t2n TERM values.
+    t2n <- unique(background[, c("TERM", "NAME"), drop = FALSE])
+    t2n <- t2n[!duplicated(t2n$NAME), , drop = FALSE]
+
+    t2g <- unique(background[, c("TERM", "GENE"), drop = FALSE])
+    t2g <- t2g[t2g$TERM %in% t2n$TERM, , drop = FALSE]
+
+    return(list(
+      TERM2GENE = unique(t2g),
+      TERM2NAME = unique(t2n)
+    ))
+  }
+
+  # Standard ProtVis ORA accepts protein-group strings and expands them to
+  # individual identifiers before testing.
+  gene_rows <- lapply(seq_len(nrow(background)), function(i) {
+    genes <- .protvis_directional_expand_ids(background$GENE[[i]])
+    if (!length(genes)) return(NULL)
+    data.frame(
+      TERM = rep(background$TERM[[i]], length(genes)),
+      GENE = genes,
+      stringsAsFactors = FALSE
+    )
+  })
+  gene_rows <- gene_rows[!vapply(gene_rows, is.null, logical(1))]
+  t2g <- if (length(gene_rows)) {
+    unique(do.call(rbind, gene_rows))
+  } else {
+    data.frame(TERM = character(), GENE = character())
+  }
+
+  t2n <- unique(background[, c("TERM", "NAME"), drop = FALSE])
+  t2n <- t2n[!duplicated(t2n$TERM), , drop = FALSE]
+
+  list(
+    TERM2GENE = unique(t2g),
+    TERM2NAME = unique(t2n)
+  )
+}
+
+
+.protvis_directional_archived_compatibility <- function(
+    dep_results, comparisons = NULL) {
+  if (!is.list(dep_results) || !length(dep_results)) {
+    return(list(ok = FALSE, message = "Run DEP first."))
+  }
+
   if (!is.null(comparisons)) {
-    comparisons <- intersect(as.character(comparisons), names(dep_results))
+    comparisons <- intersect(
+      as.character(comparisons),
+      names(dep_results)
+    )
     dep_results <- dep_results[comparisons]
   }
-  background <- as.data.frame(kegg_background, stringsAsFactors = FALSE)
-  if (!all(c("TERM", "GENE", "NAME") %in% names(background))) {
-    stop("KEGG background must contain TERM, GENE, and NAME columns.",
-         call. = FALSE)
-  }
-  t2g <- unique(background[, c("TERM", "GENE"), drop = FALSE])
-  t2g$TERM <- trimws(as.character(t2g$TERM))
-  t2g$GENE <- trimws(as.character(t2g$GENE))
-  t2g <- t2g[nzchar(t2g$TERM) & nzchar(t2g$GENE), , drop = FALSE]
-  t2n <- unique(background[, c("TERM", "NAME"), drop = FALSE])
-  t2n$TERM <- trimws(as.character(t2n$TERM))
-  t2n$NAME <- trimws(as.character(t2n$NAME))
-  t2n <- t2n[!duplicated(t2n$TERM) & nzchar(t2n$NAME), , drop = FALSE]
 
-  # MaxQuant protein groups can contain several identifiers separated by
-  # semicolons.  Enrichment must test each mapped identifier, rather than
-  # treating the entire protein-group string as a new, unmatched ID.
-  expand_ids <- function(x) {
-    ids <- unlist(strsplit(as.character(x), "[,;|]", perl = TRUE), use.names = FALSE)
-    ids <- trimws(ids)
-    ids <- sub("^CON__", "", ids)
-    unique(ids[!is.na(ids) & nzchar(ids)])
+  if (!length(dep_results)) {
+    return(list(
+      ok = FALSE,
+      message = "Select at least one DEP comparison."
+    ))
   }
 
-  top_n <- max(1L, as.integer(top_n))
-  p_adjust_cutoff <- as.numeric(p_adjust_cutoff)
-  rows <- lapply(names(dep_results), function(comparison) {
-    result <- as.data.frame(dep_results[[comparison]], stringsAsFactors = FALSE)
+  required <- c(
+    "logFC", "P.Value", "Group1", "Group2",
+    "analysis_mode", "protein_universe",
+    "matrix_source", "test_method"
+  )
+
+  for (comparison in names(dep_results)) {
+    result <- as.data.frame(
+      dep_results[[comparison]],
+      stringsAsFactors = FALSE
+    )
     id_col <- c("ID", "protein_id", "Protein", "Gene")[
       c("ID", "protein_id", "Protein", "Gene") %in% names(result)
     ][1L]
-    if (is.na(id_col) || !"regulation" %in% names(result)) return(NULL)
-    tested <- expand_ids(result[[id_col]])
+
+    if (is.na(id_col)) {
+      return(list(
+        ok = FALSE,
+        message = paste0(
+          comparison, ": protein ID column is unavailable."
+        )
+      ))
+    }
+
+    missing <- setdiff(required, names(result))
+    if (length(missing)) {
+      return(list(
+        ok = FALSE,
+        message = paste0(
+          comparison,
+          ": archived DEP provenance is incomplete (",
+          paste(missing, collapse = ", "),
+          ")."
+        )
+      ))
+    }
+
+    mode <- unique(as.character(result$analysis_mode))
+    mode <- mode[!is.na(mode) & nzchar(mode)]
+    universe <- unique(as.character(result$protein_universe))
+    universe <- universe[!is.na(universe) & nzchar(universe)]
+    matrix_source <- unique(as.character(result$matrix_source))
+    matrix_source <- matrix_source[
+      !is.na(matrix_source) & nzchar(matrix_source)
+    ]
+    test_method <- unique(as.character(result$test_method))
+    test_method <- test_method[
+      !is.na(test_method) & nzchar(test_method)
+    ]
+
+    if (!length(mode) || any(mode != "archived") ||
+        !length(universe) ||
+        any(universe != "archived_any_detected") ||
+        !length(matrix_source) ||
+        any(matrix_source != "Step6_data_normalization") ||
+        !length(test_method) ||
+        any(test_method != "archived_eBayes")) {
+      return(list(
+        ok = FALSE,
+        message = paste0(
+          "Figure 3 reproduction requires DEP > Archived reproduction, ",
+          "Detection filter = 'Detected in any comparison sample ",
+          "(archived)', and the historical Step6 limma workflow."
+        )
+      ))
+    }
+  }
+
+  list(
+    ok = TRUE,
+    message = paste0(
+      "✓ Archived DEP compatible · historical Step6 limma · ",
+      "|log2FC| > 1 · BH < 0.05"
+    )
+  )
+}
+
+
+.protvis_directional_archived_lists <- function(
+    dep_results, comparisons) {
+  compatibility <- .protvis_directional_archived_compatibility(
+    dep_results,
+    comparisons
+  )
+  if (!isTRUE(compatibility$ok)) {
+    stop(compatibility$message, call. = FALSE)
+  }
+
+  group1_lists <- list()
+  group2_lists <- list()
+  cluster_to_comparison <- character()
+  group1_names <- character()
+  group2_names <- character()
+
+  for (comparison in comparisons) {
+    result <- as.data.frame(
+      dep_results[[comparison]],
+      stringsAsFactors = FALSE
+    )
+    id_col <- c("ID", "protein_id", "Protein", "Gene")[
+      c("ID", "protein_id", "Protein", "Gene") %in% names(result)
+    ][1L]
+
+    group1 <- unique(trimws(as.character(result$Group1)))
+    group1 <- group1[!is.na(group1) & nzchar(group1)]
+    group2 <- unique(trimws(as.character(result$Group2)))
+    group2 <- group2[!is.na(group2) & nzchar(group2)]
+    group1 <- if (length(group1)) group1[[1L]] else "Group1"
+    group2 <- if (length(group2)) group2[[1L]] else "Group2"
+
+    cluster <- .protvis_dep_stage_label(group1)
+    if (cluster %in% names(group1_lists)) {
+      cluster <- comparison
+    }
+
+    # Historical Figure 3 used Protein_ID exactly as stored in the archived
+    # matrix. Do not expand semicolon-delimited protein-group strings here.
+    ids <- trimws(as.character(result[[id_col]]))
+    logfc <- suppressWarnings(as.numeric(result$logFC))
+    raw_p <- suppressWarnings(as.numeric(result$P.Value))
+
+    # Recreate adj.P.Val from the complete comparison. This fixes the exact
+    # historical threshold independently of the current DEP display settings.
+    bh <- stats::p.adjust(raw_p, method = "BH")
+    finite <- !is.na(ids) & nzchar(ids) &
+      is.finite(logfc) & is.finite(bh)
+
+    group1_lists[[cluster]] <- unique(ids[
+      finite & bh < 0.05 & logfc > 1
+    ])
+    group2_lists[[cluster]] <- unique(ids[
+      finite & bh < 0.05 & logfc < -1
+    ])
+
+    cluster_to_comparison[[cluster]] <- comparison
+    group1_names <- c(group1_names, group1)
+    group2_names <- c(group2_names, group2)
+  }
+
+  group1_lists <- group1_lists[lengths(group1_lists) > 0L]
+  group2_lists <- group2_lists[lengths(group2_lists) > 0L]
+
+  list(
+    group1 = group1_lists,
+    group2 = group2_lists,
+    cluster_to_comparison = cluster_to_comparison,
+    group1_names = group1_names,
+    group2_names = group2_names
+  )
+}
+
+
+.protvis_directional_group_root <- function(x, fallback) {
+  x <- unique(trimws(as.character(x)))
+  x <- x[!is.na(x) & nzchar(x)]
+  if (!length(x)) return(fallback)
+
+  roots <- sub("_.*$", "", x)
+  roots <- unique(roots[nzchar(roots)])
+  if (length(roots) == 1L) roots[[1L]] else fallback
+}
+
+
+.protvis_directional_archived_title <- function(
+    data, direction) {
+  meta <- attr(data, "directional_meta") %||% list()
+  root <- if (identical(direction, "Upregulated")) {
+    meta$group1_root %||% "Group 1"
+  } else {
+    meta$group2_root %||% "Group 2"
+  }
+
+  if (identical(root, "B73")) {
+    return(
+      expression(italic("Zea mays ssp. mays") ~ "– enriched")
+    )
+  }
+  if (identical(root, "Y12")) {
+    return(
+      expression(italic("Zea mays ssp. mexicana") ~ "– enriched")
+    )
+  }
+
+  paste0(root, " – enriched")
+}
+
+
+.protvis_directional_kegg_data <- function(
+    dep_results, kegg_background,
+    presence_absence = list(),
+    evidence_mode = c("quantitative", "all_retained"),
+    comparisons = NULL,
+    top_n = 10L,
+    p_adjust_cutoff = 0.05,
+    method = c(
+      "archived_comparecluster",
+      "standard_ora"
+    ),
+    pvalue_cutoff = 0.05) {
+  if (!is.list(dep_results) || !length(dep_results)) {
+    return(data.frame())
+  }
+
+  evidence_mode <- match.arg(evidence_mode)
+  method <- match.arg(method)
+  if (!is.list(presence_absence)) {
+    presence_absence <- list()
+  }
+  if (is.null(comparisons)) {
+    comparisons <- names(dep_results)
+  }
+  comparisons <- intersect(
+    as.character(comparisons),
+    names(dep_results)
+  )
+  if (!length(comparisons)) {
+    return(data.frame())
+  }
+
+  top_n <- max(1L, as.integer(top_n))
+
+  if (identical(method, "archived_comparecluster")) {
+    if (!identical(evidence_mode, "quantitative")) {
+      stop(
+        "Figure 3 reproduction uses quantitative archived DEP only.",
+        call. = FALSE
+      )
+    }
+
+    lists <- .protvis_directional_archived_lists(
+      dep_results,
+      comparisons
+    )
+    background <- .protvis_directional_background(
+      kegg_background,
+      archived = TRUE
+    )
+
+    run_comparecluster <- function(gene_clusters) {
+      if (!length(gene_clusters)) {
+        return(NULL)
+      }
+
+      tryCatch(
+        clusterProfiler::compareCluster(
+          geneCluster = gene_clusters,
+          fun = "enricher",
+          TERM2GENE = background$TERM2GENE,
+          TERM2NAME = background$TERM2NAME,
+          pvalueCutoff = as.numeric(pvalue_cutoff),
+          qvalueCutoff = 1
+        ),
+        error = function(e) {
+          stop(
+            "Archived compareCluster KEGG failed: ",
+            conditionMessage(e),
+            call. = FALSE
+          )
+        }
+      )
+    }
+
+    objects <- list(
+      Upregulated = run_comparecluster(lists$group1),
+      Downregulated = run_comparecluster(lists$group2)
+    )
+
+    rows <- lapply(names(objects), function(direction) {
+      object <- objects[[direction]]
+      if (is.null(object)) return(NULL)
+
+      out <- tryCatch(
+        as.data.frame(object),
+        error = function(e) NULL
+      )
+      if (is.null(out) || !nrow(out)) return(NULL)
+
+      out$Comparison <- unname(
+        lists$cluster_to_comparison[
+          as.character(out$Cluster)
+        ]
+      )
+      out$Direction <- direction
+      out$Direction_label <- if (
+        identical(direction, "Upregulated")
+      ) {
+        paste0(
+          .protvis_directional_group_root(
+            lists$group1_names,
+            "Group 1"
+          ),
+          " higher"
+        )
+      } else {
+        paste0(
+          .protvis_directional_group_root(
+            lists$group2_names,
+            "Group 2"
+          ),
+          " higher"
+        )
+      }
+      out$Evidence <- "Archived quantitative DEP"
+      out$Analysis_mode <-
+        "Figure 3 compareCluster reproduction"
+      out$Universe <-
+        "KEGG annotation background (clusterProfiler default)"
+      out
+    })
+
+    rows <- rows[!vapply(rows, is.null, logical(1))]
+    out <- if (length(rows)) {
+      do.call(rbind, rows)
+    } else {
+      data.frame()
+    }
+
+    attr(out, "analysis_method") <- method
+    attr(out, "comparecluster_objects") <- objects
+    attr(out, "plot_top_n") <- top_n
+    attr(out, "directional_meta") <- list(
+      group1_root = .protvis_directional_group_root(
+        lists$group1_names,
+        "Group 1"
+      ),
+      group2_root = .protvis_directional_group_root(
+        lists$group2_names,
+        "Group 2"
+      ),
+      pvalue_cutoff = as.numeric(pvalue_cutoff),
+      qvalue_cutoff = 1,
+      universe = "annotation background",
+      source = "Archived quantitative DEP"
+    )
+
+    return(out)
+  }
+
+  dep_results <- dep_results[comparisons]
+  background <- .protvis_directional_background(
+    kegg_background,
+    archived = FALSE
+  )
+  t2g <- background$TERM2GENE
+  t2n <- background$TERM2NAME
+
+  p_adjust_cutoff <- as.numeric(p_adjust_cutoff)
+  rows <- lapply(names(dep_results), function(comparison) {
+    result <- as.data.frame(
+      dep_results[[comparison]],
+      stringsAsFactors = FALSE
+    )
+    id_col <- c("ID", "protein_id", "Protein", "Gene")[
+      c("ID", "protein_id", "Protein", "Gene") %in% names(result)
+    ][1L]
+    if (is.na(id_col) ||
+        !"regulation" %in% names(result)) {
+      return(NULL)
+    }
+
+    tested <- .protvis_directional_expand_ids(
+      result[[id_col]]
+    )
     presence <- presence_absence[[comparison]] %||% data.frame()
     presence_id_col <- c("ID", "protein_id", "Protein", "Gene")[
       c("ID", "protein_id", "Protein", "Gene") %in% names(presence)
     ][1L]
     presence_ids <- if (!is.na(presence_id_col)) {
-      expand_ids(presence[[presence_id_col]])
+      .protvis_directional_expand_ids(
+        presence[[presence_id_col]]
+      )
     } else {
       character()
     }
+
     if (identical(evidence_mode, "all_retained")) {
       tested <- unique(c(tested, presence_ids))
     }
-    if (!length(tested)) return(NULL)
+    if (!length(tested)) {
+      return(NULL)
+    }
+
     first_label <- function(x, fallback) {
       x <- unique(trimws(as.character(x)))
       x <- x[!is.na(x) & nzchar(x)]
       if (length(x)) x[[1L]] else fallback
     }
+
     labels <- c(
-      Upregulated = first_label(result$Group1 %||% character(), "Group 1"),
-      Downregulated = first_label(result$Group2 %||% character(), "Group 2")
-    )
-    lapply(names(labels), function(direction) {
-      genes <- expand_ids(
-        result[[id_col]][as.character(result$regulation) == direction]
+      Upregulated = first_label(
+        result$Group1 %||% character(),
+        "Group 1"
+      ),
+      Downregulated = first_label(
+        result$Group2 %||% character(),
+        "Group 2"
       )
-      if (identical(evidence_mode, "all_retained") && nrow(presence) &&
-          "Pattern" %in% names(presence) && !is.na(presence_id_col)) {
-        pattern <- if (identical(direction, "Upregulated")) {
+    )
+
+    lapply(names(labels), function(direction) {
+      genes <- .protvis_directional_expand_ids(
+        result[[id_col]][
+          as.character(result$regulation) == direction
+        ]
+      )
+
+      if (identical(evidence_mode, "all_retained") &&
+          nrow(presence) &&
+          "Pattern" %in% names(presence) &&
+          !is.na(presence_id_col)) {
+        pattern <- if (
+          identical(direction, "Upregulated")
+        ) {
           "Detected in Group1 only"
         } else {
           "Detected in Group2 only"
         }
+
         genes <- unique(c(
           genes,
-          expand_ids(presence[[presence_id_col]][presence$Pattern == pattern])
+          .protvis_directional_expand_ids(
+            presence[[presence_id_col]][
+              presence$Pattern == pattern
+            ]
+          )
         ))
       }
-      if (!length(genes)) return(NULL)
+      if (!length(genes)) {
+        return(NULL)
+      }
+
       enriched <- tryCatch(
         clusterProfiler::enricher(
           gene = genes,
@@ -777,40 +970,166 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
         ),
         error = function(e) NULL
       )
-      out <- tryCatch(as.data.frame(enriched@result), error = function(e) NULL)
-      if (is.null(out) || !nrow(out)) return(NULL)
-      out <- out[is.finite(out$p.adjust) & out$p.adjust <= p_adjust_cutoff, , drop = FALSE]
-      if (!nrow(out)) return(NULL)
-      out <- out[order(out$p.adjust, out$pvalue, -out$Count), , drop = FALSE]
+      out <- tryCatch(
+        as.data.frame(enriched@result),
+        error = function(e) NULL
+      )
+      if (is.null(out) || !nrow(out)) {
+        return(NULL)
+      }
+
+      out <- out[
+        is.finite(out$p.adjust) &
+          out$p.adjust <= p_adjust_cutoff,
+        ,
+        drop = FALSE
+      ]
+      if (!nrow(out)) {
+        return(NULL)
+      }
+
+      out <- out[
+        order(
+          out$p.adjust,
+          out$pvalue,
+          -out$Count
+        ),
+        ,
+        drop = FALSE
+      ]
       out <- utils::head(out, top_n)
       out$Comparison <- comparison
-      out$Cluster <- .protvis_dep_stage_label(labels[[direction]])
+      out$Cluster <- .protvis_dep_stage_label(
+        labels[[direction]]
+      )
       out$Direction <- direction
-      out$Direction_label <- paste0(labels[[direction]], " higher")
-      out$Evidence <- if (identical(evidence_mode, "all_retained")) {
+      out$Direction_label <- paste0(
+        labels[[direction]],
+        " higher"
+      )
+      out$Evidence <- if (
+        identical(evidence_mode, "all_retained")
+      ) {
         "All retained proteins"
       } else {
         "Evidence 1 · Quantitative DEP"
       }
+      out$Analysis_mode <- "Standard ORA"
+      out$Universe <- "Comparison-specific tested proteins"
       out
     })
   })
+
   rows <- unlist(rows, recursive = FALSE)
   rows <- rows[!vapply(rows, is.null, logical(1))]
-  if (!length(rows)) return(data.frame())
-  do.call(rbind, rows)
+  out <- if (length(rows)) {
+    do.call(rbind, rows)
+  } else {
+    data.frame()
+  }
+  attr(out, "analysis_method") <- method
+  attr(out, "plot_top_n") <- top_n
+  out
 }
 
-.protvis_directional_kegg_panel <- function(data, direction, show_legend = TRUE) {
-  df <- data[as.character(data$Direction) == direction, , drop = FALSE]
+
+.protvis_directional_kegg_panel <- function(
+    data, direction,
+    show_legend = TRUE,
+    top_n = NULL) {
+  method <- attr(data, "analysis_method") %||% "standard_ora"
+
+  if (identical(method, "archived_comparecluster")) {
+    objects <- attr(data, "comparecluster_objects") %||% list()
+    object <- objects[[direction]]
+
+    if (is.null(object)) {
+      return(
+        ggplot2::ggplot() +
+          ggplot2::theme_void() +
+          ggplot2::annotate(
+            "text",
+            x = 0,
+            y = 0,
+            label = paste(
+              "No significant",
+              tolower(direction),
+              "KEGG pathways."
+            ),
+            colour = "#64748B",
+            size = 4
+          )
+      )
+    }
+
+    if (is.null(top_n)) {
+      top_n <- attr(data, "plot_top_n") %||% 10L
+    }
+
+    plot <- enrichplot::dotplot(
+      object,
+      showCategory = max(1L, as.integer(top_n)),
+      size = "count",
+      color = "pvalue",
+      label_format = 100
+    ) +
+      ggplot2::labs(
+        title = .protvis_directional_archived_title(
+          data,
+          direction
+        ),
+        x = NULL,
+        y = NULL
+      ) +
+      ggplot2::theme_bw(base_size = 9) +
+      ggplot2::theme(
+        axis.text.x = ggplot2::element_text(
+          angle = 90,
+          hjust = 1,
+          colour = "black"
+        ),
+        axis.text.y = ggplot2::element_text(
+          colour = "black"
+        ),
+        plot.title = ggplot2::element_text(
+          hjust = 0.5,
+          colour = "black",
+          size = 12
+        ),
+        panel.border = ggplot2::element_rect(
+          colour = "black",
+          linewidth = 0.8
+        ),
+        legend.position = if (isTRUE(show_legend)) {
+          "right"
+        } else {
+          "none"
+        }
+      )
+
+    return(plot)
+  }
+
+  df <- data[
+    as.character(data$Direction) == direction,
+    ,
+    drop = FALSE
+  ]
   if (!nrow(df)) {
     return(
       ggplot2::ggplot() +
         ggplot2::theme_void() +
         ggplot2::annotate(
-          "text", x = 0, y = 0,
-          label = paste("No significant", tolower(direction), "KEGG pathways."),
-          colour = "#64748B", size = 4
+          "text",
+          x = 0,
+          y = 0,
+          label = paste(
+            "No significant",
+            tolower(direction),
+            "KEGG pathways."
+          ),
+          colour = "#64748B",
+          size = 4
         ) +
         ggplot2::labs(
           title = if (identical(direction, "Upregulated")) {
@@ -821,16 +1140,26 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
         ) +
         ggplot2::theme(
           plot.title = ggplot2::element_text(
-            hjust = 0, face = "bold", colour = "#24384D", size = 12
+            hjust = 0,
+            face = "bold",
+            colour = "#24384D",
+            size = 12
           )
         )
     )
   }
 
   x_levels <- unique(df$Cluster)
-  y_levels <- unique(df$Description[order(df$p.adjust, df$pvalue)])
+  y_levels <- unique(
+    df$Description[
+      order(df$p.adjust, df$pvalue)
+    ]
+  )
   df$Cluster <- factor(df$Cluster, levels = x_levels)
-  df$Description <- factor(df$Description, levels = rev(y_levels))
+  df$Description <- factor(
+    df$Description,
+    levels = rev(y_levels)
+  )
 
   title <- if (identical(direction, "Upregulated")) {
     "↑ Upregulated proteins"
@@ -863,54 +1192,121 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
       name = "Protein count"
     ) +
     ggplot2::guides(
-      fill = ggplot2::guide_colorbar(order = 1, reverse = TRUE),
+      fill = ggplot2::guide_colorbar(
+        order = 1,
+        reverse = TRUE
+      ),
       size = ggplot2::guide_legend(
         order = 2,
         override.aes = list(fill = "white")
       )
     ) +
-    ggplot2::labs(title = title, x = NULL, y = NULL) +
+    ggplot2::labs(
+      title = title,
+      x = NULL,
+      y = NULL
+    ) +
     ggplot2::theme_minimal(base_size = 10.5) +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(
-        angle = 35, hjust = 1, colour = "#334155"
+        angle = 35,
+        hjust = 1,
+        colour = "#334155"
       ),
-      axis.text.y = ggplot2::element_text(colour = "#334155"),
+      axis.text.y = ggplot2::element_text(
+        colour = "#334155"
+      ),
       plot.title = ggplot2::element_text(
-        hjust = 0, face = "bold", colour = "#24384D", size = 12
+        hjust = 0,
+        face = "bold",
+        colour = "#24384D",
+        size = 12
       ),
       panel.grid.minor = ggplot2::element_blank(),
       panel.grid.major.x = ggplot2::element_blank(),
       panel.border = ggplot2::element_rect(
-        colour = "#D6E4EE", fill = NA, linewidth = 0.4
+        colour = "#D6E4EE",
+        fill = NA,
+        linewidth = 0.4
       ),
-      legend.position = if (base::isTRUE(show_legend)) "bottom" else "none",
+      legend.position = if (isTRUE(show_legend)) {
+        "bottom"
+      } else {
+        "none"
+      },
       legend.direction = "horizontal",
       legend.box = "horizontal",
       plot.margin = ggplot2::margin(10, 12, 8, 10)
     )
 }
 
-.protvis_plot_directional_kegg <- function(data, ncol = 2L) {
+
+.protvis_plot_directional_kegg <- function(
+    data, ncol = 2L, top_n = NULL) {
+  method <- attr(data, "analysis_method") %||% "standard_ora"
+
+  if (identical(method, "archived_comparecluster")) {
+    return(
+      patchwork::wrap_plots(
+        .protvis_directional_kegg_panel(
+          data,
+          "Upregulated",
+          top_n = top_n
+        ),
+        .protvis_directional_kegg_panel(
+          data,
+          "Downregulated",
+          top_n = top_n
+        ),
+        ncol = ncol,
+        widths = c(1.05, 0.95)
+      ) +
+        patchwork::plot_annotation(
+          tag_levels = list(c("C", "D")),
+          theme = ggplot2::theme(
+            plot.tag = ggplot2::element_text(
+              size = 14,
+              face = "bold",
+              colour = "black"
+            )
+          )
+        )
+    )
+  }
+
   evidence <- unique(as.character(data$Evidence))
-  evidence <- evidence[!is.na(evidence) & nzchar(evidence)]
+  evidence <- evidence[
+    !is.na(evidence) & nzchar(evidence)
+  ]
 
   plot <- patchwork::wrap_plots(
-    .protvis_directional_kegg_panel(data, "Upregulated"),
-    .protvis_directional_kegg_panel(data, "Downregulated"),
+    .protvis_directional_kegg_panel(
+      data,
+      "Upregulated"
+    ),
+    .protvis_directional_kegg_panel(
+      data,
+      "Downregulated"
+    ),
     ncol = ncol
   ) +
     patchwork::plot_layout(guides = "collect") +
     patchwork::plot_annotation(
       title = "Directional KEGG enrichment across DEP comparisons",
       subtitle = paste0(
-        if (length(evidence)) evidence[[1L]] else "Selected differential evidence",
-        ": each comparison uses its retained tested proteins as the enrichment universe."
+        if (length(evidence)) {
+          evidence[[1L]]
+        } else {
+          "Selected differential evidence"
+        },
+        ": each comparison uses its retained tested proteins ",
+        "as the enrichment universe."
       )
     )
 
   plot & ggplot2::theme(legend.position = "bottom")
 }
+
 
 #' Enrichment Analysis Module UI
 #'
@@ -1357,6 +1753,20 @@ enrichment_analysis_ui <- function(id) {
             .protvis-directional-kegg .directional-state-waiting {
               color: var(--pv-muted);
             }
+            .protvis-directional-kegg .directional-fixed-settings {
+              color: var(--pv-muted);
+              background: #F8FBFD;
+              border: 1px solid #E7EEF4;
+              border-radius: 8px;
+              padding: 8px 10px;
+              font-size: 0.78rem;
+              line-height: 1.4;
+              margin-top: 6px;
+            }
+            .protvis-directional-kegg .directional-fixed-settings .directional-state {
+              display: block;
+              margin-top: 5px;
+            }
             .protvis-directional-kegg .directional-comparison-scroll {
               max-height: 156px;
               overflow-y: auto;
@@ -1495,7 +1905,7 @@ enrichment_analysis_ui <- function(id) {
                   class = "directional-kegg-title"
                 ),
                 shiny::tags$p(
-                  "Analyze up- and down-regulated proteins separately across selected contrasts using the tested protein universe of each comparison.",
+                  "Reproduce the archived compareCluster workflow or run standard ORA across selected DEP contrasts.",
                   class = "directional-kegg-intro"
                 )
               )
@@ -1509,26 +1919,69 @@ enrichment_analysis_ui <- function(id) {
                   shiny::div(
                     class = "directional-card-heading",
                     shiny::div(
-                      shiny::tags$h5("Evidence source"),
-                      shiny::tags$p("Choose the differential evidence used to define direction.")
+                      shiny::tags$h5("Analysis mode"),
+                      shiny::tags$p(
+                        "Choose exact archived reproduction or the standard ProtVis ORA."
+                      )
                     )
                   ),
-                  shiny::radioButtons(
-                    ns("directional_evidence"),
+                  shiny::selectInput(
+                    ns("directional_method"),
                     label = NULL,
                     choices = c(
-                      "Quantitative DEP" = "quantitative",
-                      "All retained proteins" = "all_retained"
+                      "Figure 3 reproduction (compareCluster)" =
+                        "archived_comparecluster",
+                      "Standard ORA (tested universe + BH)" =
+                        "standard_ora"
                     ),
-                    selected = "quantitative",
-                    inline = FALSE
+                    selected = "archived_comparecluster"
                   ),
-                  shiny::div(class = "directional-card-divider"),
+                  shiny::conditionalPanel(
+                    condition = paste0(
+                      "input['",
+                      ns("directional_method"),
+                      "'] == 'archived_comparecluster'"
+                    ),
+                    shiny::div(
+                      class = "directional-fixed-settings",
+                      shiny::tags$small(
+                        "Requires DEP > Archived reproduction. Uses quantitative DEP only."
+                      ),
+                      shiny::uiOutput(
+                        ns("directional_dep_compatibility")
+                      )
+                    )
+                  ),
+                  shiny::conditionalPanel(
+                    condition = paste0(
+                      "input['",
+                      ns("directional_method"),
+                      "'] == 'standard_ora'"
+                    ),
+                    shiny::radioButtons(
+                      ns("directional_evidence"),
+                      label = "Evidence source",
+                      choices = c(
+                        "Quantitative DEP" = "quantitative",
+                        "All retained proteins" = "all_retained"
+                      ),
+                      selected = "quantitative",
+                      inline = FALSE
+                    )
+                  ),
+                  shiny::div(
+                    class = "directional-card-divider"
+                  ),
                   shiny::div(
                     class = "directional-background-row",
                     shiny::div(
-                      shiny::div("Background", class = "directional-background-label"),
-                      shiny::uiOutput(ns("directional_background_status"))
+                      shiny::div(
+                        "Background",
+                        class = "directional-background-label"
+                      ),
+                      shiny::uiOutput(
+                        ns("directional_background_status")
+                      )
                     ),
                     shiny::actionButton(
                       ns("load_maize_teosinte_background"),
@@ -1575,18 +2028,47 @@ enrichment_analysis_ui <- function(id) {
                     class = "directional-card-heading",
                     shiny::div(
                       shiny::tags$h5("KEGG settings"),
-                      shiny::tags$p("Set reporting depth and multiple-testing cutoff.")
+                      shiny::tags$p(
+                        "Reporting depth is shared; statistical filtering follows the selected mode."
+                      )
                     )
                   ),
                   shiny::div(
                     class = "directional-settings-grid",
                     shiny::numericInput(
-                      ns("directional_top_n"), "Top pathways", 5,
-                      min = 1, max = 20
+                      ns("directional_top_n"),
+                      "Top pathways",
+                      10,
+                      min = 1,
+                      max = 20
                     ),
-                    shiny::numericInput(
-                      ns("directional_p_adjust"), "BH FDR cutoff", 0.05,
-                      min = 0, max = 1, step = 0.01
+                    shiny::conditionalPanel(
+                      condition = paste0(
+                        "input['",
+                        ns("directional_method"),
+                        "'] == 'standard_ora'"
+                      ),
+                      shiny::numericInput(
+                        ns("directional_p_adjust"),
+                        "BH FDR cutoff",
+                        0.05,
+                        min = 0,
+                        max = 1,
+                        step = 0.01
+                      )
+                    ),
+                    shiny::conditionalPanel(
+                      condition = paste0(
+                        "input['",
+                        ns("directional_method"),
+                        "'] == 'archived_comparecluster'"
+                      ),
+                      shiny::div(
+                        class = "directional-fixed-settings",
+                        shiny::tags$small(
+                          "Fixed to the archived code: pvalueCutoff = 0.05; qvalueCutoff = 1; raw pvalue colour; no custom universe."
+                        )
+                      )
                     ),
                     shiny::actionButton(
                       ns("run_directional_kegg"),
@@ -1597,6 +2079,9 @@ enrichment_analysis_ui <- function(id) {
                   )
                 )
               ),
+
+              shiny::div(
+                class = "directional-result-toolbar",              ),
 
               shiny::div(
                 class = "directional-result-toolbar",
@@ -2001,6 +2486,65 @@ enrichment_analysis_server <- function(id, shared_state) {
       )
     })
 
+    output$directional_dep_compatibility <- shiny::renderUI({
+      bundle <- directional_dep_bundle()
+      choices <- names(bundle$results %||% list())
+      selected <- intersect(
+        input$directional_comparisons %||% choices,
+        choices
+      )
+      if (!length(selected)) {
+        selected <- choices
+      }
+
+      status <- .protvis_directional_archived_compatibility(
+        bundle$results,
+        selected
+      )
+      shiny::span(
+        status$message,
+        class = if (isTRUE(status$ok)) {
+          "directional-state directional-state-loaded"
+        } else {
+          "directional-state directional-state-waiting"
+        }
+      )
+    })
+
+    shiny::observeEvent(input$directional_method, {
+      if (identical(
+        input$directional_method,
+        "archived_comparecluster"
+      )) {
+        shiny::updateRadioButtons(
+          session,
+          "directional_evidence",
+          selected = "quantitative"
+        )
+        shiny::updateNumericInput(
+          session,
+          "directional_top_n",
+          value = 10
+        )
+      }
+      rv$directional_kegg <- NULL
+      rv$directional_kegg_message <- if (identical(
+        input$directional_method,
+        "archived_comparecluster"
+      )) {
+        paste0(
+          "Archived reproduction selected. ",
+          "Run DEP in Archived reproduction mode first, ",
+          "then run KEGG."
+        )
+      } else {
+        paste0(
+          "Standard ORA selected. ",
+          "Choose evidence and comparisons, then run KEGG."
+        )
+      }
+    }, ignoreInit = TRUE)
+
     shiny::observeEvent(input$directional_select_all, {
       bundle <- directional_dep_bundle()
       choices <- names(bundle$results %||% list())
@@ -2403,8 +2947,12 @@ enrichment_analysis_server <- function(id, shared_state) {
     shiny::observeEvent(input$run_directional_kegg, {
       if (base::is.null(rv$background_data)) {
         rv$directional_kegg <- NULL
-        rv$directional_kegg_message <- "Load or validate a background workbook first."
-        shiny::showNotification(rv$directional_kegg_message, type = "error")
+        rv$directional_kegg_message <-
+          "Load or validate a background workbook first."
+        shiny::showNotification(
+          rv$directional_kegg_message,
+          type = "error"
+        )
         return()
       }
 
@@ -2414,17 +2962,38 @@ enrichment_analysis_server <- function(id, shared_state) {
         input$directional_comparisons %||% character(),
         names(dep_obj %||% list())
       )
+
       if (base::is.null(dep_obj)) {
         rv$directional_kegg <- NULL
-        rv$directional_kegg_message <- "Run DEP first, then open this panel."
-        shiny::showNotification(rv$directional_kegg_message, type = "error")
+        rv$directional_kegg_message <-
+          "Run DEP first, then open this panel."
+        shiny::showNotification(
+          rv$directional_kegg_message,
+          type = "error"
+        )
         return()
       }
+
       if (!length(selected_comparisons)) {
         rv$directional_kegg <- NULL
-        rv$directional_kegg_message <- "Select at least one DEP comparison."
-        shiny::showNotification(rv$directional_kegg_message, type = "error")
+        rv$directional_kegg_message <-
+          "Select at least one DEP comparison."
+        shiny::showNotification(
+          rv$directional_kegg_message,
+          type = "error"
+        )
         return()
+      }
+
+      method <- input$directional_method %||%
+        "archived_comparecluster"
+      evidence <- if (identical(
+        method,
+        "archived_comparecluster"
+      )) {
+        "quantitative"
+      } else {
+        input$directional_evidence %||% "quantitative"
       }
 
       result <- tryCatch(
@@ -2432,29 +3001,67 @@ enrichment_analysis_server <- function(id, shared_state) {
           dep_obj,
           rv$background_data$KEGG_background,
           presence_absence = bundle$presence,
-          evidence_mode = input$directional_evidence %||% "quantitative",
+          evidence_mode = evidence,
           comparisons = selected_comparisons,
-          top_n = input$directional_top_n,
-          p_adjust_cutoff = input$directional_p_adjust
+          top_n = input$directional_top_n %||% 10L,
+          p_adjust_cutoff =
+            input$directional_p_adjust %||% 0.05,
+          method = method,
+          pvalue_cutoff = 0.05
         ),
         error = function(e) e
       )
+
       if (inherits(result, "error")) {
         rv$directional_kegg <- NULL
-        rv$directional_kegg_message <- conditionMessage(result)
-        shiny::showNotification(rv$directional_kegg_message, type = "error")
+        rv$directional_kegg_message <-
+          conditionMessage(result)
+        shiny::showNotification(
+          rv$directional_kegg_message,
+          type = "error",
+          duration = 9
+        )
         return()
       }
+
       rv$directional_kegg <- result
+
       if (!nrow(result)) {
+        rv$directional_kegg_message <- if (identical(
+          method,
+          "archived_comparecluster"
+        )) {
+          paste0(
+            "No pathways passed the archived compareCluster ",
+            "workflow (pvalueCutoff = 0.05; qvalueCutoff = 1)."
+          )
+        } else {
+          paste0(
+            "No directional KEGG pathways passed BH ≤ ",
+            input$directional_p_adjust %||% 0.05,
+            ". Comparison-specific tested protein universes ",
+            "were applied."
+          )
+        }
+      } else if (identical(
+        method,
+        "archived_comparecluster"
+      )) {
         rv$directional_kegg_message <- paste0(
-          "No directional KEGG pathways passed BH ≤ ", input$directional_p_adjust,
-          ". The comparison-specific tested protein universes were still applied."
+          "Figure 3 workflow reproduced: ",
+          length(unique(result$Description)),
+          " pathways across ",
+          length(unique(result$Cluster)),
+          " enriched comparison clusters · ",
+          "compareCluster p ≤ 0.05 / q ≤ 1 · ",
+          "raw pvalue colour · annotation background."
         )
       } else {
         rv$directional_kegg_message <- paste0(
-          "Directional KEGG completed: ", nrow(result),
-          " pathways retained across ", length(unique(result$Comparison)),
+          "Standard directional KEGG completed: ",
+          nrow(result),
+          " pathways retained across ",
+          length(unique(result$Comparison)),
           " DEP comparisons."
         )
       }
@@ -2462,7 +3069,10 @@ enrichment_analysis_server <- function(id, shared_state) {
 
     output$directional_kegg_status <- shiny::renderText({
       rv$directional_kegg_message %||%
-        "Load a background, select one or more DEP comparisons, then run KEGG."
+        paste0(
+          "Load a background, select one or more DEP ",
+          "comparisons, then run KEGG."
+        )
     })
 
     render_directional_panel <- function(direction) {
@@ -2472,14 +3082,22 @@ enrichment_analysis_server <- function(id, shared_state) {
           ggplot2::ggplot() +
             ggplot2::theme_void() +
             ggplot2::annotate(
-              "text", x = 0, y = 0,
+              "text",
+              x = 0,
+              y = 0,
               label = rv$directional_kegg_message %||%
                 "No directional KEGG result available.",
-              colour = "#64748B", size = 4
+              colour = "#64748B",
+              size = 4
             )
         )
       }
-      .protvis_directional_kegg_panel(data, direction)
+
+      .protvis_directional_kegg_panel(
+        data,
+        direction,
+        top_n = input$directional_top_n %||% 10L
+      )
     }
 
     output$directional_kegg_up_plot <- shiny::renderPlot({
@@ -2493,7 +3111,13 @@ enrichment_analysis_server <- function(id, shared_state) {
     output$directional_kegg_plot <- shiny::renderPlot({
       data <- rv$directional_kegg
       if (base::is.null(data) || !nrow(data)) {
-        plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
+        plot(
+          0, 0,
+          type = "n",
+          axes = FALSE,
+          xlab = "",
+          ylab = ""
+        )
         text(
           0, 0,
           rv$directional_kegg_message %||%
@@ -2501,10 +3125,16 @@ enrichment_analysis_server <- function(id, shared_state) {
         )
         return(invisible(NULL))
       }
-      print(.protvis_plot_directional_kegg(data))
+
+      print(
+        .protvis_plot_directional_kegg(
+          data,
+          top_n = input$directional_top_n %||% 10L
+        )
+      )
     }, res = 96)
 
-    output$directional_kegg_table <- DT::renderDT({
+    output$directional_kegg_table <- DT::renderDT({    output$directional_kegg_table <- DT::renderDT({
       data <- rv$directional_kegg
       if (base::is.null(data) || !nrow(data)) {
         return(DT::datatable(
@@ -2520,7 +3150,10 @@ enrichment_analysis_server <- function(id, shared_state) {
       content = function(file) {
         shiny::req(rv$directional_kegg)
         grDevices::pdf(file, width = 14, height = 7)
-        print(.protvis_plot_directional_kegg(rv$directional_kegg))
+        print(.protvis_plot_directional_kegg(
+          rv$directional_kegg,
+          top_n = input$directional_top_n %||% 10L
+        ))
         grDevices::dev.off()
       }
     )
@@ -2530,7 +3163,10 @@ enrichment_analysis_server <- function(id, shared_state) {
       content = function(file) {
         shiny::req(rv$directional_kegg)
         grDevices::svg(file, width = 14, height = 7, onefile = TRUE)
-        print(.protvis_plot_directional_kegg(rv$directional_kegg))
+        print(.protvis_plot_directional_kegg(
+          rv$directional_kegg,
+          top_n = input$directional_top_n %||% 10L
+        ))
         grDevices::dev.off()
       }
     )

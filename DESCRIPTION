@@ -46,6 +46,7 @@ Imports:
     data.table,
     dplyr,
     edgeR,
+    enrichplot,
     fs,
     ggplot2,
     ggprism,
