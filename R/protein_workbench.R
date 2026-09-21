@@ -593,10 +593,6 @@ protein_workbench_ui <- function(id) {
             bslib::nav_panel(
               "Resources",
               shiny::uiOutput(ns("resource_cards"))
-            ),
-            bslib::nav_panel(
-              "Raw record",
-              shiny::verbatimTextOutput(ns("raw_json"))
             )
           )
         )
@@ -962,11 +958,6 @@ protein_workbench_server <- function(id, shared_state = NULL) {
           )
         })
       )
-    })
-
-    output$raw_json <- shiny::renderText({
-      if (base::is.null(rv$entry)) return("No UniProt record loaded.")
-      jsonlite::toJSON(rv$entry, auto_unbox = TRUE, pretty = TRUE, null = "null", digits = NA)
     })
 
     output$download_fasta <- shiny::downloadHandler(
