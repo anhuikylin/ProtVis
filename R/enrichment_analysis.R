@@ -801,59 +801,116 @@ plot_maize_teosinte_kegg_reproduction <- function(data = NULL) {
   do.call(rbind, rows)
 }
 
-.protvis_directional_kegg_panel <- function(data, direction) {
+.protvis_directional_kegg_panel <- function(data, direction, show_legend = TRUE) {
   df <- data[as.character(data$Direction) == direction, , drop = FALSE]
   if (!nrow(df)) {
-    return(ggplot2::ggplot() + ggplot2::theme_void() +
-      ggplot2::annotate("text", x = 0, y = 0,
-                        label = paste("No significant", tolower(direction), "KEGG pathways.")))
+    return(
+      ggplot2::ggplot() +
+        ggplot2::theme_void() +
+        ggplot2::annotate(
+          "text", x = 0, y = 0,
+          label = paste("No significant", tolower(direction), "KEGG pathways."),
+          colour = "#64748B", size = 4
+        ) +
+        ggplot2::labs(
+          title = if (identical(direction, "Upregulated")) {
+            "↑ Upregulated proteins"
+          } else {
+            "↓ Downregulated proteins"
+          }
+        ) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(
+            hjust = 0, face = "bold", colour = "#24384D", size = 12
+          )
+        )
+    )
   }
+
   x_levels <- unique(df$Cluster)
   y_levels <- unique(df$Description[order(df$p.adjust, df$pvalue)])
   df$Cluster <- factor(df$Cluster, levels = x_levels)
   df$Description <- factor(df$Description, levels = rev(y_levels))
-  label <- unique(df$Direction_label)
-  title <- if (length(label) == 1L) {
-    paste(label, "– enriched")
+
+  title <- if (identical(direction, "Upregulated")) {
+    "↑ Upregulated proteins"
   } else {
-    paste(direction, "proteins – enriched")
+    "↓ Downregulated proteins"
   }
-  ggplot2::ggplot(df, ggplot2::aes(
-    x = Cluster, y = Description, size = Count, fill = pvalue
-  )) +
-    ggplot2::geom_point(shape = 21, colour = "black", stroke = 0.45) +
-    ggplot2::scale_fill_gradient(low = "red", high = "blue", name = "p value") +
-    ggplot2::scale_size_continuous(range = c(3.5, 10.5), name = "Count") +
+
+  ggplot2::ggplot(
+    df,
+    ggplot2::aes(
+      x = Cluster,
+      y = Description,
+      size = Count,
+      fill = p.adjust
+    )
+  ) +
+    ggplot2::geom_point(
+      shape = 21,
+      colour = "#355268",
+      stroke = 0.4,
+      alpha = 0.95
+    ) +
+    ggplot2::scale_fill_gradient(
+      low = "#0B79B7",
+      high = "#D8EEF8",
+      name = "BH-adjusted P"
+    ) +
+    ggplot2::scale_size_continuous(
+      range = c(3.5, 10.5),
+      name = "Protein count"
+    ) +
     ggplot2::guides(
       fill = ggplot2::guide_colorbar(order = 1, reverse = TRUE),
-      size = ggplot2::guide_legend(order = 2, override.aes = list(fill = "white"))
+      size = ggplot2::guide_legend(
+        order = 2,
+        override.aes = list(fill = "white")
+      )
     ) +
     ggplot2::labs(title = title, x = NULL, y = NULL) +
-    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme_minimal(base_size = 10.5) +
     ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, colour = "black"),
-      axis.text.y = ggplot2::element_text(colour = "black"),
-      plot.title = ggplot2::element_text(hjust = 0.5, face = "italic"),
-      panel.grid.minor = ggplot2::element_blank()
+      axis.text.x = ggplot2::element_text(
+        angle = 35, hjust = 1, colour = "#334155"
+      ),
+      axis.text.y = ggplot2::element_text(colour = "#334155"),
+      plot.title = ggplot2::element_text(
+        hjust = 0, face = "bold", colour = "#24384D", size = 12
+      ),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major.x = ggplot2::element_blank(),
+      panel.border = ggplot2::element_rect(
+        colour = "#D6E4EE", fill = NA, linewidth = 0.4
+      ),
+      legend.position = if (base::isTRUE(show_legend)) "bottom" else "none",
+      legend.direction = "horizontal",
+      legend.box = "horizontal",
+      plot.margin = ggplot2::margin(10, 12, 8, 10)
     )
 }
 
-.protvis_plot_directional_kegg <- function(data) {
+.protvis_plot_directional_kegg <- function(data, ncol = 2L) {
   evidence <- unique(as.character(data$Evidence))
   evidence <- evidence[!is.na(evidence) & nzchar(evidence)]
-  patchwork::wrap_plots(
+
+  plot <- patchwork::wrap_plots(
     .protvis_directional_kegg_panel(data, "Upregulated"),
     .protvis_directional_kegg_panel(data, "Downregulated"),
-    ncol = 2
-  ) + patchwork::plot_annotation(
-    title = "Directional KEGG enrichment across DEP comparisons",
-    subtitle = paste0(
-      if (length(evidence)) evidence[[1L]] else "Selected differential evidence",
-      ": each comparison uses its retained tested proteins as the enrichment universe."
+    ncol = ncol
+  ) +
+    patchwork::plot_layout(guides = "collect") +
+    patchwork::plot_annotation(
+      title = "Directional KEGG enrichment across DEP comparisons",
+      subtitle = paste0(
+        if (length(evidence)) evidence[[1L]] else "Selected differential evidence",
+        ": each comparison uses its retained tested proteins as the enrichment universe."
+      )
     )
-  )
-}
 
+  plot & ggplot2::theme(legend.position = "bottom")
+}
 
 #' Enrichment Analysis Module UI
 #'
@@ -1195,66 +1252,406 @@ enrichment_analysis_ui <- function(id) {
 
       bslib::nav_panel(
         "Directional KEGG",
-        bslib::card(
-          bslib::card_header("Directional KEGG enrichment across DEP comparisons"),
-          bslib::card_body(
-            shiny::tags$p(
-              "Choose one differential-evidence source and one or more DEP comparisons. Upregulated and downregulated proteins are enriched separately; each comparison uses its own retained protein universe.",
-              class = "text-muted"
-            ),
-            bslib::layout_columns(
-              col_widths = c(4, 4, 2, 2),
-              shiny::radioButtons(
-                ns("directional_evidence"),
-                "Differential evidence",
-                choices = c(
-                  "Evidence 1 · Quantitative DEP" = "quantitative",
-                  "All retained proteins" = "all_retained"
-                ),
-                selected = "quantitative",
-                inline = TRUE
-              ),
-              shiny::uiOutput(ns("directional_comparisons_ui")),
-              shiny::numericInput(
-                ns("directional_top_n"), "Top pathways", 5,
-                min = 1, max = 20
-              ),
-              shiny::numericInput(
-                ns("directional_p_adjust"), "BH FDR cutoff", 0.05,
-                min = 0, max = 1, step = 0.01
-              )
-            ),
-            bslib::layout_columns(
-              col_widths = c(3, 5, 2, 2),
-              shiny::actionButton(
-                ns("load_maize_teosinte_background"),
-                "LOAD BUILT-IN BACKGROUND",
-                class = "btn btn-outline-primary fw-bold w-100"
-              ),
+        shiny::div(
+          class = "protvis-directional-kegg",
+          shiny::tags$style(shiny::HTML("
+            .protvis-directional-kegg {
+              --pv-blue: #2095CF;
+              --pv-blue-dark: #147FB8;
+              --pv-blue-soft: #F3F9FD;
+              --pv-border: #D6E4EE;
+              --pv-text: #24384D;
+              --pv-muted: #64748B;
+            }
+            .protvis-directional-kegg .directional-kegg-shell {
+              border: 1px solid var(--pv-border);
+              border-radius: 14px;
+              box-shadow: none;
+              overflow: hidden;
+            }
+            .protvis-directional-kegg .directional-kegg-title {
+              font-size: 1.05rem;
+              font-weight: 700;
+              color: var(--pv-text);
+              margin: 0;
+            }
+            .protvis-directional-kegg .directional-kegg-intro {
+              color: var(--pv-muted);
+              margin: 4px 0 0;
+              font-size: 0.92rem;
+              font-weight: 400;
+            }
+            .protvis-directional-kegg .directional-kegg-config-grid {
+              display: grid;
+              grid-template-columns: minmax(230px, 0.9fr) minmax(420px, 1.9fr) minmax(235px, 0.85fr);
+              gap: 16px;
+              align-items: stretch;
+              margin-bottom: 14px;
+            }
+            .protvis-directional-kegg .directional-config-card {
+              min-width: 0;
+              background: #FFFFFF;
+              border: 1px solid var(--pv-border);
+              border-radius: 12px;
+              padding: 16px 18px;
+            }
+            .protvis-directional-kegg .directional-card-heading {
+              display: flex;
+              align-items: flex-start;
+              justify-content: space-between;
+              gap: 12px;
+              margin-bottom: 10px;
+            }
+            .protvis-directional-kegg .directional-card-heading h5 {
+              color: var(--pv-text);
+              font-size: 0.96rem;
+              font-weight: 700;
+              margin: 0;
+            }
+            .protvis-directional-kegg .directional-card-heading p {
+              color: var(--pv-muted);
+              font-size: 0.78rem;
+              line-height: 1.35;
+              margin: 3px 0 0;
+            }
+            .protvis-directional-kegg .directional-selection-count {
+              flex: 0 0 auto;
+              color: var(--pv-blue-dark);
+              background: var(--pv-blue-soft);
+              border-radius: 999px;
+              padding: 3px 9px;
+              font-size: 0.76rem;
+              font-weight: 700;
+              white-space: nowrap;
+            }
+            .protvis-directional-kegg .directional-evidence-card .form-group,
+            .protvis-directional-kegg .directional-settings-card .form-group {
+              margin-bottom: 10px;
+            }
+            .protvis-directional-kegg .directional-evidence-card .shiny-options-group {
+              margin-top: 2px;
+            }
+            .protvis-directional-kegg .directional-card-divider {
+              border-top: 1px solid #E7EEF4;
+              margin: 12px 0;
+            }
+            .protvis-directional-kegg .directional-background-row {
+              display: flex;
+              align-items: flex-end;
+              justify-content: space-between;
+              gap: 10px;
+            }
+            .protvis-directional-kegg .directional-background-label {
+              color: var(--pv-text);
+              font-size: 0.82rem;
+              font-weight: 700;
+              margin-bottom: 4px;
+            }
+            .protvis-directional-kegg .directional-state {
+              font-size: 0.78rem;
+              line-height: 1.3;
+            }
+            .protvis-directional-kegg .directional-state-loaded {
+              color: #2E7D55;
+            }
+            .protvis-directional-kegg .directional-state-waiting {
+              color: var(--pv-muted);
+            }
+            .protvis-directional-kegg .directional-comparison-scroll {
+              max-height: 156px;
+              overflow-y: auto;
+              padding-right: 8px;
+              scrollbar-width: thin;
+            }
+            .protvis-directional-kegg .directional-comparison-scroll .checkbox {
+              display: block;
+              margin: 0 0 7px;
+              line-height: 1.25;
+            }
+            .protvis-directional-kegg .directional-comparison-scroll .form-group {
+              margin-bottom: 0;
+            }
+            .protvis-directional-kegg .directional-comparison-actions {
+              display: flex;
+              gap: 8px;
+              margin-top: 10px;
+              padding-top: 10px;
+              border-top: 1px solid #E7EEF4;
+            }
+            .protvis-directional-kegg .directional-settings-grid {
+              display: grid;
+              grid-template-columns: 1fr;
+              gap: 2px;
+            }
+            .protvis-directional-kegg .directional-run-button {
+              width: 100%;
+              min-height: 42px;
+              margin-top: 6px;
+              font-weight: 700;
+              border-radius: 8px;
+            }
+            .protvis-directional-kegg .directional-result-toolbar {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 14px;
+              flex-wrap: wrap;
+              background: var(--pv-blue-soft);
+              border: 1px solid var(--pv-border);
+              border-radius: 10px;
+              padding: 9px 12px;
+              margin-bottom: 12px;
+            }
+            .protvis-directional-kegg .directional-result-status {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              min-width: 240px;
+              color: var(--pv-muted);
+              font-size: 0.82rem;
+            }
+            .protvis-directional-kegg .directional-result-status i {
+              color: var(--pv-blue-dark);
+            }
+            .protvis-directional-kegg .directional-export-cluster {
+              display: flex;
+              align-items: center;
+              gap: 7px;
+              margin-left: auto;
+            }
+            .protvis-directional-kegg .directional-export-label {
+              color: var(--pv-muted);
+              font-size: 0.78rem;
+              font-weight: 700;
+              margin-right: 2px;
+            }
+            .protvis-directional-kegg .directional-export-cluster .shiny-download-link {
+              min-width: 64px;
+            }
+            .protvis-directional-kegg .directional-results-tabs > .tab-content {
+              padding-top: 12px;
+            }
+            .protvis-directional-kegg .directional-plot-grid {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 18px;
+              align-items: stretch;
+            }
+            .protvis-directional-kegg .directional-plot-card {
+              min-width: 0;
+              background: #FFFFFF;
+              border: 1px solid var(--pv-border);
+              border-radius: 12px;
+              padding: 8px 10px 2px;
+            }
+            .protvis-directional-kegg .directional-plot-card .shiny-plot-output {
+              width: 100% !important;
+            }
+            @media (max-width: 1399.98px) {
+              .protvis-directional-kegg .directional-plot-grid {
+                grid-template-columns: 1fr;
+              }
+            }
+            @media (max-width: 1199.98px) {
+              .protvis-directional-kegg .directional-kegg-config-grid {
+                grid-template-columns: minmax(240px, 0.9fr) minmax(360px, 1.4fr);
+              }
+              .protvis-directional-kegg .directional-settings-card {
+                grid-column: 1 / -1;
+              }
+              .protvis-directional-kegg .directional-settings-grid {
+                grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) minmax(200px, 1.2fr);
+                gap: 12px;
+                align-items: end;
+              }
+              .protvis-directional-kegg .directional-run-button {
+                margin-bottom: 10px;
+              }
+            }
+            @media (max-width: 767.98px) {
+              .protvis-directional-kegg .directional-kegg-config-grid,
+              .protvis-directional-kegg .directional-settings-grid {
+                grid-template-columns: 1fr;
+              }
+              .protvis-directional-kegg .directional-settings-card {
+                grid-column: auto;
+              }
+              .protvis-directional-kegg .directional-result-toolbar {
+                align-items: flex-start;
+              }
+              .protvis-directional-kegg .directional-export-cluster {
+                width: 100%;
+                margin-left: 0;
+                flex-wrap: wrap;
+              }
+            }
+          ")),
+          bslib::card(
+            class = "directional-kegg-shell",
+            bslib::card_header(
               shiny::div(
-                class = "pt-2 text-muted",
-                shiny::textOutput(ns("directional_kegg_status"))
-              ),
-              shiny::actionButton(
-                ns("run_directional_kegg"), "RUN KEGG",
-                class = "btn btn-primary fw-bold w-100"
-              ),
-              shiny::tags$div(
-                class = "d-grid gap-2",
-                shiny::downloadButton(
-                  ns("download_directional_kegg_pdf"), "PDF",
-                  class = "btn btn-outline-secondary w-100"
+                shiny::tags$h4(
+                  "Directional KEGG enrichment across DEP comparisons",
+                  class = "directional-kegg-title"
                 ),
-                shiny::downloadButton(
-                  ns("download_directional_kegg_data"), "CSV",
-                  class = "btn btn-outline-secondary w-100 mt-2"
+                shiny::tags$p(
+                  "Analyze up- and down-regulated proteins separately across selected contrasts using the tested protein universe of each comparison.",
+                  class = "directional-kegg-intro"
                 )
               )
             ),
-            shiny::br(), shiny::br(),
-            shiny::tabsetPanel(
-              shiny::tabPanel("Figure", shiny::plotOutput(ns("directional_kegg_plot"), height = "580px")),
-              shiny::tabPanel("Result table", DT::DTOutput(ns("directional_kegg_table")))
+            bslib::card_body(
+              shiny::div(
+                class = "directional-kegg-config-grid",
+
+                shiny::div(
+                  class = "directional-config-card directional-evidence-card",
+                  shiny::div(
+                    class = "directional-card-heading",
+                    shiny::div(
+                      shiny::tags$h5("Evidence source"),
+                      shiny::tags$p("Choose the differential evidence used to define direction.")
+                    )
+                  ),
+                  shiny::radioButtons(
+                    ns("directional_evidence"),
+                    label = NULL,
+                    choices = c(
+                      "Quantitative DEP" = "quantitative",
+                      "All retained proteins" = "all_retained"
+                    ),
+                    selected = "quantitative",
+                    inline = FALSE
+                  ),
+                  shiny::div(class = "directional-card-divider"),
+                  shiny::div(
+                    class = "directional-background-row",
+                    shiny::div(
+                      shiny::div("Background", class = "directional-background-label"),
+                      shiny::uiOutput(ns("directional_background_status"))
+                    ),
+                    shiny::actionButton(
+                      ns("load_maize_teosinte_background"),
+                      "Load built-in",
+                      icon = shiny::icon("database"),
+                      class = "btn-outline-primary btn-sm"
+                    )
+                  )
+                ),
+
+                shiny::div(
+                  class = "directional-config-card directional-comparisons-card",
+                  shiny::div(
+                    class = "directional-card-heading",
+                    shiny::div(
+                      shiny::tags$h5("DEP comparisons"),
+                      shiny::tags$p("Select one or more contrasts; long lists stay inside this panel.")
+                    ),
+                    shiny::span(
+                      shiny::textOutput(ns("directional_selected_count"), inline = TRUE),
+                      class = "directional-selection-count"
+                    )
+                  ),
+                  shiny::div(
+                    class = "directional-comparison-scroll",
+                    shiny::uiOutput(ns("directional_comparisons_ui"))
+                  ),
+                  shiny::div(
+                    class = "directional-comparison-actions",
+                    shiny::actionButton(
+                      ns("directional_select_all"), "Select all",
+                      class = "btn-outline-secondary btn-sm"
+                    ),
+                    shiny::actionButton(
+                      ns("directional_clear_all"), "Clear",
+                      class = "btn-outline-secondary btn-sm"
+                    )
+                  )
+                ),
+
+                shiny::div(
+                  class = "directional-config-card directional-settings-card",
+                  shiny::div(
+                    class = "directional-card-heading",
+                    shiny::div(
+                      shiny::tags$h5("KEGG settings"),
+                      shiny::tags$p("Set reporting depth and multiple-testing cutoff.")
+                    )
+                  ),
+                  shiny::div(
+                    class = "directional-settings-grid",
+                    shiny::numericInput(
+                      ns("directional_top_n"), "Top pathways", 5,
+                      min = 1, max = 20
+                    ),
+                    shiny::numericInput(
+                      ns("directional_p_adjust"), "BH FDR cutoff", 0.05,
+                      min = 0, max = 1, step = 0.01
+                    ),
+                    shiny::actionButton(
+                      ns("run_directional_kegg"),
+                      "RUN KEGG",
+                      icon = shiny::icon("play"),
+                      class = "btn-primary directional-run-button"
+                    )
+                  )
+                )
+              ),
+
+              shiny::div(
+                class = "directional-result-toolbar",
+                shiny::div(
+                  class = "directional-result-status",
+                  shiny::icon("circle-info"),
+                  shiny::textOutput(ns("directional_kegg_status"), inline = TRUE)
+                ),
+                shiny::div(
+                  class = "directional-export-cluster",
+                  shiny::span("Export", class = "directional-export-label"),
+                  shiny::downloadButton(
+                    ns("download_directional_kegg_pdf"), "PDF",
+                    class = "btn-outline-secondary btn-sm"
+                  ),
+                  shiny::downloadButton(
+                    ns("download_directional_kegg_svg"), "SVG",
+                    class = "btn-outline-secondary btn-sm"
+                  ),
+                  shiny::downloadButton(
+                    ns("download_directional_kegg_data"), "CSV",
+                    class = "btn-outline-secondary btn-sm"
+                  )
+                )
+              ),
+
+              shiny::div(
+                class = "directional-results-tabs",
+                shiny::tabsetPanel(
+                  shiny::tabPanel(
+                    "Figure",
+                    shiny::div(
+                      class = "directional-plot-grid",
+                      shiny::div(
+                        class = "directional-plot-card",
+                        shiny::plotOutput(
+                          ns("directional_kegg_up_plot"),
+                          height = "470px"
+                        )
+                      ),
+                      shiny::div(
+                        class = "directional-plot-card",
+                        shiny::plotOutput(
+                          ns("directional_kegg_down_plot"),
+                          height = "470px"
+                        )
+                      )
+                    )
+                  ),
+                  shiny::tabPanel(
+                    "Result table",
+                    DT::DTOutput(ns("directional_kegg_table"))
+                  )
+                )
+              )
             )
           )
         )
@@ -1547,19 +1944,86 @@ enrichment_analysis_server <- function(id, shared_state) {
       bundle <- directional_dep_bundle()
       choices <- names(bundle$results %||% list())
       if (!length(choices)) {
-        return(shiny::helpText("Run DEP to select comparisons."))
+        return(
+          shiny::helpText(
+            "Run DEP first; available comparisons will appear here."
+          )
+        )
       }
       selected <- isolate(input$directional_comparisons)
       selected <- intersect(selected %||% choices, choices)
       if (!length(selected)) selected <- choices
       shiny::checkboxGroupInput(
         ns("directional_comparisons"),
-        "DEP comparisons",
+        label = NULL,
         choices = choices,
         selected = selected,
-        inline = TRUE
+        inline = FALSE
       )
     })
+
+    output$directional_selected_count <- shiny::renderText({
+      bundle <- directional_dep_bundle()
+      choices <- names(bundle$results %||% list())
+      selected <- intersect(
+        input$directional_comparisons %||% character(),
+        choices
+      )
+      paste0(length(selected), " selected")
+    })
+
+    output$directional_background_status <- shiny::renderUI({
+      background <- rv$background_data
+      if (base::is.null(background) ||
+          base::is.null(background$KEGG_background)) {
+        return(
+          shiny::span(
+            "○ Not loaded",
+            class = "directional-state directional-state-waiting"
+          )
+        )
+      }
+
+      table <- base::as.data.frame(background$KEGG_background)
+      n_ids <- if ("GENE" %in% base::names(table)) {
+        base::length(base::unique(
+          base::as.character(table$GENE[
+            !base::is.na(table$GENE) & base::nzchar(table$GENE)
+          ])
+        ))
+      } else {
+        base::nrow(table)
+      }
+
+      shiny::span(
+        paste0("✓ Loaded · ", base::format(n_ids, big.mark = ","), " annotated IDs"),
+        class = "directional-state directional-state-loaded"
+      )
+    })
+
+    shiny::observeEvent(input$directional_select_all, {
+      bundle <- directional_dep_bundle()
+      choices <- names(bundle$results %||% list())
+      shiny::updateCheckboxGroupInput(
+        session,
+        "directional_comparisons",
+        choices = choices,
+        selected = choices,
+        inline = FALSE
+      )
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$directional_clear_all, {
+      bundle <- directional_dep_bundle()
+      choices <- names(bundle$results %||% list())
+      shiny::updateCheckboxGroupInput(
+        session,
+        "directional_comparisons",
+        choices = choices,
+        selected = character(),
+        inline = FALSE
+      )
+    }, ignoreInit = TRUE)
 
     output$background_preview_ui <- shiny::renderUI({
       if (base::is.null(rv$background_data)) {
@@ -1998,18 +2462,47 @@ enrichment_analysis_server <- function(id, shared_state) {
 
     output$directional_kegg_status <- shiny::renderText({
       rv$directional_kegg_message %||%
-        "Load the built-in background, then run this after DEP."
+        "Load a background, select one or more DEP comparisons, then run KEGG."
     })
+
+    render_directional_panel <- function(direction) {
+      data <- rv$directional_kegg
+      if (base::is.null(data) || !nrow(data)) {
+        return(
+          ggplot2::ggplot() +
+            ggplot2::theme_void() +
+            ggplot2::annotate(
+              "text", x = 0, y = 0,
+              label = rv$directional_kegg_message %||%
+                "No directional KEGG result available.",
+              colour = "#64748B", size = 4
+            )
+        )
+      }
+      .protvis_directional_kegg_panel(data, direction)
+    }
+
+    output$directional_kegg_up_plot <- shiny::renderPlot({
+      print(render_directional_panel("Upregulated"))
+    }, res = 96)
+
+    output$directional_kegg_down_plot <- shiny::renderPlot({
+      print(render_directional_panel("Downregulated"))
+    }, res = 96)
 
     output$directional_kegg_plot <- shiny::renderPlot({
       data <- rv$directional_kegg
       if (base::is.null(data) || !nrow(data)) {
         plot(0, 0, type = "n", axes = FALSE, xlab = "", ylab = "")
-        text(0, 0, rv$directional_kegg_message %||% "No directional KEGG result available.")
+        text(
+          0, 0,
+          rv$directional_kegg_message %||%
+            "No directional KEGG result available."
+        )
         return(invisible(NULL))
       }
       print(.protvis_plot_directional_kegg(data))
-    })
+    }, res = 96)
 
     output$directional_kegg_table <- DT::renderDT({
       data <- rv$directional_kegg
@@ -2027,6 +2520,16 @@ enrichment_analysis_server <- function(id, shared_state) {
       content = function(file) {
         shiny::req(rv$directional_kegg)
         grDevices::pdf(file, width = 14, height = 7)
+        print(.protvis_plot_directional_kegg(rv$directional_kegg))
+        grDevices::dev.off()
+      }
+    )
+
+    output$download_directional_kegg_svg <- shiny::downloadHandler(
+      filename = function() paste0("directional_KEGG_", Sys.Date(), ".svg"),
+      content = function(file) {
+        shiny::req(rv$directional_kegg)
+        grDevices::svg(file, width = 14, height = 7, onefile = TRUE)
         print(.protvis_plot_directional_kegg(rv$directional_kegg))
         grDevices::dev.off()
       }
