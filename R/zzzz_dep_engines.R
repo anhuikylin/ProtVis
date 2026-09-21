@@ -94,8 +94,10 @@
   setup <- .protvis_dep_design(samples, group1_samples, group2_samples, group1, group2)
   fit <- limma::lmFit(mat, setup$design)
   fit <- limma::contrasts.fit(fit, setup$contrast)
-  fit <- limma::eBayes(fit)
-  result <- limma::topTable(fit, coef = 1, n = Inf, sort.by = "none", adjust.method = "BH")
+  fit <- limma::eBayes(fit, trend = TRUE, robust = TRUE)
+  result <- limma::topTable(
+    fit, coef = 1, n = Inf, sort.by = "none", adjust.method = "BH"
+  )
   ids <- base::rownames(result)
   .protvis_dep_standardize(result, "limma", ids, result$logFC, result$P.Value, result$adj.P.Val, result)
 }
@@ -607,7 +609,7 @@
           bslib::nav_panel(
             "Availability",
             shiny::p(
-              "limma uses the current normalized protein matrix. DEqMS additionally requires peptide/PSM counts. proDA preferentially uses the pre-imputation transformed matrix. MSstats requires its native feature-level long table.",
+              "limma follows Recommended DEP using the Step4 observed log2 matrix, sample median centering, >=2 detections per group, and robust trend eBayes. DEqMS additionally requires peptide/PSM counts. proDA preferentially uses the pre-imputation transformed matrix. MSstats requires its native feature-level long table.",
               class = "pv-dep-engine-note"
             ),
             DT::DTOutput(ns("engine_availability"))
@@ -742,7 +744,11 @@ DEP_analysis_server <- function(id, shared_state) {
           base::requireNamespace("MSstats", quietly = TRUE)
         ),
         data_requirement = c(
-          "normalized protein matrix",
+          if (!base::is.null(rv$pre_imputation_dataset)) {
+            "Step4 observed log2 matrix; >=2 detections/group; robust trend eBayes"
+          } else {
+            "Step4 unavailable; Recommended limma engine cannot run"
+          },
           if (base::length(count_cols)) base::paste0("counts: ", base::paste(count_cols, collapse = ", ")) else "peptide/PSM counts not detected",
           if (!base::is.null(rv$pre_imputation_dataset)) "Step4 pre-imputation matrix available" else "Step4 unavailable; current matrix would be used",
           if (!base::is.null(rv$msstats_table)) "feature-level table loaded" else "feature-level table not loaded"
@@ -781,7 +787,42 @@ DEP_analysis_server <- function(id, shared_state) {
         base::tryCatch({
           result <- switch(
             method,
-            limma = .protvis_dep_run_limma(current_mat, sample_sets$group1, sample_sets$group2, g1, g2),
+            limma = {
+              if (base::is.null(rv$pre_imputation_dataset)) {
+                base::stop(
+                  "Recommended limma requires Step4_data_transformed.rda."
+                )
+              }
+              observed <- .protvis_dep_matrix(rv$pre_imputation_dataset)
+              if (!base::all(sample_sets$samples %in% base::colnames(observed))) {
+                base::stop(
+                  "The Step4 observed matrix does not contain all selected samples."
+                )
+              }
+              centered <- .protvis_dep_prepare_recommended_matrix(
+                observed,
+                center_samples = TRUE
+              )
+              ids <- .protvis_dep_shared_ids(
+                observed,
+                sample_sets$group1,
+                sample_sets$group2,
+                mode = "both_genotypes",
+                min_detected = 2L
+              )
+              centered <- centered[
+                base::intersect(ids, base::rownames(centered)),
+                ,
+                drop = FALSE
+              ]
+              .protvis_dep_run_limma(
+                centered,
+                sample_sets$group1,
+                sample_sets$group2,
+                g1,
+                g2
+              )
+            },
             deqms = .protvis_dep_run_deqms(current_mat, sample_sets$group1, sample_sets$group2, g1, g2, rv$count_table),
             proda = {
               source_dataset <- rv$pre_imputation_dataset %||% rv$dataset
