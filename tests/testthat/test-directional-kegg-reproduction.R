@@ -146,3 +146,69 @@ test_that("archived background keeps first TERM per pathway NAME", {
   ))
   expect_false("T2" %in% archived$TERM2GENE$TERM)
 })
+
+
+test_that("archived compareCluster resolves enricher without attaching clusterProfiler", {
+  skip_if_not_installed("clusterProfiler")
+
+  ids <- paste0("P", seq_len(80))
+  p <- rep(0.8, 80)
+  p[1:12] <- 1e-08
+  p[21:32] <- 1e-08
+  logfc <- rep(0, 80)
+  logfc[1:12] <- 2
+  logfc[21:32] <- -2
+
+  dep <- list(
+    B73_Root_VE_vs_Y12_Root_VE = data.frame(
+      ID = ids,
+      logFC = logfc,
+      P.Value = p,
+      adj.P.Val = p.adjust(p, method = "BH"),
+      regulation = "Not significant",
+      Group1 = "B73_Root_VE",
+      Group2 = "Y12_Root_VE",
+      analysis_mode = "archived",
+      protein_universe = "archived_any_detected",
+      matrix_source = "Step6_data_normalization",
+      test_method = "archived_eBayes",
+      stringsAsFactors = FALSE
+    )
+  )
+
+  background <- rbind(
+    data.frame(
+      TERM = "T_UP",
+      GENE = paste0("P", 1:18),
+      NAME = "Up pathway"
+    ),
+    data.frame(
+      TERM = "T_DOWN",
+      GENE = paste0("P", 21:38),
+      NAME = "Down pathway"
+    ),
+    data.frame(
+      TERM = "T_OTHER",
+      GENE = paste0("P", 39:80),
+      NAME = "Other pathway"
+    )
+  )
+
+  # Reproduction must work through namespace imports alone; users should not
+  # need library(clusterProfiler) in the Shiny session.
+  result <- ProtVis:::.protvis_directional_kegg_data(
+    dep_results = dep,
+    kegg_background = background,
+    comparisons = names(dep),
+    method = "archived_comparecluster",
+    evidence_mode = "quantitative",
+    top_n = 10,
+    pvalue_cutoff = 0.05
+  )
+
+  expect_gt(nrow(result), 0)
+  expect_identical(
+    attr(result, "analysis_method"),
+    "archived_comparecluster"
+  )
+})

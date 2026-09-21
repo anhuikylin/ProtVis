@@ -950,10 +950,13 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
         return(NULL)
       }
 
+      # Pass the function object explicitly. Using fun = "enricher" only works
+      # when clusterProfiler is attached to the search path; ProtVis imports
+      # the namespace without attaching it in a Shiny session.
       tryCatch(
         clusterProfiler::compareCluster(
           geneCluster = gene_clusters,
-          fun = "enricher",
+          fun = clusterProfiler::enricher,
           TERM2GENE = background$TERM2GENE,
           TERM2NAME = background$TERM2NAME,
           pvalueCutoff = as.numeric(pvalue_cutoff),
