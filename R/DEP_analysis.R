@@ -260,9 +260,19 @@ DEP_analysis_ui <- function(id) {
                 colourpicker::colourInput(
                   ns("summary_up"), "Up", value = "#FA8072"
                 ),
+                shiny::tags$hr(),
+                shiny::tags$strong("Presence/absence evidence"),
+                colourpicker::colourInput(
+                  ns("summary_group1_only"),
+                  "Group1 only", value = "#E76F51"
+                ),
+                colourpicker::colourInput(
+                  ns("summary_group2_only"),
+                  "Group2 only", value = "#2A9D8F"
+                ),
                 shiny::numericInput(
                   ns("summary_width"), "PDF width (inch)",
-                  value = 7, min = 4, max = 20
+                  value = 12, min = 6, max = 24
                 ),
                 shiny::numericInput(
                   ns("summary_height"), "PDF height (inch)",
@@ -272,7 +282,11 @@ DEP_analysis_ui <- function(id) {
                   ns("download_dep_summary"), "DOWNLOAD SUMMARY PDF"
                 ),
                 shiny::downloadButton(
-                  ns("download_dep_counts"), "DOWNLOAD COUNTS CSV"
+                  ns("download_dep_counts"), "DOWNLOAD QUANTITATIVE CSV"
+                ),
+                shiny::downloadButton(
+                  ns("download_evidence_counts"),
+                  "DOWNLOAD PARALLEL EVIDENCE CSV"
                 )
               ),
               shiny::div(
@@ -354,10 +368,23 @@ DEP_analysis_ui <- function(id) {
     (d2 >= min_detected & d1 == 0L)
   if (!any(keep)) return(data.frame())
 
+  row_median <- function(mat) {
+    apply(mat, 1L, function(v) {
+      v <- v[is.finite(v)]
+      if (length(v)) stats::median(v) else NA_real_
+    })
+  }
+
+  g1_median <- row_median(x[, group1_samples, drop = FALSE])
+  g2_median <- row_median(x[, group2_samples, drop = FALSE])
+
   data.frame(
     ID = rownames(x)[keep],
     Group1_detected = d1[keep],
     Group2_detected = d2[keep],
+    Group1_median_observed = g1_median[keep],
+    Group2_median_observed = g2_median[keep],
+    Detection_difference = d1[keep] - d2[keep],
     Pattern = ifelse(
       d1[keep] >= min_detected & d2[keep] == 0L,
       "Detected in Group1 only",
@@ -598,6 +625,204 @@ DEP_analysis_ui <- function(id) {
   if (is.null(out)) data.frame() else out
 }
 
+.protvis_dep_evidence_summary <- function(
+    results, presence_absence, comparison_order = names(results)) {
+  if (!length(comparison_order)) return(data.frame())
+
+  rows <- lapply(comparison_order, function(key) {
+    parts <- strsplit(key, "_vs_", fixed = TRUE)[[1L]]
+    g1 <- if (length(parts) >= 1L) parts[[1L]] else key
+    g2 <- if (length(parts) >= 2L) parts[[2L]] else NA_character_
+    stage <- .protvis_dep_stage_label(g1)
+
+    quantitative <- results[[key]]
+    q_counts <- c(
+      "Upregulated" = 0L,
+      "Downregulated" = 0L
+    )
+    if (!is.null(quantitative) && nrow(quantitative)) {
+      q_tab <- table(factor(
+        quantitative$regulation,
+        levels = c("Upregulated", "Downregulated")
+      ))
+      q_counts[names(q_tab)] <- as.integer(q_tab)
+    }
+
+    presence <- presence_absence[[key]]
+    p_counts <- c(
+      "Detected in Group1 only" = 0L,
+      "Detected in Group2 only" = 0L
+    )
+    if (!is.null(presence) && nrow(presence) &&
+        "Pattern" %in% names(presence)) {
+      p_tab <- table(factor(
+        presence$Pattern,
+        levels = names(p_counts)
+      ))
+      p_counts[names(p_tab)] <- as.integer(p_tab)
+    }
+
+    rbind(
+      data.frame(
+        Comparison = key,
+        Group1 = g1,
+        Group2 = g2,
+        Stage = stage,
+        Evidence = "Quantitative DEP",
+        Direction = names(q_counts),
+        Protein_number = as.integer(q_counts),
+        stringsAsFactors = FALSE
+      ),
+      data.frame(
+        Comparison = key,
+        Group1 = g1,
+        Group2 = g2,
+        Stage = stage,
+        Evidence = "Presence/absence",
+        Direction = names(p_counts),
+        Protein_number = as.integer(p_counts),
+        stringsAsFactors = FALSE
+      )
+    )
+  })
+
+  out <- do.call(rbind, rows)
+  if (is.null(out)) data.frame() else out
+}
+
+.protvis_dep_presence_summary_plot <- function(
+    counts,
+    group1_only = "#E76F51",
+    group2_only = "#2A9D8F") {
+  presence <- counts[counts$Evidence == "Presence/absence", , drop = FALSE]
+  if (!nrow(presence)) {
+    return(
+      ggplot2::ggplot() +
+        ggplot2::theme_void() +
+        ggplot2::annotate(
+          "text", x = 0, y = 0,
+          label = "No presence/absence evidence."
+        )
+    )
+  }
+
+  stage_order <- unique(presence$Stage)
+  presence$Stage <- factor(
+    presence$Stage,
+    levels = rev(stage_order)
+  )
+  presence$Direction <- factor(
+    presence$Direction,
+    levels = c(
+      "Detected in Group1 only",
+      "Detected in Group2 only"
+    ),
+    labels = c("Group1 only", "Group2 only")
+  )
+
+  ggplot2::ggplot(
+    presence,
+    ggplot2::aes(
+      x = Stage,
+      y = Protein_number,
+      fill = Direction
+    )
+  ) +
+    ggplot2::geom_col(
+      colour = "black",
+      linewidth = 0.3,
+      width = 0.72,
+      position = ggplot2::position_dodge(width = 0.78)
+    ) +
+    ggplot2::coord_flip() +
+    ggplot2::scale_fill_manual(
+      values = c(
+        "Group1 only" = group1_only,
+        "Group2 only" = group2_only
+      ),
+      drop = FALSE
+    ) +
+    ggplot2::labs(
+      title = "Evidence 2 · Presence/absence",
+      subtitle = "Proteins detected in one group but absent from the other",
+      x = NULL,
+      y = "Protein number",
+      fill = NULL
+    ) +
+    ggplot2::theme_bw(base_size = 9) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(
+        hjust = 0.5, face = "bold", size = 11
+      ),
+      plot.subtitle = ggplot2::element_text(
+        hjust = 0.5, size = 8.5, colour = "#6c757d"
+      ),
+      axis.text = ggplot2::element_text(size = 9, colour = "black"),
+      axis.title = ggplot2::element_text(size = 10, colour = "black"),
+      panel.border = ggplot2::element_rect(
+        colour = "black", linewidth = 0.8
+      ),
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position = "right",
+      legend.text = ggplot2::element_text(size = 9)
+    )
+}
+
+.protvis_dep_parallel_evidence_plot <- function(
+    quantitative_counts,
+    evidence_counts,
+    up = "#FA8072",
+    ns = "#B3B3B3",
+    down = "#90EE90",
+    group1_only = "#E76F51",
+    group2_only = "#2A9D8F") {
+  quantitative <- .protvis_dep_summary_plot(
+    quantitative_counts,
+    up = up,
+    ns = ns,
+    down = down
+  ) +
+    ggplot2::labs(
+      title = "Evidence 1 · Quantitative DEP",
+      subtitle = "Reliable quantitative proteins tested by limma"
+    ) +
+    ggplot2::theme(
+      plot.subtitle = ggplot2::element_text(
+        hjust = 0.5, size = 8.5, colour = "#6c757d"
+      )
+    )
+
+  presence <- .protvis_dep_presence_summary_plot(
+    evidence_counts,
+    group1_only = group1_only,
+    group2_only = group2_only
+  )
+
+  patchwork::wrap_plots(
+    quantitative,
+    presence,
+    ncol = 2,
+    widths = c(1.08, 0.92)
+  ) +
+    patchwork::plot_annotation(
+      title = "Two parallel differential-protein evidence streams",
+      subtitle = paste0(
+        "Quantitative abundance differences and presence/absence evidence ",
+        "are reported separately rather than forcing missing proteins into ",
+        "the same statistical model."
+      ),
+      theme = ggplot2::theme(
+        plot.title = ggplot2::element_text(
+          hjust = 0.5, face = "bold", size = 13
+        ),
+        plot.subtitle = ggplot2::element_text(
+          hjust = 0.5, size = 9, colour = "#6c757d"
+        )
+      )
+    )
+}
+
+
 .protvis_dep_summary_plot <- function(counts, up = "#FA8072",
                                       ns = "#B3B3B3",
                                       down = "#90EE90") {
@@ -780,6 +1005,7 @@ DEP_analysis_server <- function(id, shared_state) {
       dep_results = list(),
       presence_absence = list(),
       dep_summary = data.frame(),
+      evidence_summary = data.frame(),
       dep_params = .protvis_dep_recommended_defaults(),
       load_success = FALSE,
       dep_ready = FALSE,
@@ -792,6 +1018,7 @@ DEP_analysis_server <- function(id, shared_state) {
       rv$presence_absence <- list()
       rv$dep_analysis_matrix <- NULL
       rv$dep_summary <- data.frame()
+      rv$evidence_summary <- data.frame()
       rv$dep_ready <- FALSE
       rv$dep_has_run <- FALSE
       rv$volcano_baseline <- list()
@@ -1326,6 +1553,11 @@ DEP_analysis_server <- function(id, shared_state) {
       rv$dep_summary <- .protvis_dep_summary_table(
         rv$dep_results, comparison_order
       )
+      rv$evidence_summary <- .protvis_dep_evidence_summary(
+        rv$dep_results,
+        rv$presence_absence,
+        comparison_order
+      )
       rv$dep_ready <- length(rv$dep_results) > 0
 
       if (inherits(shared_state$dataset, "ProtVis_dataset") && rv$dep_ready) {
@@ -1334,6 +1566,7 @@ DEP_analysis_server <- function(id, shared_state) {
           results = rv$dep_results,
           presence_absence = rv$presence_absence,
           summary = rv$dep_summary,
+          evidence_summary = rv$evidence_summary,
           parameters = rv$dep_params,
           comparisons = comparisons,
           input_matrix = rv$dep_analysis_matrix,
@@ -1415,11 +1648,14 @@ DEP_analysis_server <- function(id, shared_state) {
           "Run DEP to display the summary."
         )
       )
-      print(.protvis_dep_summary_plot(
+      print(.protvis_dep_parallel_evidence_plot(
         rv$dep_summary,
+        rv$evidence_summary,
         up = input$summary_up %||% "#FA8072",
         ns = input$summary_ns %||% "#B3B3B3",
-        down = input$summary_down %||% "#90EE90"
+        down = input$summary_down %||% "#90EE90",
+        group1_only = input$summary_group1_only %||% "#E76F51",
+        group2_only = input$summary_group2_only %||% "#2A9D8F"
       ))
     })
 
@@ -1427,11 +1663,14 @@ DEP_analysis_server <- function(id, shared_state) {
       filename = function() paste0("DEP_summary_", Sys.Date(), ".pdf"),
       content = function(file) {
         shiny::req(nrow(rv$dep_summary) > 0)
-        plot <- .protvis_dep_summary_plot(
+        plot <- .protvis_dep_parallel_evidence_plot(
           rv$dep_summary,
+          rv$evidence_summary,
           up = input$summary_up %||% "#FA8072",
           ns = input$summary_ns %||% "#B3B3B3",
-          down = input$summary_down %||% "#90EE90"
+          down = input$summary_down %||% "#90EE90",
+          group1_only = input$summary_group1_only %||% "#E76F51",
+          group2_only = input$summary_group2_only %||% "#2A9D8F"
         )
         ggplot2::ggsave(
           file, plot = plot, device = "pdf",
@@ -1447,6 +1686,20 @@ DEP_analysis_server <- function(id, shared_state) {
       content = function(file) {
         shiny::req(nrow(rv$dep_summary) > 0)
         utils::write.csv(rv$dep_summary, file, row.names = FALSE)
+      }
+    )
+
+    output$download_evidence_counts <- shiny::downloadHandler(
+      filename = function() {
+        paste0("DEP_parallel_evidence_counts_", Sys.Date(), ".csv")
+      },
+      content = function(file) {
+        shiny::req(nrow(rv$evidence_summary) > 0)
+        utils::write.csv(
+          rv$evidence_summary,
+          file,
+          row.names = FALSE
+        )
       }
     )
 
@@ -1684,12 +1937,12 @@ DEP_analysis_server <- function(id, shared_state) {
             gap = "1rem",
             bslib::card(
               height = "560px",
-              bslib::card_header(paste("DEP table -", g1, "vs", g2)),
+              bslib::card_header(paste("Evidence 1 · Quantitative DEP table -", g1, "vs", g2)),
               bslib::card_body(DT::DTOutput(ns(table_id)))
             ),
             bslib::card(
               height = "560px",
-              bslib::card_header(paste("Volcano plot -", g1, "vs", g2)),
+              bslib::card_header(paste("Evidence 1 · Quantitative volcano -", g1, "vs", g2)),
               bslib::card_body(
                 bslib::layout_sidebar(
                   sidebar = bslib::sidebar(
@@ -1732,7 +1985,7 @@ DEP_analysis_server <- function(id, shared_state) {
             ),
             bslib::card(
               height = "560px",
-              bslib::card_header(paste("Heatmap -", g1, "vs", g2)),
+              bslib::card_header(paste("Evidence 1 · Quantitative heatmap -", g1, "vs", g2)),
               bslib::card_body(
                 bslib::layout_sidebar(
                   sidebar = bslib::sidebar(
@@ -1764,7 +2017,7 @@ DEP_analysis_server <- function(id, shared_state) {
             ),
             bslib::card(
               height = "560px",
-              bslib::card_header(paste("DEP count -", g1, "vs", g2)),
+              bslib::card_header(paste("Evidence 1 · Quantitative count -", g1, "vs", g2)),
               bslib::card_body(
                 bslib::layout_sidebar(
                   sidebar = bslib::sidebar(
@@ -1798,7 +2051,7 @@ DEP_analysis_server <- function(id, shared_state) {
             bslib::card(
               height = "560px",
               bslib::card_header(
-                paste("Presence/absence candidates -", g1, "vs", g2)
+                paste("Evidence 2 · Presence/absence candidates -", g1, "vs", g2)
               ),
               bslib::card_body(
                 shiny::tags$small(
