@@ -22,3 +22,21 @@ test_that("Protein Workbench domain tracks use labels and adaptive height", {
   )
   expect_equal(ProtVis:::.protvis_pw_domain_plot_height(100L), 1600L)
 })
+
+test_that("Protein Workbench selects species-aware annotation resources", {
+  maize_entry <- list(
+    organism = list(scientificName = "Zea mays"),
+    genes = list(list(geneName = list(value = "Zm00001eb000210")))
+  )
+  maize_links <- ProtVis:::.protvis_pw_external_links("A0A1D6JJK6", maize_entry)
+  expect_true(all(c("Ensembl", "NCBI_Gene", "KEGG_Genes", "Plant_Reactome", "MaizeGDB") %in% names(maize_links)))
+  expect_match(maize_links$MaizeGDB, "Zm00001eb000210", fixed = TRUE)
+
+  human_entry <- list(
+    organism = list(scientificName = "Homo sapiens"),
+    genes = list(list(geneName = list(value = "HBB")))
+  )
+  human_links <- ProtVis:::.protvis_pw_external_links("P68871", human_entry)
+  expect_false("MaizeGDB" %in% names(human_links))
+  expect_match(human_links$Ensembl, "HBB", fixed = TRUE)
+})
