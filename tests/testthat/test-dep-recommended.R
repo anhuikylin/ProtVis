@@ -242,3 +242,32 @@ testthat::test_that("presence-absence evidence retains observed-intensity contex
     3
   )
 })
+
+testthat::test_that("Evidence 2 count overview uses the candidate table", {
+  presence <- data.frame(
+    ID = paste0("P", 1:5),
+    Pattern = c(
+      "Detected in Group1 only",
+      "Detected in Group2 only",
+      "Detected in Group1 only",
+      "Detected in Group1 only",
+      "Detected in Group2 only"
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  counts <- ProtVis:::.protvis_dep_presence_count_data(
+    presence, "B73_Root_VE", "Y12_Root_VE"
+  )
+
+  testthat::expect_identical(
+    as.character(counts$Direction),
+    c("B73_Root_VE only", "Y12_Root_VE only")
+  )
+  testthat::expect_equal(counts$Protein_number, c(3L, 2L))
+
+  empty <- ProtVis:::.protvis_dep_presence_count_data(
+    data.frame(), "B73", "Y12"
+  )
+  testthat::expect_equal(empty$Protein_number, c(0L, 0L))
+})

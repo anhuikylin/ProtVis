@@ -926,6 +926,74 @@ DEP_analysis_ui <- function(id) {
     )
 }
 
+.protvis_dep_presence_count_data <- function(presence, group1, group2) {
+  patterns <- c(
+    "Detected in Group1 only",
+    "Detected in Group2 only"
+  )
+  observed <- if (is.data.frame(presence) &&
+                  "Pattern" %in% names(presence)) {
+    as.character(presence$Pattern)
+  } else {
+    character()
+  }
+  counts <- as.integer(table(factor(observed, levels = patterns)))
+  labels <- c(
+    paste(as.character(group1), "only"),
+    paste(as.character(group2), "only")
+  )
+  data.frame(
+    Direction = factor(labels, levels = labels),
+    Protein_number = counts,
+    stringsAsFactors = FALSE
+  )
+}
+
+.protvis_dep_presence_count_plot <- function(
+    presence, group1, group2, title = NULL,
+    group1_only = "#E76F51", group2_only = "#2A9D8F") {
+  counts <- .protvis_dep_presence_count_data(presence, group1, group2)
+  colours <- stats::setNames(
+    c(group1_only, group2_only),
+    as.character(counts$Direction)
+  )
+
+  ggplot2::ggplot(
+    counts,
+    ggplot2::aes(x = Direction, y = Protein_number, fill = Direction)
+  ) +
+    ggplot2::geom_col(
+      colour = "black", linewidth = 0.3, width = 0.68
+    ) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = Protein_number),
+      vjust = -0.45,
+      colour = "#243447",
+      fontface = "bold",
+      size = 4
+    ) +
+    ggplot2::coord_flip() +
+    ggplot2::scale_fill_manual(values = colours, drop = FALSE) +
+    ggplot2::expand_limits(
+      y = max(c(counts$Protein_number, 1L)) * 1.15
+    ) +
+    ggplot2::theme_bw() +
+    ggplot2::labs(
+      x = NULL,
+      y = "Protein number",
+      fill = NULL,
+      title = title,
+      subtitle = "Proteins detected in one group and absent from the other"
+    ) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold", hjust = 0.5),
+      plot.subtitle = ggplot2::element_text(
+        hjust = 0.5, colour = "#6c757d"
+      ),
+      legend.position = "none"
+    )
+}
+
 .protvis_dep_volcano_plot <- function(result, params, up, down, ns) {
   p_metric <- params$volcano_p_metric %||% params$p_metric
   p <- suppressWarnings(as.numeric(result[[p_metric]]))
@@ -1729,11 +1797,15 @@ DEP_analysis_server <- function(id, shared_state) {
         heatmap_id <- paste0("heatmap_", i)
         bar_id <- paste0("bar_dep_", i)
         presence_id <- paste0("presence_absence_", i)
+        presence_count_id <- paste0("presence_count_", i)
         show_id <- paste0("show_volcano_", i)
         volcano_download_id <- paste0("download_volcano_", i)
         heatmap_download_id <- paste0("download_heatmap_", i)
         bar_download_id <- paste0("download_bar_", i)
         presence_download_id <- paste0("download_presence_absence_", i)
+        presence_count_download_id <- paste0(
+          "download_presence_count_", i
+        )
 
         output[[table_id]] <- DT::renderDT({
           DT::datatable(
@@ -1778,6 +1850,51 @@ DEP_analysis_server <- function(id, shared_state) {
           content = function(file) {
             presence <- rv$presence_absence[[key]] %||% data.frame()
             utils::write.csv(presence, file, row.names = FALSE)
+          }
+        )
+
+        output[[presence_count_id]] <- shiny::renderPlot({
+          print(.protvis_dep_presence_count_plot(
+            rv$presence_absence[[key]] %||% data.frame(),
+            group1 = g1,
+            group2 = g2,
+            title = .protvis_dep_stage_label(g1),
+            group1_only = input[[paste0(
+              "presence_count_group1_", i
+            )]] %||% "#E76F51",
+            group2_only = input[[paste0(
+              "presence_count_group2_", i
+            )]] %||% "#2A9D8F"
+          ))
+        })
+
+        output[[presence_count_download_id]] <- shiny::downloadHandler(
+          filename = function() {
+            paste0("Presence_absence_count_", key, ".pdf")
+          },
+          content = function(file) {
+            plot <- .protvis_dep_presence_count_plot(
+              rv$presence_absence[[key]] %||% data.frame(),
+              group1 = g1,
+              group2 = g2,
+              title = .protvis_dep_stage_label(g1),
+              group1_only = input[[paste0(
+                "presence_count_group1_", i
+              )]] %||% "#E76F51",
+              group2_only = input[[paste0(
+                "presence_count_group2_", i
+              )]] %||% "#2A9D8F"
+            )
+            ggplot2::ggsave(
+              file, plot = plot, device = "pdf",
+              width = input[[paste0(
+                "presence_count_width_", i
+              )]] %||% 7,
+              height = input[[paste0(
+                "presence_count_height_", i
+              )]] %||% 4.5,
+              units = "in"
+            )
           }
         )
 
@@ -2070,6 +2187,45 @@ DEP_analysis_server <- function(id, shared_state) {
                 shiny::br(),
                 shiny::br(),
                 DT::DTOutput(ns(presence_id))
+              )
+            ),
+            bslib::card(
+              height = "560px",
+              bslib::card_header(
+                paste(
+                  "Evidence 2 · Count overview -",
+                  g1, "vs", g2
+                )
+              ),
+              bslib::card_body(
+                bslib::layout_sidebar(
+                  sidebar = bslib::sidebar(
+                    width = 240,
+                    colourpicker::colourInput(
+                      ns(paste0("presence_count_group1_", i)),
+                      paste(g1, "only"), "#E76F51"
+                    ),
+                    colourpicker::colourInput(
+                      ns(paste0("presence_count_group2_", i)),
+                      paste(g2, "only"), "#2A9D8F"
+                    ),
+                    shiny::numericInput(
+                      ns(paste0("presence_count_width_", i)),
+                      "PDF width", 7, min = 4, max = 20
+                    ),
+                    shiny::numericInput(
+                      ns(paste0("presence_count_height_", i)),
+                      "PDF height", 4.5, min = 3, max = 20
+                    ),
+                    shiny::downloadButton(
+                      ns(presence_count_download_id),
+                      "DOWNLOAD EVIDENCE 2 COUNT"
+                    )
+                  ),
+                  shiny::plotOutput(
+                    ns(presence_count_id), height = "430px"
+                  )
+                )
               )
             )
           )
