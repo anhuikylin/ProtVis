@@ -119,3 +119,49 @@ testthat::test_that("auto-rebuild does not overwrite current DEP", {
 
   testthat::expect_identical(current, before)
 })
+
+
+testthat::test_that("Figure 3 archived sample-map correction swaps only the two mislabelled B73 root samples", {
+  x <- matrix(
+    seq_len(24),
+    nrow = 4,
+    dimnames = list(
+      paste0("P", 1:4),
+      c(
+        "B73_Root_VE_3",
+        "B73_Root_V1.V2_2",
+        "B73_Root_V4_1",
+        "Y12_Root_VE_1",
+        "Y12_Root_V1.V2_1",
+        "Y12_Root_V4_1"
+      )
+    )
+  )
+
+  fixed <- ProtVis:::.protvis_directional_fix_figure3_sample_map(x)
+
+  testthat::expect_equal(
+    fixed[, "B73_Root_VE_3"],
+    x[, "B73_Root_V1.V2_2"]
+  )
+  testthat::expect_equal(
+    fixed[, "B73_Root_V1.V2_2"],
+    x[, "B73_Root_VE_3"]
+  )
+  testthat::expect_equal(
+    fixed[, "B73_Root_V4_1"],
+    x[, "B73_Root_V4_1"]
+  )
+  testthat::expect_true(
+    isTRUE(attr(fixed, "figure3_sample_map_corrected"))
+  )
+})
+
+
+testthat::test_that("Figure 3 retained-protein audit contains the five frozen historical counts", {
+  expected <- ProtVis:::.protvis_directional_figure3_expected_retained()
+  testthat::expect_identical(
+    unname(expected),
+    c(11049L, 11049L, 11044L, 11046L, 11036L)
+  )
+})

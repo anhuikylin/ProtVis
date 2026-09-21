@@ -603,6 +603,32 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 }
 
 
+.protvis_directional_fix_figure3_sample_map <- function(matrix) {
+  x <- as.matrix(matrix)
+  swap <- c("B73_Root_VE_3", "B73_Root_V1.V2_2")
+  if (!all(swap %in% colnames(x))) {
+    return(x)
+  }
+
+  tmp <- x[, swap[[1L]]]
+  x[, swap[[1L]]] <- x[, swap[[2L]]]
+  x[, swap[[2L]]] <- tmp
+  attr(x, "figure3_sample_map_corrected") <- TRUE
+  x
+}
+
+
+.protvis_directional_figure3_expected_retained <- function() {
+  c(
+    B73_Root_VE_vs_Y12_Root_VE = 11049L,
+    B73_Root_V1.V2_vs_Y12_Root_V1.V2 = 11049L,
+    B73_Root_V4_vs_Y12_Root_V4 = 11044L,
+    B73_Leaf_VE.V1.V2_vs_Y12_Leaf_VE.V1.V2 = 11046L,
+    B73_Leaf_V4.V6.V8_vs_Y12_Leaf_V4.V6.V8 = 11036L
+  )
+}
+
+
 .protvis_directional_rebuild_archived_dep <- function(
     dep_results, comparisons,
     normalized_matrix, detection_matrix,
@@ -622,10 +648,18 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     stop("Select at least one DEP comparison.", call. = FALSE)
   }
 
-  normalized_matrix <- as.matrix(normalized_matrix)
-  detection_matrix <- as.matrix(detection_matrix)
+  normalized_matrix <- .protvis_directional_fix_figure3_sample_map(
+    normalized_matrix
+  )
+  detection_matrix <- .protvis_directional_fix_figure3_sample_map(
+    detection_matrix
+  )
   storage.mode(normalized_matrix) <- "numeric"
   storage.mode(detection_matrix) <- "numeric"
+
+  expected_retained <-
+    .protvis_directional_figure3_expected_retained()
+  retained_audit <- integer()
 
   sample_info <- as.data.frame(
     sample_info,
@@ -749,6 +783,21 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       )
     }
 
+    retained_audit[[comparison]] <- length(keep_ids)
+    if (comparison %in% names(expected_retained) &&
+        length(keep_ids) != expected_retained[[comparison]]) {
+      stop(
+        paste0(
+          "Figure 3 retained-protein audit failed for ",
+          comparison, ": observed ", length(keep_ids),
+          ", expected ", expected_retained[[comparison]], ". ",
+          "The historical reproduction cannot be treated as exact. ",
+          "Check the bundled maize sample mapping/pre-processing."
+        ),
+        call. = FALSE
+      )
+    }
+
     result <- .protvis_dep_run_limma_archived(
       normalized_matrix[
         keep_ids,
@@ -781,6 +830,8 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     rebuilt[[comparison]] <- result
   }
 
+  attr(rebuilt, "retained_audit") <- retained_audit
+  attr(rebuilt, "figure3_sample_map_corrected") <- TRUE
   rebuilt
 }
 
@@ -3380,7 +3431,10 @@ enrichment_analysis_server <- function(id, shared_state) {
         rv$directional_kegg_message <- paste0(
           "Figure 3 workflow reproduced",
           if (isTRUE(rebuilt_archived_dep)) {
-            " · archived DEP auto-rebuilt from Step4 + Step6"
+            paste0(
+              " · archived DEP auto-rebuilt from Step4 + Step6",
+              " · corrected B73_Root_VE_3 ↔ B73_Root_V1.V2_2 sample map"
+            )
           } else {
             " · compatible archived DEP reused"
           },
