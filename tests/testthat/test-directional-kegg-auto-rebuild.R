@@ -1,4 +1,4 @@
-testthat::test_that("directional KEGG can auto-rebuild archived DEP", {
+testthat::test_that("legacy archived DEP helper can rebuild from stage matrices", {
   testthat::skip_if_not_installed("limma")
 
   samples <- c(
@@ -121,7 +121,7 @@ testthat::test_that("auto-rebuild does not overwrite current DEP", {
 })
 
 
-testthat::test_that("Figure 3 archived sample-map correction swaps only the two mislabelled B73 root samples", {
+testthat::test_that("legacy archived sample-map helper swaps only the two mislabelled B73 root samples", {
   x <- matrix(
     seq_len(24),
     nrow = 4,
@@ -158,7 +158,7 @@ testthat::test_that("Figure 3 archived sample-map correction swaps only the two 
 })
 
 
-testthat::test_that("Figure 3 retained-protein audit contains the five frozen historical counts", {
+testthat::test_that("historical retained-protein reference counts remain documented", {
   expected <- ProtVis:::.protvis_directional_figure3_expected_retained()
   testthat::expect_identical(
     unname(expected),

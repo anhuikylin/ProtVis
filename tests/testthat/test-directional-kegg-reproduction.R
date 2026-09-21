@@ -212,3 +212,78 @@ test_that("archived compareCluster resolves enricher without attaching clusterPr
     "archived_comparecluster"
   )
 })
+
+
+test_that("bundled Figure 3 DEP membership reproduces frozen direction counts", {
+  lists <- ProtVis:::.protvis_directional_load_figure3_gene_lists()
+  expect_equal(
+    lists$counts$B73_higher,
+    c(2287L, 2167L, 2442L, 2291L, 2283L)
+  )
+  expect_equal(
+    lists$counts$Y12_higher,
+    c(1315L, 1477L, 1350L, 1425L, 1419L)
+  )
+  expect_identical(
+    names(lists$group1),
+    c(
+      "Root_VE", "Root_V1.V2", "Root_V4",
+      "Leaf_VE.V1.V2", "Leaf_V4.V6.V8"
+    )
+  )
+  expect_true(all(grepl(
+    "^(Zm00001d|PZ00001a)",
+    unlist(c(lists$group1, lists$group2))
+  )))
+})
+
+
+test_that("exact Figure 3 archive reproduces the historical KEGG pathway sets", {
+  skip_if_not_installed("clusterProfiler")
+
+  background <- ProtVis:::.protvis_load_builtin_enrichment_background()
+  result <- ProtVis:::.protvis_directional_kegg_data(
+    dep_results = NULL,
+    kegg_background = background$KEGG_background,
+    comparisons =
+      ProtVis:::.protvis_directional_figure3_spec()$Comparison,
+    method = "figure3_archive",
+    evidence_mode = "quantitative",
+    top_n = 10,
+    pvalue_cutoff = 0.05
+  )
+
+  expect_gt(nrow(result), 0)
+  expect_identical(
+    attr(result, "analysis_method"),
+    "figure3_archive"
+  )
+
+  up <- sort(unique(trimws(
+    result$Description[result$Direction == "Upregulated"]
+  )))
+  down <- sort(unique(trimws(
+    result$Description[result$Direction == "Downregulated"]
+  )))
+
+  expect_equal(
+    up,
+    sort(c(
+      "Pentose and glucuronate interconversions",
+      "Phenylpropanoid biosynthesis",
+      "Galactose metabolism",
+      "Lipid biosynthesis proteins",
+      "Fatty acid biosynthesis"
+    ))
+  )
+  expect_equal(
+    down,
+    sort(c(
+      "Phenylpropanoid biosynthesis",
+      "Metabolism of terpenoids and polyketides",
+      "Monoterpenoid biosynthesis",
+      "Glutathione metabolism",
+      "Photosynthesis"
+    ))
+  )
+})

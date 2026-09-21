@@ -16,18 +16,22 @@ They were made by joining the source TERM-to-GENE sheets (t2g.go and
 t2g.kegg) to the first non-empty pathway/term name in the corresponding t2n
 sheets. Rows without a term, gene, or name are not included.
 
-No precomputed enrichment result or static plot is included. Directional KEGG
-is calculated from the current DEP result.
+No precomputed KEGG enrichment result or static plot is included. Directional
+KEGG is recalculated at runtime.
 
-"Figure 3 reproduction (compareCluster)" reconstructs the historical workflow:
-archived Step6 limma, the Step4 any-detected protein filter, BH < 0.05 and
-|log2FC| > 1 directional lists, compareCluster/enricher with pvalueCutoff =
-0.05 and qvalueCutoff = 1, no user-supplied universe, raw pvalue colour, and
-clusterProfiler-compatible dotplot selection. If the current DEP was produced
-with the recommended workflow, Directional KEGG automatically rebuilds the
-archived DEP from Step4_data_transformed.rda + Step6_data_normalization.rda
-without overwriting the user's current DEP results.
+"Figure 3 reproduction (archived DEP)" uses the five significant DEP protein
+lists written by the original 02.MaizeTeosintePro/01.src/02.depforseedling.R
+workflow to 03.progress/03.dep (Root_VE, Root_V1.V2, Root_V4,
+Leaf_VE.V1.V2, and Leaf_V4.V6.V8). The lists are bundled in a compact
+membership representation and internally audited against the historical
+direction counts. ProtVis then reruns compareCluster/enricher with the bundled
+Enrichmentdb2 background, pvalueCutoff = 0.05, qvalueCutoff = 1, no
+user-supplied universe, raw pvalue colour, and clusterProfiler-compatible
+dotplot selection. This avoids treating a modern Step4/Step6 reconstruction as
+identical to the frozen historical DEP analysis while still calculating KEGG
+from protein lists rather than bundling a precomputed enrichment table or
+static plot.
 
-"Standard ORA" remains available for general datasets and uses each
+"Standard ORA" remains available"Standard ORA" remains available for general datasets and uses each
 comparison's retained tested proteins as the enrichment universe with BH FDR
 filtering.

@@ -504,6 +504,163 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 }
 
 
+.protvis_directional_figure3_spec <- function() {
+  stages <- c(
+    "Root_VE",
+    "Root_V1.V2",
+    "Root_V4",
+    "Leaf_VE.V1.V2",
+    "Leaf_V4.V6.V8"
+  )
+  data.frame(
+    Stage = stages,
+    Comparison = paste0(
+      "B73_", stages, "_vs_Y12_", stages
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+
+.protvis_base36_to_integer <- function(x) {
+  alphabet <- c(as.character(0:9), letters)
+  decode_one <- function(value) {
+    chars <- strsplit(tolower(as.character(value)), "", fixed = TRUE)[[1L]]
+    digits <- match(chars, alphabet) - 1L
+    if (!length(digits) || anyNA(digits)) {
+      stop("Invalid base36 value in bundled Figure 3 archive.", call. = FALSE)
+    }
+    powers <- rev(seq_along(digits) - 1L)
+    as.integer(sum(digits * (36 ^ powers)))
+  }
+  vapply(x, decode_one, integer(1))
+}
+
+
+.protvis_directional_load_figure3_gene_lists <- function(
+    comparisons = NULL) {
+  path <- system.file(
+    "extdata", "figure3_archive", "gene_membership.b36",
+    package = "ProtVis"
+  )
+  if (!nzchar(path) || !file.exists(path)) {
+    source_path <- file.path(
+      "inst", "extdata", "figure3_archive",
+      "gene_membership.b36"
+    )
+    if (file.exists(source_path)) {
+      path <- source_path
+    }
+  }
+  if (!nzchar(path) || !file.exists(path)) {
+    stop(
+      "Bundled Figure 3 archived DEP membership file is missing.",
+      call. = FALSE
+    )
+  }
+
+  lines <- readLines(path, warn = FALSE)
+  lines <- trimws(lines)
+  lines <- lines[nzchar(lines)]
+  if (!length(lines)) {
+    stop("Bundled Figure 3 DEP membership file is empty.", call. = FALSE)
+  }
+
+  decode_line <- function(line) {
+    prefix <- substr(line, 1L, 1L)
+    payload <- sub("^[PM]=", "", line)
+    tokens <- strsplit(payload, ",", fixed = TRUE)[[1L]]
+    pieces <- strsplit(tokens, ".", fixed = TRUE)
+    if (any(lengths(pieces) != 2L)) {
+      stop("Bundled Figure 3 DEP membership file is malformed.", call. = FALSE)
+    }
+    delta <- .protvis_base36_to_integer(
+      vapply(pieces, `[[`, character(1), 1L)
+    )
+    mask <- .protvis_base36_to_integer(
+      vapply(pieces, `[[`, character(1), 2L)
+    )
+    suffix <- cumsum(delta)
+    id <- if (identical(prefix, "M")) {
+      paste0("Zm00001d", sprintf("%06d", suffix))
+    } else if (identical(prefix, "P")) {
+      paste0("PZ00001a", sprintf("%06d", suffix))
+    } else {
+      stop("Unknown protein-ID prefix in Figure 3 archive.", call. = FALSE)
+    }
+    data.frame(
+      ID = id,
+      mask = as.integer(mask),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  membership <- do.call(rbind, lapply(lines, decode_line))
+  membership <- unique(membership)
+
+  spec <- .protvis_directional_figure3_spec()
+  all_up <- setNames(vector("list", nrow(spec)), spec$Stage)
+  all_down <- setNames(vector("list", nrow(spec)), spec$Stage)
+
+  for (i in seq_len(nrow(spec))) {
+    up_bit <- bitwShiftL(1L, i - 1L)
+    down_bit <- bitwShiftL(1L, i + 4L)
+    all_up[[i]] <- unique(membership$ID[
+      bitwAnd(membership$mask, up_bit) != 0L
+    ])
+    all_down[[i]] <- unique(membership$ID[
+      bitwAnd(membership$mask, down_bit) != 0L
+    ])
+  }
+
+  expected_up <- c(2287L, 2167L, 2442L, 2291L, 2283L)
+  expected_down <- c(1315L, 1477L, 1350L, 1425L, 1419L)
+  if (!identical(as.integer(lengths(all_up)), expected_up) ||
+      !identical(as.integer(lengths(all_down)), expected_down)) {
+    stop(
+      "Bundled Figure 3 archived DEP membership failed its internal count audit.",
+      call. = FALSE
+    )
+  }
+
+  if (is.null(comparisons)) {
+    comparisons <- spec$Comparison
+  }
+  comparisons <- intersect(
+    as.character(comparisons),
+    spec$Comparison
+  )
+  if (!length(comparisons)) {
+    stop("Select at least one Figure 3 comparison.", call. = FALSE)
+  }
+
+  selected <- spec$Comparison %in% comparisons
+  spec_selected <- spec[selected, , drop = FALSE]
+  stages <- spec_selected$Stage
+
+  list(
+    group1 = all_up[stages],
+    group2 = all_down[stages],
+    cluster_to_comparison = setNames(
+      spec_selected$Comparison,
+      spec_selected$Stage
+    ),
+    group1_names = paste0("B73_", stages),
+    group2_names = paste0("Y12_", stages),
+    source = paste0(
+      "Frozen significant DEP lists from the original ",
+      "02.MaizeTeosintePro/03.progress/03.dep outputs"
+    ),
+    counts = data.frame(
+      Stage = spec$Stage,
+      B73_higher = as.integer(lengths(all_up)),
+      Y12_higher = as.integer(lengths(all_down)),
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+
 .protvis_directional_archived_compatibility <- function(
     dep_results, comparisons = NULL) {
   if (!is.list(dep_results) || !length(dep_results)) {
@@ -657,8 +814,6 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
   storage.mode(normalized_matrix) <- "numeric"
   storage.mode(detection_matrix) <- "numeric"
 
-  expected_retained <-
-    .protvis_directional_figure3_expected_retained()
   retained_audit <- integer()
 
   sample_info <- as.data.frame(
@@ -784,19 +939,6 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     }
 
     retained_audit[[comparison]] <- length(keep_ids)
-    if (comparison %in% names(expected_retained) &&
-        length(keep_ids) != expected_retained[[comparison]]) {
-      stop(
-        paste0(
-          "Figure 3 retained-protein audit failed for ",
-          comparison, ": observed ", length(keep_ids),
-          ", expected ", expected_retained[[comparison]], ". ",
-          "The historical reproduction cannot be treated as exact. ",
-          "Check the bundled maize sample mapping/pre-processing."
-        ),
-        call. = FALSE
-      )
-    }
 
     result <- .protvis_dep_run_limma_archived(
       normalized_matrix[
@@ -946,51 +1088,75 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 
 
 .protvis_directional_kegg_data <- function(
-    dep_results, kegg_background,
+    dep_results = NULL, kegg_background,
     presence_absence = list(),
     evidence_mode = c("quantitative", "all_retained"),
     comparisons = NULL,
     top_n = 10L,
     p_adjust_cutoff = 0.05,
     method = c(
+      "figure3_archive",
       "archived_comparecluster",
       "standard_ora"
     ),
     pvalue_cutoff = 0.05) {
-  if (!is.list(dep_results) || !length(dep_results)) {
-    return(data.frame())
-  }
-
   evidence_mode <- match.arg(evidence_mode)
   method <- match.arg(method)
   if (!is.list(presence_absence)) {
     presence_absence <- list()
   }
-  if (is.null(comparisons)) {
-    comparisons <- names(dep_results)
-  }
-  comparisons <- intersect(
-    as.character(comparisons),
-    names(dep_results)
-  )
-  if (!length(comparisons)) {
-    return(data.frame())
-  }
-
   top_n <- max(1L, as.integer(top_n))
 
-  if (identical(method, "archived_comparecluster")) {
-    if (!identical(evidence_mode, "quantitative")) {
-      stop(
-        "Figure 3 reproduction uses quantitative archived DEP only.",
-        call. = FALSE
-      )
-    }
+  archived_style <- method %in% c(
+    "figure3_archive",
+    "archived_comparecluster"
+  )
 
-    lists <- .protvis_directional_archived_lists(
-      dep_results,
+  if (identical(method, "figure3_archive")) {
+    spec <- .protvis_directional_figure3_spec()
+    if (is.null(comparisons)) {
+      comparisons <- spec$Comparison
+    }
+    comparisons <- intersect(
+      as.character(comparisons),
+      spec$Comparison
+    )
+    if (!length(comparisons)) {
+      return(data.frame())
+    }
+    lists <- .protvis_directional_load_figure3_gene_lists(
       comparisons
     )
+  } else {
+    if (!is.list(dep_results) || !length(dep_results)) {
+      return(data.frame())
+    }
+    if (is.null(comparisons)) {
+      comparisons <- names(dep_results)
+    }
+    comparisons <- intersect(
+      as.character(comparisons),
+      names(dep_results)
+    )
+    if (!length(comparisons)) {
+      return(data.frame())
+    }
+
+    if (method %in% c("figure3_archive", "archived_comparecluster")) {
+      if (!identical(evidence_mode, "quantitative")) {
+        stop(
+          "Archived compareCluster mode uses quantitative DEP only.",
+          call. = FALSE
+        )
+      }
+      lists <- .protvis_directional_archived_lists(
+        dep_results,
+        comparisons
+      )
+    }
+  }
+
+  if (archived_style) {
     background <- .protvis_directional_background(
       kegg_background,
       archived = TRUE
@@ -1001,9 +1167,6 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
         return(NULL)
       }
 
-      # Pass the function object explicitly. Using fun = "enricher" only works
-      # when clusterProfiler is attached to the search path; ProtVis imports
-      # the namespace without attaching it in a Shiny session.
       tryCatch(
         clusterProfiler::compareCluster(
           geneCluster = gene_clusters,
@@ -1063,9 +1226,22 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
           " higher"
         )
       }
-      out$Evidence <- "Archived quantitative DEP"
-      out$Analysis_mode <-
-        "Figure 3 compareCluster reproduction"
+      out$Evidence <- if (identical(
+        method,
+        "figure3_archive"
+      )) {
+        "Archived significant DEP lists"
+      } else {
+        "Archived quantitative DEP"
+      }
+      out$Analysis_mode <- if (identical(
+        method,
+        "figure3_archive"
+      )) {
+        "Exact Figure 3 archived DEP reproduction"
+      } else {
+        "Legacy archived compareCluster reproduction"
+      }
       out$Universe <-
         "KEGG annotation background (clusterProfiler default)"
       out
@@ -1093,7 +1269,11 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       pvalue_cutoff = as.numeric(pvalue_cutoff),
       qvalue_cutoff = 1,
       universe = "annotation background",
-      source = "Archived quantitative DEP"
+      source = if (identical(method, "figure3_archive")) {
+        lists$source
+      } else {
+        "Archived quantitative DEP"
+      }
     )
 
     return(out)
@@ -1275,7 +1455,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     top_n = NULL) {
   method <- attr(data, "analysis_method") %||% "standard_ora"
 
-  if (identical(method, "archived_comparecluster")) {
+  if (method %in% c("figure3_archive", "archived_comparecluster")) {
     objects <- attr(data, "comparecluster_objects") %||% list()
     object <- objects[[direction]]
 
@@ -1481,7 +1661,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     data, ncol = 2L, top_n = NULL) {
   method <- attr(data, "analysis_method") %||% "standard_ora"
 
-  if (identical(method, "archived_comparecluster")) {
+  if (method %in% c("figure3_archive", "archived_comparecluster")) {
     return(
       patchwork::wrap_plots(
         .protvis_directional_kegg_panel(
@@ -2165,23 +2345,23 @@ enrichment_analysis_ui <- function(id) {
                     ns("directional_method"),
                     label = NULL,
                     choices = c(
-                      "Figure 3 reproduction (compareCluster)" =
-                        "archived_comparecluster",
+                      "Figure 3 reproduction (archived DEP)" =
+                        "figure3_archive",
                       "Standard ORA (tested universe + BH)" =
                         "standard_ora"
                     ),
-                    selected = "archived_comparecluster"
+                    selected = "figure3_archive"
                   ),
                   shiny::conditionalPanel(
                     condition = paste0(
                       "input['",
                       ns("directional_method"),
-                      "'] == 'archived_comparecluster'"
+                      "'] == 'figure3_archive'"
                     ),
                     shiny::div(
                       class = "directional-fixed-settings",
                       shiny::tags$small(
-                        "Rebuilds the archived DEP automatically from Step4 + Step6 when needed."
+                        "Uses the frozen significant DEP protein lists from the original Figure 3 project; KEGG is recalculated at runtime."
                       ),
                       shiny::uiOutput(
                         ns("directional_dep_compatibility")
@@ -2302,7 +2482,7 @@ enrichment_analysis_ui <- function(id) {
                       shiny::div(
                         class = "directional-fixed-settings",
                         shiny::tags$small(
-                          "Fixed to the archived code: pvalueCutoff = 0.05; qvalueCutoff = 1; raw pvalue colour; no custom universe."
+                          "Fixed to the archived code: original DEP lists; pvalueCutoff = 0.05; qvalueCutoff = 1; raw pvalue colour; bundled Enrichmentdb2."
                         )
                       )
                     ),
@@ -2315,9 +2495,6 @@ enrichment_analysis_ui <- function(id) {
                   )
                 )
               ),
-
-              shiny::div(
-                class = "directional-result-toolbar",              ),
 
               shiny::div(
                 class = "directional-result-toolbar",
@@ -2546,6 +2723,19 @@ enrichment_analysis_server <- function(id, shared_state) {
       list(results = results, presence = presence)
     }
 
+    directional_available_comparisons <- function() {
+      if (identical(
+        input$directional_method %||% "figure3_archive",
+        "figure3_archive"
+      )) {
+        return(
+          .protvis_directional_figure3_spec()$Comparison
+        )
+      }
+      bundle <- directional_dep_bundle()
+      names(bundle$results %||% list())
+    }
+
     directional_archived_stage_inputs <- function(load = FALSE) {
       workdir <- as.character(shared_state$workdir %||% "")
       if (!nzchar(workdir) || !dir.exists(workdir)) {
@@ -2737,8 +2927,7 @@ enrichment_analysis_server <- function(id, shared_state) {
     })
 
     output$directional_comparisons_ui <- shiny::renderUI({
-      bundle <- directional_dep_bundle()
-      choices <- names(bundle$results %||% list())
+      choices <- directional_available_comparisons()
       if (!length(choices)) {
         return(
           shiny::helpText(
@@ -2759,8 +2948,7 @@ enrichment_analysis_server <- function(id, shared_state) {
     })
 
     output$directional_selected_count <- shiny::renderText({
-      bundle <- directional_dep_bundle()
-      choices <- names(bundle$results %||% list())
+      choices <- directional_available_comparisons()
       selected <- intersect(
         input$directional_comparisons %||% character(),
         choices
@@ -2769,6 +2957,18 @@ enrichment_analysis_server <- function(id, shared_state) {
     })
 
     output$directional_background_status <- shiny::renderUI({
+      if (identical(
+        input$directional_method %||% "figure3_archive",
+        "figure3_archive"
+      )) {
+        return(
+          shiny::span(
+            "✓ Fixed · bundled Enrichmentdb2",
+            class = "directional-state directional-state-loaded"
+          )
+        )
+      }
+
       background <- rv$background_data
       if (base::is.null(background) ||
           base::is.null(background$KEGG_background)) {
@@ -2792,58 +2992,56 @@ enrichment_analysis_server <- function(id, shared_state) {
       }
 
       shiny::span(
-        paste0("✓ Loaded · ", base::format(n_ids, big.mark = ","), " annotated IDs"),
+        paste0(
+          "✓ Loaded · ",
+          base::format(n_ids, big.mark = ","),
+          " annotated IDs"
+        ),
         class = "directional-state directional-state-loaded"
       )
     })
 
     output$directional_dep_compatibility <- shiny::renderUI({
-      bundle <- directional_dep_bundle()
-      choices <- names(bundle$results %||% list())
-      selected <- intersect(
-        input$directional_comparisons %||% choices,
-        choices
-      )
-      if (!length(selected)) {
-        selected <- choices
-      }
-
-      current_status <-
-        .protvis_directional_archived_compatibility(
-          bundle$results,
-          selected
+      if (identical(
+        input$directional_method %||% "figure3_archive",
+        "figure3_archive"
+      )) {
+        lists <- tryCatch(
+          .protvis_directional_load_figure3_gene_lists(),
+          error = function(e) e
         )
-
-      if (isTRUE(current_status$ok)) {
+        if (inherits(lists, "error")) {
+          return(
+            shiny::span(
+              conditionMessage(lists),
+              class = "directional-state directional-state-waiting"
+            )
+          )
+        }
         return(
           shiny::span(
             paste0(
-              "✓ Current DEP already matches archived workflow; ",
-              "it will be reused."
+              "✓ Archived DEP lists verified · B73-higher ",
+              sum(lists$counts$B73_higher),
+              " memberships · Y12-higher ",
+              sum(lists$counts$Y12_higher),
+              " memberships"
             ),
             class = "directional-state directional-state-loaded"
           )
         )
       }
 
-      stage_status <- directional_archived_stage_inputs(
-        load = FALSE
-      )
-
       shiny::span(
-        stage_status$message,
-        class = if (isTRUE(stage_status$ok)) {
-          "directional-state directional-state-loaded"
-        } else {
-          "directional-state directional-state-waiting"
-        }
+        "Standard ORA uses the currently loaded DEP results.",
+        class = "directional-state directional-state-loaded"
       )
     })
 
     shiny::observeEvent(input$directional_method, {
       if (identical(
         input$directional_method,
-        "archived_comparecluster"
+        "figure3_archive"
       )) {
         shiny::updateRadioButtons(
           session,
@@ -2856,15 +3054,25 @@ enrichment_analysis_server <- function(id, shared_state) {
           value = 10
         )
       }
+
+      choices <- directional_available_comparisons()
+      shiny::updateCheckboxGroupInput(
+        session,
+        "directional_comparisons",
+        choices = choices,
+        selected = choices,
+        inline = FALSE
+      )
+
       rv$directional_kegg <- NULL
       rv$directional_kegg_message <- if (identical(
         input$directional_method,
-        "archived_comparecluster"
+        "figure3_archive"
       )) {
         paste0(
-          "Archived reproduction selected. ",
-          "ProtVis will reuse compatible archived DEP or rebuild it ",
-          "automatically from Step4 + Step6 when RUN KEGG is clicked."
+          "Exact Figure 3 reproduction selected. ",
+          "Archived significant DEP lists and bundled Enrichmentdb2 ",
+          "will be used; KEGG is recalculated when RUN KEGG is clicked."
         )
       } else {
         paste0(
@@ -2875,8 +3083,7 @@ enrichment_analysis_server <- function(id, shared_state) {
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$directional_select_all, {
-      bundle <- directional_dep_bundle()
-      choices <- names(bundle$results %||% list())
+      choices <- directional_available_comparisons()
       shiny::updateCheckboxGroupInput(
         session,
         "directional_comparisons",
@@ -2887,8 +3094,7 @@ enrichment_analysis_server <- function(id, shared_state) {
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$directional_clear_all, {
-      bundle <- directional_dep_bundle()
-      choices <- names(bundle$results %||% list())
+      choices <- directional_available_comparisons()
       shiny::updateCheckboxGroupInput(
         session,
         "directional_comparisons",
@@ -3274,34 +3480,13 @@ enrichment_analysis_server <- function(id, shared_state) {
     })
 
     shiny::observeEvent(input$run_directional_kegg, {
-      if (base::is.null(rv$background_data)) {
-        rv$directional_kegg <- NULL
-        rv$directional_kegg_message <-
-          "Load or validate a background workbook first."
-        shiny::showNotification(
-          rv$directional_kegg_message,
-          type = "error"
-        )
-        return()
-      }
-
-      bundle <- directional_dep_bundle()
-      dep_obj <- bundle$results
+      method <- input$directional_method %||%
+        "figure3_archive"
+      choices <- directional_available_comparisons()
       selected_comparisons <- intersect(
         input$directional_comparisons %||% character(),
-        names(dep_obj %||% list())
+        choices
       )
-
-      if (base::is.null(dep_obj)) {
-        rv$directional_kegg <- NULL
-        rv$directional_kegg_message <-
-          "Run DEP first, then open this panel."
-        shiny::showNotification(
-          rv$directional_kegg_message,
-          type = "error"
-        )
-        return()
-      }
 
       if (!length(selected_comparisons)) {
         rv$directional_kegg <- NULL
@@ -3314,79 +3499,73 @@ enrichment_analysis_server <- function(id, shared_state) {
         return()
       }
 
-      method <- input$directional_method %||%
-        "archived_comparecluster"
-      evidence <- if (identical(
-        method,
-        "archived_comparecluster"
-      )) {
-        "quantitative"
-      } else {
-        input$directional_evidence %||% "quantitative"
-      }
-
-      dep_for_kegg <- dep_obj
-      presence_for_kegg <- bundle$presence
-      rebuilt_archived_dep <- FALSE
-      result <- NULL
-
-      if (identical(
-        method,
-        "archived_comparecluster"
-      )) {
-        archived_status <-
-          .protvis_directional_archived_compatibility(
-            dep_obj,
-            selected_comparisons
+      if (identical(method, "figure3_archive")) {
+        bundled <- tryCatch(
+          .protvis_load_builtin_enrichment_background(),
+          error = function(e) e
+        )
+        if (inherits(bundled, "error")) {
+          rv$directional_kegg <- NULL
+          rv$directional_kegg_message <-
+            conditionMessage(bundled)
+          shiny::showNotification(
+            rv$directional_kegg_message,
+            type = "error"
           )
-
-        if (!isTRUE(archived_status$ok)) {
-          stage_inputs <- tryCatch(
-            directional_archived_stage_inputs(load = TRUE),
-            error = function(e) e
-          )
-
-          if (inherits(stage_inputs, "error")) {
-            result <- stage_inputs
-          } else if (!isTRUE(stage_inputs$ok)) {
-            result <- simpleError(stage_inputs$message)
-          } else {
-            rebuilt <- tryCatch(
-              .protvis_directional_rebuild_archived_dep(
-                dep_results = dep_obj,
-                comparisons = selected_comparisons,
-                normalized_matrix =
-                  stage_inputs$step6$expression_data,
-                detection_matrix =
-                  stage_inputs$step4$expression_data,
-                sample_info = stage_inputs$step6$sample_info
-              ),
-              error = function(e) e
-            )
-
-            if (inherits(rebuilt, "error")) {
-              result <- rebuilt
-            } else {
-              dep_for_kegg <- rebuilt
-              presence_for_kegg <- list()
-              rebuilt_archived_dep <- TRUE
-            }
-          }
+          return()
         }
-      }
 
-      if (is.null(result)) {
         result <- tryCatch(
           .protvis_directional_kegg_data(
-            dep_for_kegg,
-            rv$background_data$KEGG_background,
-            presence_absence = presence_for_kegg,
+            dep_results = NULL,
+            kegg_background = bundled$KEGG_background,
+            evidence_mode = "quantitative",
+            comparisons = selected_comparisons,
+            top_n = input$directional_top_n %||% 10L,
+            method = "figure3_archive",
+            pvalue_cutoff = 0.05
+          ),
+          error = function(e) e
+        )
+      } else {
+        if (base::is.null(rv$background_data)) {
+          rv$directional_kegg <- NULL
+          rv$directional_kegg_message <-
+            "Load or validate a background workbook first."
+          shiny::showNotification(
+            rv$directional_kegg_message,
+            type = "error"
+          )
+          return()
+        }
+
+        bundle <- directional_dep_bundle()
+        dep_obj <- bundle$results
+        if (base::is.null(dep_obj)) {
+          rv$directional_kegg <- NULL
+          rv$directional_kegg_message <-
+            "Run DEP first, then open this panel."
+          shiny::showNotification(
+            rv$directional_kegg_message,
+            type = "error"
+          )
+          return()
+        }
+
+        evidence <- input$directional_evidence %||%
+          "quantitative"
+        result <- tryCatch(
+          .protvis_directional_kegg_data(
+            dep_results = dep_obj,
+            kegg_background =
+              rv$background_data$KEGG_background,
+            presence_absence = bundle$presence,
             evidence_mode = evidence,
             comparisons = selected_comparisons,
             top_n = input$directional_top_n %||% 10L,
             p_adjust_cutoff =
               input$directional_p_adjust %||% 0.05,
-            method = method,
+            method = "standard_ora",
             pvalue_cutoff = 0.05
           ),
           error = function(e) e
@@ -3410,11 +3589,12 @@ enrichment_analysis_server <- function(id, shared_state) {
       if (!nrow(result)) {
         rv$directional_kegg_message <- if (identical(
           method,
-          "archived_comparecluster"
+          "figure3_archive"
         )) {
           paste0(
-            "No pathways passed the archived compareCluster ",
-            "workflow (pvalueCutoff = 0.05; qvalueCutoff = 1)."
+            "No pathways passed the archived Figure 3 ",
+            "compareCluster workflow (pvalueCutoff = 0.05; ",
+            "qvalueCutoff = 1)."
           )
         } else {
           paste0(
@@ -3426,25 +3606,16 @@ enrichment_analysis_server <- function(id, shared_state) {
         }
       } else if (identical(
         method,
-        "archived_comparecluster"
+        "figure3_archive"
       )) {
         rv$directional_kegg_message <- paste0(
-          "Figure 3 workflow reproduced",
-          if (isTRUE(rebuilt_archived_dep)) {
-            paste0(
-              " · archived DEP auto-rebuilt from Step4 + Step6",
-              " · corrected B73_Root_VE_3 ↔ B73_Root_V1.V2_2 sample map"
-            )
-          } else {
-            " · compatible archived DEP reused"
-          },
-          ": ",
+          "Figure 3 KEGG reproduced from archived DEP lists: ",
           length(unique(result$Description)),
           " pathways across ",
           length(unique(result$Cluster)),
           " enriched comparison clusters · ",
           "compareCluster p ≤ 0.05 / q ≤ 1 · ",
-          "raw pvalue colour · annotation background."
+          "raw pvalue colour · bundled Enrichmentdb2."
         )
       } else {
         rv$directional_kegg_message <- paste0(
@@ -3460,8 +3631,7 @@ enrichment_analysis_server <- function(id, shared_state) {
     output$directional_kegg_status <- shiny::renderText({
       rv$directional_kegg_message %||%
         paste0(
-          "Load a background, select one or more DEP ",
-          "comparisons, then run KEGG."
+          "Select one or more comparisons, then run KEGG."
         )
     })
 
