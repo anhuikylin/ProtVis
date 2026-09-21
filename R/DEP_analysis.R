@@ -768,10 +768,12 @@ DEP_analysis_server <- function(id, shared_state) {
       sample_info = NULL,
       normalized_matrix = NULL,
       pre_knn_matrix = NULL,
+      dep_analysis_matrix = NULL,
       compare_data = NULL,
       dep_results = list(),
+      presence_absence = list(),
       dep_summary = data.frame(),
-      dep_params = .protvis_dep_archived_defaults(),
+      dep_params = .protvis_dep_recommended_defaults(),
       load_success = FALSE,
       dep_ready = FALSE,
       dep_has_run = FALSE,
@@ -780,6 +782,8 @@ DEP_analysis_server <- function(id, shared_state) {
 
     reset_dep <- function() {
       rv$dep_results <- list()
+      rv$presence_absence <- list()
+      rv$dep_analysis_matrix <- NULL
       rv$dep_summary <- data.frame()
       rv$dep_ready <- FALSE
       rv$dep_has_run <- FALSE
@@ -853,6 +857,55 @@ DEP_analysis_server <- function(id, shared_state) {
       )
     })
 
+    shiny::observeEvent(input$dep_mode, {
+      if (identical(input$dep_mode, "archived")) {
+        defaults <- .protvis_dep_archived_defaults()
+        shiny::updateSelectInput(
+          session, "dep_sort_by", selected = defaults$sort_by
+        )
+        shiny::updateSelectInput(
+          session, "dep_protein_universe",
+          selected = defaults$protein_universe
+        )
+        shiny::updateSelectInput(
+          session, "dep_volcano_p_metric",
+          selected = defaults$volcano_p_metric
+        )
+        shiny::updateNumericInput(
+          session, "dep_logfc", value = defaults$logfc
+        )
+        shiny::updateNumericInput(
+          session, "dep_fdr", value = defaults$fdr
+        )
+      } else {
+        defaults <- .protvis_dep_recommended_defaults()
+        shiny::updateSelectInput(
+          session, "dep_sort_by", selected = defaults$sort_by
+        )
+        shiny::updateSelectInput(
+          session, "dep_protein_universe",
+          selected = defaults$protein_universe
+        )
+        shiny::updateSelectInput(
+          session, "dep_volcano_p_metric",
+          selected = defaults$volcano_p_metric
+        )
+        shiny::updateSelectInput(
+          session, "dep_test_method", selected = defaults$test_method
+        )
+        shiny::updateCheckboxInput(
+          session, "dep_center_samples", value = defaults$center_samples
+        )
+        shiny::updateNumericInput(
+          session, "dep_logfc", value = defaults$logfc
+        )
+        shiny::updateNumericInput(
+          session, "dep_fdr", value = defaults$fdr
+        )
+      }
+      reset_dep()
+    }, ignoreInit = TRUE)
+
     shiny::observeEvent(input$load_data, {
       tryCatch({
         step6 <- NULL
@@ -897,9 +950,15 @@ DEP_analysis_server <- function(id, shared_state) {
         )
         shiny::showNotification(
           if (is.null(rv$pre_knn_matrix)) {
-            "✅ Step6 loaded. Step4 was not found; archived protein-universe filtering will fall back to all Step6 proteins."
+            paste0(
+              "✅ Step6 loaded. Step4 was not found, so Recommended DEP is ",
+              "unavailable until the Transformation step is completed."
+            )
           } else {
-            "✅ Step6 normalized and Step4 pre-KNN matrices loaded; archived detected-protein universe can be reproduced."
+            paste0(
+              "✅ Step4 observed log2 matrix and Step6 normalized matrix loaded. ",
+              "Recommended DEP is ready."
+            )
           },
           type = "message",
           duration = 6
@@ -927,12 +986,18 @@ DEP_analysis_server <- function(id, shared_state) {
           nrow(rv$normalized_matrix), "proteins ×",
           ncol(rv$normalized_matrix), "samples"
         ),
-        if (!is.null(rv$pre_knn_matrix)) {
-          shiny::tagList(
-            shiny::br(),
-            shiny::tags$small("Step4 available for the archived six-sample detected-protein universe.")
-          )
-        }
+        shiny::br(),
+        shiny::tags$small(
+          if (is.null(rv$pre_knn_matrix)) {
+            "Recommended DEP input (Step4 observed log2): unavailable"
+          } else {
+            paste0(
+              "Recommended DEP input: Step4 observed log2 (",
+              nrow(rv$pre_knn_matrix), " proteins × ",
+              ncol(rv$pre_knn_matrix), " samples)"
+            )
+          }
+        )
       )
     })
 
@@ -986,10 +1051,20 @@ DEP_analysis_server <- function(id, shared_state) {
     })
 
     output$normalized_data <- DT::renderDT({
-      shiny::req(rv$normalized_matrix)
+      mode <- input$dep_mode %||% "recommended"
+      matrix <- if (identical(mode, "archived")) {
+        rv$normalized_matrix
+      } else {
+        shiny::req(rv$pre_knn_matrix)
+        .protvis_dep_prepare_recommended_matrix(
+          rv$pre_knn_matrix,
+          center_samples = isTRUE(input$dep_center_samples)
+        )
+      }
+      shiny::req(matrix)
       df <- data.frame(
-        Protein_ID = rownames(rv$normalized_matrix),
-        rv$normalized_matrix,
+        Protein_ID = rownames(matrix),
+        matrix,
         check.names = FALSE
       )
       DT::datatable(
