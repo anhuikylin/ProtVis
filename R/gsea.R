@@ -1685,8 +1685,6 @@ gsea_server <- function(id, shared_state = NULL) {
 
 
     output$dep_comparisons_ui <- shiny::renderUI({
-
-    output$dep_comparisons_ui <- shiny::renderUI({
       comparisons <- names(
         previous_dep_val()$results %||% list()
       )
@@ -2051,7 +2049,6 @@ gsea_server <- function(id, shared_state = NULL) {
       }
 
       shiny::req(
-        input$expr_file,      shiny::req(
         input$expr_file,
         input$group_file,
         input$ko_file
