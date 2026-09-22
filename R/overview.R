@@ -110,7 +110,7 @@ overview_ui <- function(id) {
             title = "Dimensionality Reduction",
             icon = dimensionality_reduction_icon,
             shiny::helpText(
-              "Reproduces the archived Figure 3 UMAP: transformed pre-KNN ",
+              "Runs the Figure 3 UMAP reference preset: transformed pre-KNN ",
               "intensity matrix, five early developmental groups, seed 10086, ",
               "group colours, species shapes, and four biological-region ellipses."
             ),
@@ -403,7 +403,7 @@ overview_server <- function(id, shared_state) {
           rv$normalized_matrix <- matrix
           notice <- paste0(
             "⚠️ Step4/Step6 snapshots were unavailable. QC uses the current ",
-            "ProtVis_dataset; archived UMAP reproduction requires ",
+            "ProtVis_dataset; the Figure 3 UMAP reference preset requires ",
             "Step4_data_transformed.rda."
           )
         } else {
@@ -980,7 +980,7 @@ overview_server <- function(id, shared_state) {
     run_archived_umap <- function(data) {
       if (base::is.null(data)) {
         stop(
-          "Step4 transformed data are required for the archived UMAP reproduction.",
+          "Step4 transformed data are required for the Figure 3 UMAP reference preset.",
           call. = FALSE
         )
       }
@@ -994,7 +994,7 @@ overview_server <- function(id, shared_state) {
       sample_names <- base::sort(base::colnames(matrix)[selected])
       if (base::length(sample_names) < 3L) {
         stop(
-          "Archived UMAP reproduction requires the five early developmental groups.",
+          "The Figure 3 UMAP reference preset requires the five early developmental groups.",
           call. = FALSE
         )
       }
@@ -1055,7 +1055,7 @@ overview_server <- function(id, shared_state) {
 
       df <- df[!base::is.na(df$Group) & !base::is.na(df$Region), , drop = FALSE]
       if (base::nrow(df) < 3L) {
-        stop("No archived early-development sample groups were identified.",
+        stop("No Figure 3 early-development sample groups were identified.",
              call. = FALSE)
       }
       df
@@ -1133,7 +1133,7 @@ overview_server <- function(id, shared_state) {
       if (base::is.null(rv$transformed_matrix)) {
         shiny::showNotification(
           paste0(
-            "Archived UMAP reproduction requires Step4_data_transformed.rda. ",
+            "The Figure 3 UMAP reference preset requires Step4_data_transformed.rda. ",
             "Run the Transformation step first."
           ),
           type = "error",
@@ -1143,7 +1143,7 @@ overview_server <- function(id, shared_state) {
       }
 
       shiny::withProgress(
-        message = "Reproducing archived UMAP...",
+        message = "Running Figure 3 UMAP reference preset...",
         value = 0.5,
         {
           result <- tryCatch(
@@ -1151,7 +1151,7 @@ overview_server <- function(id, shared_state) {
             error = function(e) {
               shiny::showNotification(
                 base::paste(
-                  "UMAP reproduction failed:",
+                  "Figure 3 UMAP reference preset failed:",
                   base::conditionMessage(e)
                 ),
                 type = "error",
@@ -1193,7 +1193,7 @@ overview_server <- function(id, shared_state) {
       shiny::validate(
         shiny::need(
           !base::is.null(DR_results$reproduction),
-          "Run UMAP to display the archived Figure 3 reproduction."
+          "Run UMAP to display the Figure 3 reference preset."
         )
       )
       print(plot_archived_umap(DR_results$reproduction))

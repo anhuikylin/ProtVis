@@ -55,8 +55,8 @@ data_transformed_ui <- function(id) {
           selected = "auto"
         ),
         shiny::div(
-          "Auto uses the source-specific preset. For MaxQuant this reproduces ",
-          "the archived workflow: log2(intensity × 1e7). Advanced scaling methods ",
+          "Auto uses the source-specific preset. For MaxQuant this applies ",
+          "the built-in preset: log2(intensity × 1e7). Advanced scaling methods ",
           "remain available for exploratory analysis or visualization.",
           style = "font-size:12px;color:#657789;line-height:1.45;margin-top:-6px;margin-bottom:10px;"
         ),

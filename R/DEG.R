@@ -247,7 +247,7 @@ DEG_ui <- function(id) {
             shiny::div(
               class = "pv-transcriptome-gsea-note",
               "KEGG gene sets are bundled from the maize-teosinte ",
-              "Enrichmentdb2 annotation used by the archived RNAseq.R workflow. ",
+              "Enrichmentdb2 annotation used by the built-in RNA-seq reference workflow. ",
               "Expression and group tables are always supplied by the user."
             ),
             shiny::hr(),
@@ -471,7 +471,7 @@ DEG_ui <- function(id) {
               ),
 
               shiny::tabPanel(
-                "Archived Reference",
+                "Built-in reference",
                 shiny::uiOutput(ns("gsea_reference_ui"))
               )
             )
@@ -1714,14 +1714,14 @@ DEG_server <- function(id, shared_state = NULL) {
         class = "pv-transcriptome-gsea-reference",
 
         shiny::h5(
-          "Archived RNAseq.R reference"
+          "Built-in RNA-seq reference workflow"
         ),
         shiny::p(
           class = "pv-transcriptome-gsea-note",
           "This is a regression/reference record extracted from ",
           "02.MaizeTeosintePro/03.progress/04.RNAseq/KEGGenrich.xlsx. ",
           "It is not used as the active GSEA result. Uploading the original ",
-          "expression and group tables should reproduce this workflow."
+          "expression and group tables should follow this workflow."
         ),
 
         shiny::tags$table(

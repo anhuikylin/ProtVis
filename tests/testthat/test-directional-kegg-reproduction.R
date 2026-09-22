@@ -118,7 +118,7 @@ test_that("archived reproduction rejects non-archived DEP provenance", {
   expect_false(status$ok)
   expect_match(
     status$message,
-    "Figure 3 reproduction requires DEP > Archived reproduction",
+    "Figure 3 benchmark requires DEP > Figure 3 reference workflow",
     fixed = TRUE
   )
 })

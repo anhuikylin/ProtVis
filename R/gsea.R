@@ -255,7 +255,7 @@ gsea_ui <- function(id) {
         "Analysis mode",
         choices = c(
           "Standard GSEA" = "standard",
-          "B73-Y12 Figure reproduction" = "archived"
+          "B73-Y12 reference figure" = "archived"
         ),
         selected = "standard"
       ),
@@ -387,9 +387,9 @@ gsea_ui <- function(id) {
 
           shiny::selectInput(
             ns("archive_reproduction_source"),
-            "Root_VE reproduction source",
+            "Root_VE data source",
             choices = c(
-              "Exact supplied figure (historical Root_VE)" =
+              "Built-in reference figure (Root_VE)" =
                 "figure_archive",
               "Recalculate from loaded DEP result" =
                 "previous_dep"
@@ -403,11 +403,11 @@ gsea_ui <- function(id) {
             ns = ns,
             shiny::div(
               class = "alert alert-success py-2 small",
-              shiny::tags$b("Exact figure target"),
+              shiny::tags$b("Built-in reference figure"),
               shiny::tags$br(),
-              "Root_VE uses the frozen historical full retained-protein ",
-              "ranking that matches the supplied panel: 11,049 ranked ",
-              "proteins, 196 map00940 hits, historical B73−Y12 log2FC ",
+              "Root_VE uses the built-in full retained-protein ",
+              "ranking for the supplied panel: 11,049 ranked ",
+              "proteins, 196 map00940 hits, B73−Y12 log2FC ",
               "metric, weighted GSEA p = 1. Other selected comparisons ",
               "can still be recalculated from the loaded DEP results."
             )
@@ -640,7 +640,7 @@ gsea_ui <- function(id) {
     chars <- strsplit(tolower(value), "", fixed = TRUE)[[1L]]
     digits <- match(chars, alphabet) - 1L
     if (!length(digits) || anyNA(digits)) {
-      stop("Invalid base36 value in archived GSEA data.", call. = FALSE)
+      stop("Invalid value in bundled GSEA reference data.", call. = FALSE)
     }
     powers <- rev(seq_along(digits) - 1L)
     sign * sum(digits * (36 ^ powers))
@@ -670,7 +670,7 @@ gsea_ui <- function(id) {
   ]
   if (!length(candidates)) {
     stop(
-      "The bundled Root_VE GSEA reproduction archive is unavailable.",
+      "The bundled Root_VE GSEA reference data are unavailable.",
       call. = FALSE
     )
   }
@@ -688,7 +688,7 @@ gsea_ui <- function(id) {
     hit <- lines[startsWith(lines, prefix)]
     if (!length(hit)) {
       stop(
-        "Missing field in archived GSEA data: ",
+        "Missing field in bundled GSEA reference data: ",
         name,
         call. = FALSE
       )
@@ -717,7 +717,7 @@ gsea_ui <- function(id) {
 
   if (length(rank_metric) != n_expected) {
     stop(
-      "Archived GSEA ranked-list length failed validation.",
+      "Bundled GSEA ranked-list length failed validation.",
       call. = FALSE
     )
   }
@@ -771,7 +771,7 @@ gsea_ui <- function(id) {
     if (identical(prefix, "X")) {
       return(suffix)
     }
-    stop("Unknown archived protein-ID token.", call. = FALSE)
+    stop("Unknown protein-ID token in bundled GSEA reference data.", call. = FALSE)
   }
 
   hit_id <- vapply(
@@ -806,7 +806,7 @@ gsea_ui <- function(id) {
   if (!is.finite(hit_weight) || hit_weight <= 0 ||
       n_all <= n_hit) {
     stop(
-      "Archived GSEA data cannot produce a weighted running score.",
+      "Bundled GSEA data cannot produce a weighted running score.",
       call. = FALSE
     )
   }
@@ -880,8 +880,8 @@ gsea_ui <- function(id) {
     Contrast = "B73 - Y12",
     Pathway = archive$pathway,
     KEGG_term = archive$term,
-    Rank_metric = "historical B73 - Y12 log2FC",
-    Protein_filter = "all historical retained proteins",
+    Rank_metric = "B73 - Y12 log2FC (reference figure)",
+    Protein_filter = "all retained proteins in the reference figure",
     P_filter = "none",
     P_cutoff = NA_real_,
     Min_abs_log2FC = 0,
@@ -894,9 +894,9 @@ gsea_ui <- function(id) {
     minSize = 5L,
     maxSize = 500L,
     Historical_DEP_compatible = TRUE,
-    Source = "Exact supplied Root_VE figure archive",
+    Source = "Built-in Root_VE reference figure",
     Background_policy =
-      "Full historical retained ranking; map00940 hits only",
+      "Full retained ranking used by the supplied reference figure; map00940 hits only",
     stringsAsFactors = FALSE
   )
 
@@ -1093,12 +1093,11 @@ gsea_ui <- function(id) {
   list(
     exact = isTRUE(exact),
     label = if (isTRUE(exact)) {
-      "Archived DEP compatible with the historical limma workflow"
+      "DEP is compatible with the Figure 3 reference limma workflow"
     } else {
       paste0(
-        "Loaded DEP is not the archived historical workflow; ",
-        "GSEA is valid for the loaded result but exact figure ",
-        "reproduction is not guaranteed."
+        "Loaded DEP does not use the Figure 3 reference workflow; ",
+        "GSEA remains valid, but the reference figure match is not guaranteed."
       )
     }
   )
@@ -1628,7 +1627,7 @@ gsea_server <- function(id, shared_state = NULL) {
             class = "small mt-2",
             shiny::span(
               if (exact_focus) {
-                "✓ Exact Root_VE figure archive is available."
+                "✓ Built-in Root_VE reference figure is available."
               } else {
                 "No previous DEP results loaded."
               },
@@ -1665,7 +1664,7 @@ gsea_server <- function(id, shared_state = NULL) {
         if (exact_focus) {
           shiny::span(
             paste0(
-              "Root_VE focus uses the exact historical figure archive; ",
+              "Root_VE focus uses the built-in reference figure; ",
               "loaded DEP is used for the other selected comparisons."
             ),
             class = "text-success"
@@ -1976,7 +1975,7 @@ gsea_server <- function(id, shared_state = NULL) {
             source_mode,
             "figure_archive"
           )) {
-            "Exact historical Root_VE + loaded DEP"
+            "Built-in Root_VE reference + loaded DEP"
           } else {
             bundle$source
           },
@@ -2330,7 +2329,7 @@ gsea_server <- function(id, shared_state = NULL) {
                 "pv-gsea-kpi-warning"
               }
             ),
-            shiny::span("Historical"),
+            shiny::span("Reference"),
             shiny::tags$strong(
               if (compatible) {
                 "exact"
@@ -2398,7 +2397,7 @@ gsea_server <- function(id, shared_state = NULL) {
         Extreme_ES = "Extreme ES",
         Seed = "Random seed",
         Historical_DEP_compatible =
-          "Historical DEP compatible",
+          "Figure 3 reference DEP compatible",
         Source = "Source",
         Background_policy = "Background policy"
       )

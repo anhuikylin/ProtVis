@@ -253,7 +253,7 @@ data_normalization_ui <- function(id) {
           selected = "auto"
         ),
         shiny::p(
-          "Auto uses the source-specific preset. For MaxQuant it reproduces the archived workflow: sample-wise median subtraction followed by the row-wise +abs(min)+5 shift (exact zeros become 1). Other normalization methods remain available for comparison.",
+          "Auto uses the source-specific preset. For MaxQuant it applies the built-in preprocessing preset: sample-wise median subtraction followed by the row-wise +abs(min)+5 shift (exact zeros become 1). Other normalization methods remain available for comparison.",
           class = "pv-norm-method-note"
         ),
         shiny::actionButton(ns("run_normalization"), "Run selected normalization", class = "btn btn-success fw-bold pv-load-button pv-run-button"),

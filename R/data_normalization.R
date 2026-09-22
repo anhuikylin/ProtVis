@@ -77,7 +77,7 @@ data_normalization_ui <- function(id) {
           selected = "auto"
         ),
         shiny::div(
-          "For MaxQuant, Auto reproduces the archived workflow: sample-wise ",
+          "For MaxQuant, Auto uses the built-in preset: sample-wise ",
           "median subtraction followed by the row-wise +abs(min)+5 shift ",
           "(exact zeros become 1).",
           style = "font-size:12px;color:#657789;line-height:1.45;margin-top:-6px;margin-bottom:10px;"
