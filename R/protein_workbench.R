@@ -571,7 +571,7 @@
   )
 }
 
-.protvis_pw_parse_identifiers <- function(text, limit = 100L) {
+.protvis_pw_parse_identifiers <- function(text, limit = 1000L) {
   ids <- base::unlist(base::strsplit(base::trimws(text %||% ""), "[,;[:space:]]+"), use.names = FALSE)
   ids <- base::unique(ids[base::nzchar(ids)])
   if (!base::length(ids)) return(base::character())
@@ -583,6 +583,11 @@
     base::stop("Identifiers may contain only letters, numbers, periods, underscores and hyphens.", call. = FALSE)
   }
   ids
+}
+
+.protvis_pw_chunk <- function(values, size = 50L) {
+  if (!base::length(values)) return(base::list())
+  base::split(values, base::ceiling(base::seq_along(values) / base::as.integer(size)))
 }
 
 .protvis_pw_parse_fasta_records <- function(fasta_text) {
@@ -617,23 +622,30 @@
 }
 
 .protvis_pw_batch_sequence_fetch <- function(identifiers, taxon_id = "", maize_version = "auto") {
-  identifiers <- .protvis_pw_parse_identifiers(base::paste(identifiers, collapse = "\n"))
+  identifiers <- .protvis_pw_parse_identifiers(base::paste(identifiers, collapse = "\n"), limit = 1000L)
   taxon_id <- base::trimws(taxon_id %||% "")
   if (base::nzchar(taxon_id) && !base::grepl("^[0-9]+$", taxon_id)) {
     base::stop("NCBI taxon ID must contain digits only.", call. = FALSE)
   }
-  terms <- base::unlist(base::lapply(identifiers, function(id) {
-    base::paste0("(accession:", id, " OR gene_exact:", id, ")")
-  }), use.names = FALSE)
-  query <- base::paste0("(", base::paste(terms, collapse = " OR "), ")")
-  if (base::nzchar(taxon_id)) query <- base::paste0("(", query, ") AND (organism_id:", taxon_id, ")")
-  fasta_text <- .protvis_pw_http_text(
-    "https://rest.uniprot.org/uniprotkb/stream",
-    query = base::list(format = "fasta", query = query),
-    timeout = 120,
-    not_found = ""
-  )
-  retrieved <- .protvis_pw_parse_fasta_records(fasta_text)
+  # UniProt query URLs have practical length limits. Keep each exact lookup
+  # compact, then combine the FASTA records locally so large ID lists remain
+  # supported without sacrificing exact accession/gene matching.
+  direct_records <- base::lapply(.protvis_pw_chunk(identifiers, size = 40L), function(id_chunk) {
+    terms <- base::unlist(base::lapply(id_chunk, function(id) {
+      base::paste0("(accession:", id, " OR gene_exact:", id, ")")
+    }), use.names = FALSE)
+    query <- base::paste0("(", base::paste(terms, collapse = " OR "), ")")
+    if (base::nzchar(taxon_id)) query <- base::paste0("(", query, ") AND (organism_id:", taxon_id, ")")
+    fasta_text <- .protvis_pw_http_text(
+      "https://rest.uniprot.org/uniprotkb/stream",
+      query = base::list(format = "fasta", query = query),
+      timeout = 120,
+      not_found = ""
+    )
+    .protvis_pw_parse_fasta_records(fasta_text)
+  })
+  direct_records <- direct_records[base::vapply(direct_records, base::nrow, integer(1)) > 0L]
+  retrieved <- if (base::length(direct_records)) base::do.call(base::rbind, direct_records) else base::data.frame()
   has_direct_match <- base::vapply(identifiers, function(input_id) {
     if (!base::nrow(retrieved)) return(FALSE)
     id_upper <- base::toupper(input_id)
@@ -658,7 +670,7 @@
   }
   fallback_accessions <- base::unique(fallback_map$accession[!base::is.na(fallback_map$accession) & base::nzchar(fallback_map$accession)])
   if (base::length(fallback_accessions)) {
-    chunks <- base::split(fallback_accessions, base::ceiling(base::seq_along(fallback_accessions) / 50L))
+    chunks <- .protvis_pw_chunk(fallback_accessions, size = 50L)
     fallback_records <- base::lapply(chunks, function(accessions) {
       accession_query <- base::paste0("(", base::paste(base::paste0("accession:", accessions), collapse = " OR "), ")")
       text <- .protvis_pw_http_text(
@@ -1194,7 +1206,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
     output$batch_status <- shiny::renderUI({
       table <- rv$batch_results
       if (!base::nrow(table)) {
-        return(shiny::div(class = "pw-note", "Choose a species, paste up to 100 identifiers, then retrieve sequences."))
+        return(shiny::div(class = "pw-note", "Choose a species, paste up to 1,000 identifiers, then retrieve sequences."))
       }
       retrieved <- base::sum(table$status == "Retrieved", na.rm = TRUE)
       missing <- base::sum(table$status == "Not found", na.rm = TRUE)

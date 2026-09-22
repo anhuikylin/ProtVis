@@ -56,6 +56,16 @@ test_that("Protein Workbench parses and exports batch protein sequences", {
     c("Zm00001eb000210", "P68871")
   )
   expect_error(ProtVis:::.protvis_pw_parse_identifiers("bad id!"), "Identifiers may contain")
+  batch_ids <- paste0("Zm", seq_len(1000L))
+  expect_length(
+    ProtVis:::.protvis_pw_parse_identifiers(paste(batch_ids, collapse = "\n")),
+    1000L
+  )
+  expect_error(
+    ProtVis:::.protvis_pw_parse_identifiers(paste(c(batch_ids, "Zm1001"), collapse = "\n")),
+    "at most 1000"
+  )
+  expect_length(ProtVis:::.protvis_pw_chunk(batch_ids, size = 40L), 25L)
 
   fasta <- paste(
     ">sp|P68871|HBB_HUMAN Hemoglobin subunit beta OS=Homo sapiens OX=9606 GN=HBB PE=1 SV=2",
