@@ -879,8 +879,8 @@ gsea_ui <- function(id) {
     Contrast = "B73 - Y12",
     Pathway = archive$pathway,
     KEGG_term = archive$term,
-    Rank_metric = "B73 - Y12 log2FC (built-in workflow)",
-    Protein_filter = "all retained proteins in the built-in workflow",
+    Rank_metric = "B73 - Y12 limma moderated t statistic",
+    Protein_filter = "proteins tested in the comparison with KEGG annotation",
     P_filter = "none",
     P_cutoff = NA_real_,
     Min_abs_log2FC = 0,
@@ -895,7 +895,7 @@ gsea_ui <- function(id) {
     Historical_DEP_compatible = TRUE,
     Source = "Bundled Root_VE workflow data",
     Background_policy =
-      "Bundled full retained ranking; map00940 hits only",
+      "tested proteins intersected with the bundled KEGG annotation; map00940 hits",
     stringsAsFactors = FALSE
   )
 
