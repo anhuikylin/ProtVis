@@ -341,22 +341,11 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 # result table or static plot is bundled in ProtVis.
 
 .protvis_load_builtin_enrichment_background <- function() {
-  locate <- function(file_name) {
-    candidates <- c(
-      system.file("extdata", file_name, package = "ProtVis"),
-      file.path("inst", "extdata", file_name),
-      file.path(getwd(), "inst", "extdata", file_name)
-    )
-    candidates <- candidates[nzchar(candidates) & file.exists(candidates)]
-    if (!length(candidates)) {
-      stop("The built-in maize-teosinte enrichment background is unavailable.",
-           call. = FALSE)
-    }
-    candidates[[1L]]
-  }
   read_table <- function(file_name) {
     utils::read.delim(
-      locate(file_name), sep = "\t", header = TRUE, quote = "",
+      .protvis_data_file(
+        "backgrounds", "maize_teosinte", file_name
+      ), sep = "\t", header = TRUE, quote = "",
       comment.char = "", stringsAsFactors = FALSE, check.names = FALSE
     )
   }
@@ -539,25 +528,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 
 .protvis_directional_load_figure3_gene_lists <- function(
     comparisons = NULL) {
-  path <- system.file(
-    "extdata", "figure3_archive", "gene_membership.b36",
-    package = "ProtVis"
-  )
-  if (!nzchar(path) || !file.exists(path)) {
-    source_path <- file.path(
-      "inst", "extdata", "figure3_archive",
-      "gene_membership.b36"
-    )
-    if (file.exists(source_path)) {
-      path <- source_path
-    }
-  }
-  if (!nzchar(path) || !file.exists(path)) {
-    stop(
-      "Bundled DEP membership file is missing.",
-      call. = FALSE
-    )
-  }
+  path <- .protvis_data_file("gsea", "gene_membership.b36")
 
   lines <- readLines(path, warn = FALSE)
   lines <- trimws(lines)

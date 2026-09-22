@@ -41,8 +41,15 @@ Install the current development version from GitHub:
 options(repos = c(CRAN = "https://cloud.r-project.org"))
 install.packages("pak")
 
-pak::pak("anhuikylin/ProtVis@dev")
+pak::pak(c(
+  "anhuikylin/ProtVisDatabase",
+  "anhuikylin/ProtVis@dev"
+))
 ```
+
+`ProtVisDatabase` supplies the locally installed examples, backgrounds,
+templates, benchmark files, and Sage executables used by ProtVis. No bundled
+resource is downloaded while ProtVis is running.
 
 For a clean reinstall/update:
 

@@ -73,7 +73,7 @@ golem_add_external_resources <- function() {
     shiny::tags$link(
       rel = "icon",
       type = "image/x-icon",
-      href = "https://raw.githubusercontent.com/xuebinzhang-lab/ProtVis/dev/app/www/ProtVis_ico.ico"
+      href = "https://raw.githubusercontent.com/anhuikylin/ProtVis/dev/app/www/ProtVis_ico.ico"
     ),
     golem::bundle_resources(
       path = app_sys("app/www"),

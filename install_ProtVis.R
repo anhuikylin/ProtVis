@@ -1,10 +1,11 @@
 # Clean installer for ProtVis -------------------------------------------------
 # Run this file in a fresh R session before calling library(ProtVis).
 
-if ("ProtVis" %in% loadedNamespaces()) {
+if ("ProtVis" %in% loadedNamespaces() ||
+    "ProtVisDatabase" %in% loadedNamespaces()) {
   stop(
-    "ProtVis is loaded in this R session. Restart R, do not call ",
-    "library(ProtVis), and run this installer again.",
+    "ProtVis or ProtVisDatabase is loaded in this R session. Restart R, do ",
+    "not call library(ProtVis), and run this installer again.",
     call. = FALSE
   )
 }
@@ -31,12 +32,19 @@ if (!dir.exists(protvis_library) || file.access(protvis_library, 2L) != 0L) {
 
 protvis_target <- file.path(protvis_library, "ProtVis")
 protvis_lock <- file.path(protvis_library, "00LOCK-ProtVis")
+protvis_database_target <- file.path(protvis_library, "ProtVisDatabase")
+protvis_database_lock <- file.path(protvis_library, "00LOCK-ProtVisDatabase")
 
 # Guard the recursive deletion so it can never target the library itself.
 if (!identical(basename(protvis_target), "ProtVis") ||
     identical(normalizePath(protvis_target, winslash = "/", mustWork = FALSE),
               protvis_library)) {
   stop("Refusing to clean an unexpected installation path.", call. = FALSE)
+}
+if (!identical(basename(protvis_database_target), "ProtVisDatabase") ||
+    identical(normalizePath(protvis_database_target, winslash = "/", mustWork = FALSE),
+              protvis_library)) {
+  stop("Refusing to clean an unexpected companion-package path.", call. = FALSE)
 }
 
 if (dir.exists(protvis_target)) {
@@ -45,10 +53,17 @@ if (dir.exists(protvis_target)) {
 if (dir.exists(protvis_lock)) {
   unlink(protvis_lock, recursive = TRUE, force = TRUE)
 }
-if (dir.exists(protvis_target) || dir.exists(protvis_lock)) {
+if (dir.exists(protvis_database_target)) {
+  unlink(protvis_database_target, recursive = TRUE, force = TRUE)
+}
+if (dir.exists(protvis_database_lock)) {
+  unlink(protvis_database_lock, recursive = TRUE, force = TRUE)
+}
+if (dir.exists(protvis_target) || dir.exists(protvis_lock) ||
+    dir.exists(protvis_database_target) || dir.exists(protvis_database_lock)) {
   stop(
     "Could not remove the previous ProtVis installation. Close all R/RStudio ",
-    "sessions that use it and retry.",
+    "sessions that use either ProtVis package and retry.",
     call. = FALSE
   )
 }
@@ -58,12 +73,29 @@ if (!requireNamespace("remotes", quietly = TRUE)) {
 }
 
 remotes::install_github(
-  "xuebinzhang-lab/ProtVis",
+  "anhuikylin/ProtVisDatabase",
+  lib = protvis_library,
+  force = TRUE,
+  upgrade = "never",
+  dependencies = FALSE
+)
+
+remotes::install_github(
+  "anhuikylin/ProtVis",
   ref = "dev",
   lib = protvis_library,
   force = TRUE,
-  upgrade = "never"
+  upgrade = "never",
+  dependencies = TRUE
 )
+
+database_path <- find.package(
+  "ProtVisDatabase", lib.loc = protvis_library, quiet = TRUE
+)
+if (!nzchar(database_path)) {
+  stop("ProtVisDatabase installation did not produce an installed package.",
+       call. = FALSE)
+}
 
 installed_path <- find.package(
   "ProtVis", lib.loc = protvis_library, quiet = TRUE
@@ -91,6 +123,8 @@ on.exit(unlink(probe_file, force = TRUE), add = TRUE)
 writeLines(
   c(
     paste0("protvis_library <- ", deparse(protvis_library)),
+    "library(ProtVisDatabase, lib.loc = protvis_library)",
+    "stopifnot(nzchar(ProtVisDatabase::protvis_database_path('extdata', 'manifest.tsv', must_work = TRUE)))",
     "library(ProtVis, lib.loc = protvis_library)",
     "launcher <- getExportedValue('ProtVis', 'run_ProtVis')",
     "stopifnot(is.function(launcher), is.call(body(launcher)) || is.expression(body(launcher)))"
@@ -121,7 +155,7 @@ if (!identical(as.integer(probe_status), 0L)) {
 installed_description <- read.dcf(file.path(installed_path, "DESCRIPTION"))
 message(
   "ProtVis ", installed_description[1L, "Version"],
-  " installed successfully in ", installed_path,
+  " and its locally installed ProtVisDatabase resources were installed successfully in ", installed_path,
   ". The lazy-load database passed a clean-process verification. Restart R ",
   "before loading the package."
 )

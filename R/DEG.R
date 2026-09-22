@@ -485,38 +485,7 @@ DEG_ui <- function(id) {
 
 
 .protvis_deg_gsea_locate <- function(file_name) {
-  candidates <- c(
-    system.file(
-      "extdata",
-      "transcriptome_gsea",
-      file_name,
-      package = "ProtVis"
-    ),
-    file.path(
-      "inst",
-      "extdata",
-      "transcriptome_gsea",
-      file_name
-    ),
-    file.path(
-      getwd(),
-      "inst",
-      "extdata",
-      "transcriptome_gsea",
-      file_name
-    )
-  )
-  candidates <- candidates[
-    nzchar(candidates) & file.exists(candidates)
-  ]
-  if (!length(candidates)) {
-    stop(
-      "The bundled transcriptome GSEA asset is unavailable: ",
-      file_name,
-      call. = FALSE
-    )
-  }
-  candidates[[1L]]
+  .protvis_data_file("gsea", "transcriptome", file_name)
 }
 
 
@@ -533,36 +502,11 @@ DEG_ui <- function(id) {
 
 
 .protvis_deg_load_gsea_background <- function() {
-  candidates <- c(
-    system.file(
-      "extdata",
-      "maize_teosinte_KEGG_background.tsv.xz",
-      package = "ProtVis"
-    ),
-    file.path(
-      "inst",
-      "extdata",
-      "maize_teosinte_KEGG_background.tsv.xz"
-    ),
-    file.path(
-      getwd(),
-      "inst",
-      "extdata",
-      "maize_teosinte_KEGG_background.tsv.xz"
-    )
-  )
-  candidates <- candidates[
-    nzchar(candidates) & file.exists(candidates)
-  ]
-  if (!length(candidates)) {
-    stop(
-      "The built-in maize KEGG background is unavailable.",
-      call. = FALSE
-    )
-  }
-
   bg <- utils::read.delim(
-    candidates[[1L]],
+    .protvis_data_file(
+      "backgrounds", "maize_teosinte",
+      "maize_teosinte_KEGG_background.tsv.xz"
+    ),
     sep = "\t",
     header = TRUE,
     quote = "",

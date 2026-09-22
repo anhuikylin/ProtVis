@@ -56,18 +56,10 @@ testthat::test_that("historical transcriptome GSEA 00940 reference is bundled", 
 
 
 testthat::test_that("transcriptome GSEA assets do not bundle expression or group tables", {
-  path <- system.file(
-    "extdata",
-    "transcriptome_gsea",
-    package = "ProtVis"
+  path <- ProtVisDatabase::protvis_database_path(
+    "extdata", "gsea", "transcriptome",
+    must_work = TRUE
   )
-  if (!nzchar(path)) {
-    path <- file.path(
-      "inst",
-      "extdata",
-      "transcriptome_gsea"
-    )
-  }
   files <- list.files(path)
   testthat::expect_false(any(grepl(
     "expression|group|sample",

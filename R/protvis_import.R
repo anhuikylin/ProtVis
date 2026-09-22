@@ -59,7 +59,7 @@ protvis_supported_sources <- function() {
   )
 }
 
-#' List the small, bundled demonstration files for each supported source.
+#' List the locally installed demonstration files for each supported source.
 #'
 #' These fixtures intentionally contain only a few proteins and samples. They
 #' are real-world-shaped exports, not synthetic wide matrices, so every file
@@ -77,6 +77,15 @@ protvis_builtin_datasets <- function() {
       "OpenMS_protein_quantification.tsv", "OpenMS_proteins.mzTab"
     ),
     format = c("xlsx", "txt", "tsv", "tsv", "tsv", "csv", "tsv", "mzTab"),
+    path = file.path(
+      "examples", "tabular",
+      c(
+        "MaxQuant_output.xlsx", "ProteomeDiscoverer_proteins.txt",
+        "DIA-NN_report.tsv", "Spectronaut_report.tsv",
+        "FragPipe_combined_protein.tsv", "Skyline_report.csv",
+        "OpenMS_protein_quantification.tsv", "OpenMS_proteins.mzTab"
+      )
+    ),
     description = c(
       paste0(
         "MaxQuant reporter-intensity protein export from MaxQuant_output.xlsx ",
@@ -91,14 +100,14 @@ protvis_builtin_datasets <- function() {
       "HUPO-PSI mzTab adapter view of 5,000 real Zea mays B73/Y12 protein groups"
     ),
     reference = c(
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx"
+      "https://github.com/anhuikylin/ProtVisDatabase/tree/main/inst/extdata/examples/tabular",
+      "https://github.com/anhuikylin/ProtVisDatabase/tree/main/inst/extdata/examples/tabular",
+      "https://github.com/anhuikylin/ProtVisDatabase/tree/main/inst/extdata/examples/tabular",
+      "https://github.com/anhuikylin/ProtVisDatabase/tree/main/inst/extdata/examples/tabular",
+      "https://github.com/anhuikylin/ProtVisDatabase/tree/main/inst/extdata/examples/tabular",
+      "https://github.com/anhuikylin/ProtVisDatabase/tree/main/inst/extdata/examples/tabular",
+      "https://github.com/anhuikylin/ProtVisDatabase/tree/main/inst/extdata/examples/tabular",
+      "https://github.com/anhuikylin/ProtVisDatabase/tree/main/inst/extdata/examples/tabular"
     ),
     stringsAsFactors = FALSE,
     check.names = FALSE
@@ -132,7 +141,7 @@ protvis_builtin_datasets <- function() {
     group <- sub("_[0-9]+$", "", samples)
     data_file <- "MaxQuant_output.xlsx"
     source_url <- paste0(
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/",
+      "https://github.com/anhuikylin/ProtVisDatabase/tree/main/inst/extdata/examples/tabular/",
       data_file
     )
     return(data.frame(
@@ -150,7 +159,7 @@ protvis_builtin_datasets <- function() {
       batch = paste0("TMT", replicate),
       organism = rep("Zea mays", length(samples)),
       accession = rep(
-        paste0("ProtVis-inst-extdata-", data_file), length(samples)
+        paste0("ProtVisDatabase-", data_file), length(samples)
       ),
       source_url = rep(source_url, length(samples)),
       source = rep(source, length(samples)),
@@ -174,10 +183,10 @@ protvis_builtin_datasets <- function() {
     tissue2 = rep("maize tissue (B73/Y12)", 2L),
     organism = rep("Zea mays", 2L),
     accession = rep(
-      "ProtVis-inst-extdata-MaxQuant_output.xlsx", 2L
+      "ProtVisDatabase-MaxQuant_output.xlsx", 2L
     ),
     source_url = rep(
-      "https://github.com/xuebinzhang-lab/ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
+      "https://github.com/anhuikylin/ProtVisDatabase/tree/main/inst/extdata/examples/tabular/MaxQuant_output.xlsx",
       2L
     ),
     source = rep(source, 2L),
@@ -195,19 +204,7 @@ protvis_builtin_datasets <- function() {
                                      tolower(as.character(format)), , drop = FALSE]
   if (nrow(row) == 0L) stop("No built-in fixture is registered for ", source,
                             ".", call. = FALSE)
-  installed <- system.file("extdata", row$file[[1L]], package = "ProtVis")
-  candidates <- c(
-    installed,
-    file.path(getwd(), "inst", "extdata", row$file[[1L]]),
-    file.path(getwd(), "..", "inst", "extdata", row$file[[1L]]),
-    file.path(getwd(), "..", "..", "inst", "extdata", row$file[[1L]])
-  )
-  candidates <- candidates[nzchar(candidates) & file.exists(candidates)]
-  if (length(candidates) == 0L) {
-    stop("Built-in fixture not found for ", source, ": ", row$file[[1L]],
-         call. = FALSE)
-  }
-  normalizePath(candidates[[1L]], winslash = "/", mustWork = TRUE)
+  .protvis_data_file(row$path[[1L]])
 }
 
 .protvis_mztab_table <- function(path) {

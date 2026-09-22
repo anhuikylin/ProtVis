@@ -649,31 +649,10 @@ gsea_ui <- function(id) {
 
 
 .protvis_gsea_archive_path <- function() {
-  candidates <- c(
-    system.file(
-      "extdata", "figure4_archive",
-      "Root_VE_phenylpropanoid.pvg",
-      package = "ProtVis"
-    ),
-    file.path(
-      "inst", "extdata", "figure4_archive",
-      "Root_VE_phenylpropanoid.pvg"
-    ),
-    file.path(
-      getwd(), "inst", "extdata", "figure4_archive",
-      "Root_VE_phenylpropanoid.pvg"
-    )
+  .protvis_data_file(
+    "gsea", "proteome_root_ve",
+    "Root_VE_phenylpropanoid.pvg"
   )
-  candidates <- candidates[
-    nzchar(candidates) & file.exists(candidates)
-  ]
-  if (!length(candidates)) {
-    stop(
-      "The bundled Root_VE GSEA workflow data are unavailable.",
-      call. = FALSE
-    )
-  }
-  candidates[[1L]]
 }
 
 

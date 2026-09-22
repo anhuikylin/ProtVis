@@ -19,12 +19,12 @@ test_that("Sage configuration uses the reproducible 0.14 search schema", {
   expect_equal(config$output_directory, normalizePath(directory, winslash = "/"))
 })
 
-test_that("all bundled Sage executables are tracked without gzip copies", {
+test_that("ProtVisDatabase provides Sage executables without gzip copies", {
   sage <- c(
-    testthat::test_path("..", "..", "inst", "extdata", "sage", "Linux", "sage"),
-    testthat::test_path("..", "..", "inst", "extdata", "sage", "macOS", "ARM64", "sage"),
-    testthat::test_path("..", "..", "inst", "extdata", "sage", "macOS", "Intel", "sage"),
-    testthat::test_path("..", "..", "inst", "extdata", "sage", "windows", "sage.exe")
+    ProtVisDatabase::protvis_database_path("extdata", "search_engines", "sage", "Linux", "sage", must_work = TRUE),
+    ProtVisDatabase::protvis_database_path("extdata", "search_engines", "sage", "macOS", "ARM64", "sage", must_work = TRUE),
+    ProtVisDatabase::protvis_database_path("extdata", "search_engines", "sage", "macOS", "Intel", "sage", must_work = TRUE),
+    ProtVisDatabase::protvis_database_path("extdata", "search_engines", "sage", "windows", "sage.exe", must_work = TRUE)
   )
   expect_true(all(file.exists(sage)))
   expect_false(any(file.exists(paste0(sage, ".gz"))))
