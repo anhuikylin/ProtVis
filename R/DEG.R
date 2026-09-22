@@ -247,7 +247,7 @@ DEG_ui <- function(id) {
             shiny::div(
               class = "pv-transcriptome-gsea-note",
               "KEGG gene sets are bundled from the maize-teosinte ",
-              "Enrichmentdb2 annotation used by the built-in RNA-seq reference workflow. ",
+              "Enrichmentdb2 annotation supplied with the built-in RNA-seq workflow. ",
               "Expression and group tables are always supplied by the user."
             ),
             shiny::hr(),
@@ -1714,7 +1714,7 @@ DEG_server <- function(id, shared_state = NULL) {
         class = "pv-transcriptome-gsea-reference",
 
         shiny::h5(
-          "Built-in RNA-seq reference workflow"
+          "Built-in RNA-seq workflow"
         ),
         shiny::p(
           class = "pv-transcriptome-gsea-note",

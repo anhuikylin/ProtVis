@@ -528,7 +528,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     chars <- strsplit(tolower(as.character(value)), "", fixed = TRUE)[[1L]]
     digits <- match(chars, alphabet) - 1L
     if (!length(digits) || anyNA(digits)) {
-      stop("Invalid value in bundled Figure 3 reference data.", call. = FALSE)
+      stop("Invalid value in bundled enrichment data.", call. = FALSE)
     }
     powers <- rev(seq_along(digits) - 1L)
     as.integer(sum(digits * (36 ^ powers)))
@@ -554,7 +554,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
   }
   if (!nzchar(path) || !file.exists(path)) {
     stop(
-      "Bundled Figure 3 reference DEP membership file is missing.",
+      "Bundled DEP membership file is missing.",
       call. = FALSE
     )
   }
@@ -563,7 +563,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
   lines <- trimws(lines)
   lines <- lines[nzchar(lines)]
   if (!length(lines)) {
-    stop("Bundled Figure 3 DEP membership file is empty.", call. = FALSE)
+    stop("Bundled DEP membership file is empty.", call. = FALSE)
   }
 
   decode_line <- function(line) {
@@ -572,7 +572,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     tokens <- strsplit(payload, ",", fixed = TRUE)[[1L]]
     pieces <- strsplit(tokens, ".", fixed = TRUE)
     if (any(lengths(pieces) != 2L)) {
-      stop("Bundled Figure 3 DEP membership file is malformed.", call. = FALSE)
+    stop("Bundled DEP membership file is malformed.", call. = FALSE)
     }
     delta <- .protvis_base36_to_integer(
       vapply(pieces, `[[`, character(1), 1L)
@@ -586,7 +586,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     } else if (identical(prefix, "P")) {
       paste0("PZ00001a", sprintf("%06d", suffix))
     } else {
-      stop("Unknown protein-ID prefix in Figure 3 reference data.", call. = FALSE)
+      stop("Unknown protein-ID prefix in bundled enrichment data.", call. = FALSE)
     }
     data.frame(
       ID = id,
@@ -618,7 +618,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
   if (!identical(as.integer(lengths(all_up)), expected_up) ||
       !identical(as.integer(lengths(all_down)), expected_down)) {
     stop(
-      "Bundled Figure 3 reference DEP membership failed its internal count check.",
+      "Bundled DEP membership failed its internal count check.",
       call. = FALSE
     )
   }
@@ -631,7 +631,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     spec$Comparison
   )
   if (!length(comparisons)) {
-    stop("Select at least one Figure 3 comparison.", call. = FALSE)
+    stop("Select at least one comparison.", call. = FALSE)
   }
 
   selected <- spec$Comparison %in% comparisons
@@ -712,7 +712,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
         ok = FALSE,
         message = paste0(
           comparison,
-          ": Figure 3 reference DEP provenance is incomplete (",
+          ": built-in DEP workflow provenance is incomplete (",
           paste(missing, collapse = ", "),
           ")."
         )
@@ -742,9 +742,9 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       return(list(
         ok = FALSE,
         message = paste0(
-          "Figure 3 benchmark requires DEP > Figure 3 reference workflow, ",
+          "The built-in KEGG workflow requires DEP > Built-in DEP workflow, ",
           "Detection filter = 'Detected in any comparison sample ",
-          "(reference workflow), and the Figure 3-compatible Step6 limma workflow."
+          "(built-in workflow), and the predefined Step6 limma workflow."
         )
       ))
     }
@@ -753,7 +753,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
   list(
     ok = TRUE,
     message = paste0(
-      "✓ Figure 3 reference DEP compatible · Step6 limma · ",
+      "✓ Built-in DEP workflow compatible · Step6 limma · ",
       "|log2FC| > 1 · BH < 0.05"
     )
   )
@@ -823,7 +823,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
   )
   if (!all(c("sample_id", "group") %in% names(sample_info))) {
     stop(
-      "The Figure 3 reference workflow requires sample_info columns: sample_id and group.",
+      "The built-in DEP workflow requires sample_info columns: sample_id and group.",
       call. = FALSE
     )
   }
@@ -831,7 +831,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
   if (is.null(rownames(normalized_matrix)) ||
       is.null(rownames(detection_matrix))) {
     stop(
-      "The Figure 3 reference workflow requires protein IDs as matrix row names.",
+      "The built-in DEP workflow requires protein IDs as matrix row names.",
       call. = FALSE
     )
   }
@@ -902,7 +902,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
 
     if (!length(group1_samples) || !length(group2_samples)) {
       stop(
-        "The Figure 3 reference workflow could not find samples for ",
+        "The built-in DEP workflow could not find samples for ",
         group1, " vs ", group2, ".",
         call. = FALSE
       )
@@ -1145,7 +1145,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     if (method %in% c("figure3_archive", "archived_comparecluster")) {
       if (!identical(evidence_mode, "quantitative")) {
         stop(
-          "The Figure 3 reference mode uses quantitative DEP only.",
+          "The built-in KEGG workflow uses quantitative DEP only.",
           call. = FALSE
         )
       }
@@ -1178,7 +1178,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
         ),
         error = function(e) {
           stop(
-            "Figure 3 benchmark KEGG failed: ",
+            "Built-in KEGG workflow failed: ",
             conditionMessage(e),
             call. = FALSE
           )
@@ -1230,17 +1230,17 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
         method,
         "figure3_archive"
       )) {
-        "Built-in Figure 3 DEP lists"
+        "Built-in DEP lists"
       } else {
-        "Figure 3 reference DEP"
+        "Built-in DEP workflow"
       }
       out$Analysis_mode <- if (identical(
         method,
         "figure3_archive"
       )) {
-        "Built-in Figure 3 benchmark"
+        "Built-in KEGG workflow"
       } else {
-        "Figure 3 reference workflow"
+        "Built-in DEP workflow"
       }
       out$Universe <-
         "KEGG annotation background (clusterProfiler default)"
@@ -1272,7 +1272,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       source = if (identical(method, "figure3_archive")) {
         lists$source
       } else {
-        "Figure 3 reference DEP"
+        "Built-in DEP workflow"
       }
     )
 
@@ -2387,7 +2387,7 @@ enrichment_analysis_ui <- function(id) {
                   class = "directional-kegg-title"
                 ),
                 shiny::tags$p(
-                  "Run the built-in Figure 3 benchmark or standard ORA across selected DEP contrasts.",
+                  "Run the built-in KEGG workflow or a custom ORA workflow across selected DEP contrasts.",
                   class = "directional-kegg-intro"
                 )
               )
@@ -2403,7 +2403,7 @@ enrichment_analysis_ui <- function(id) {
                     shiny::div(
                       shiny::tags$h5("Analysis mode"),
                       shiny::tags$p(
-                        "Choose the built-in Figure 3 benchmark or standard ProtVis ORA."
+                        "Choose a built-in workflow with predefined settings or a custom ProtVis ORA workflow."
                       )
                     )
                   ),
@@ -2411,7 +2411,7 @@ enrichment_analysis_ui <- function(id) {
                     ns("directional_method"),
                     label = NULL,
                     choices = c(
-                      "Built-in Figure 3 benchmark" =
+                      "Built-in KEGG workflow" =
                         "figure3_archive",
                       "Standard ORA (tested universe + BH)" =
                         "standard_ora"
@@ -2427,7 +2427,7 @@ enrichment_analysis_ui <- function(id) {
                     shiny::div(
                       class = "directional-fixed-settings",
                       shiny::tags$small(
-                        "Uses the built-in significant DEP protein lists from Figure 3; KEGG is recalculated when you run the analysis."
+                        "Uses bundled DEP protein lists and predefined settings; KEGG is recalculated when you run the analysis."
                       ),
                       shiny::uiOutput(
                         ns("directional_dep_compatibility")
@@ -2548,7 +2548,7 @@ enrichment_analysis_ui <- function(id) {
                       shiny::div(
                         class = "directional-fixed-settings",
                         shiny::tags$small(
-                          "Built-in reference settings: Figure 3 DEP lists; p-value cutoff = 0.05; q-value cutoff = 1; raw p-value statistic; bundled Enrichmentdb2."
+                          "Built-in settings: bundled DEP lists; p-value cutoff = 0.05; q-value cutoff = 1; raw p-value statistic; bundled Enrichmentdb2."
                         )
                       )
                     ),
@@ -2841,7 +2841,7 @@ enrichment_analysis_server <- function(id, shared_state) {
         return(list(
           ok = FALSE,
           message = paste0(
-            "Working directory is unavailable; the Figure 3 reference ",
+            "Working directory is unavailable; the built-in DEP ",
             "Step4/Step6 inputs cannot be reconstructed."
           )
         ))
@@ -2869,7 +2869,7 @@ enrichment_analysis_server <- function(id, shared_state) {
         return(list(
           ok = FALSE,
           message = paste0(
-            "The built-in Figure 3 benchmark needs ",
+            "The built-in KEGG workflow needs ",
             paste(missing, collapse = " + "),
             " in the project working directory."
           )
@@ -2880,7 +2880,7 @@ enrichment_analysis_server <- function(id, shared_state) {
         return(list(
           ok = TRUE,
           message = paste0(
-            "✓ Step4 + Step6 available · Figure 3 reference DEP will ",
+            "✓ Step4 + Step6 available · built-in DEP workflow will ",
             "be rebuilt automatically"
           ),
           step4_path = step4_path,
@@ -2900,7 +2900,7 @@ enrichment_analysis_server <- function(id, shared_state) {
       list(
         ok = TRUE,
         message = paste0(
-          "✓ Step4 + Step6 loaded · Figure 3 reference DEP rebuilt ",
+          "✓ Step4 + Step6 loaded · built-in DEP workflow prepared ",
           "inside Directional KEGG"
         ),
         step4 = step4,
@@ -3120,7 +3120,7 @@ enrichment_analysis_server <- function(id, shared_state) {
         return(
           shiny::span(
             paste0(
-              "✓ Built-in Figure 3 DEP lists verified · B73-higher ",
+              "✓ Built-in DEP lists verified · B73-higher ",
               sum(lists$counts$B73_higher),
               " memberships · Y12-higher ",
               sum(lists$counts$Y12_higher),
@@ -3169,8 +3169,8 @@ enrichment_analysis_server <- function(id, shared_state) {
         "figure3_archive"
       )) {
         paste0(
-          "Built-in Figure 3 benchmark selected. ",
-          "Built-in significant DEP lists and Enrichmentdb2 ",
+          "Built-in KEGG workflow selected. ",
+          "Bundled DEP lists and Enrichmentdb2 ",
           "will be used; KEGG is recalculated when RUN KEGG is clicked."
         )
       } else {
@@ -3704,7 +3704,7 @@ enrichment_analysis_server <- function(id, shared_state) {
           "figure3_archive"
         )) {
           paste0(
-            "No pathways passed the built-in Figure 3 ",
+            "No pathways passed the built-in KEGG ",
             "compareCluster workflow (pvalueCutoff = 0.05; ",
             "qvalueCutoff = 1)."
           )
@@ -3721,7 +3721,7 @@ enrichment_analysis_server <- function(id, shared_state) {
         "figure3_archive"
       )) {
         rv$directional_kegg_message <- paste0(
-          "Figure 3 benchmark KEGG calculated from built-in DEP lists: ",
+          "Built-in KEGG workflow calculated from bundled DEP lists: ",
           length(unique(result$Description)),
           " pathways across ",
           length(unique(result$Cluster)),

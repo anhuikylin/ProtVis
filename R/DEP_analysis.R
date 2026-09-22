@@ -3,7 +3,7 @@
 #' The default workflow is Recommended DEP: observed Step4 log2 intensities,
 #' sample-wise median centering, no imputation, detection filtering, and
 #' limma empirical-Bayes statistics with BH FDR control. The historical
-#' Step6 workflow is retained as an explicit Figure 3 reference mode.
+#' Step6 workflow is retained as an explicit built-in workflow mode.
 #'
 #' @param id Module namespace.
 #' @return Shiny UI.
@@ -37,14 +37,14 @@ DEP_analysis_ui <- function(id) {
             title = "Analysis parameters",
             icon = bsicons::bs_icon("sliders"),
             shiny::tags$small(
-              "Recommended DEP is the default. A Figure 3 reference workflow is also available for comparison.",
+              "Recommended DEP is the default. A built-in workflow with predefined settings is also available.",
               style = "color:#6c757d;"
             ),
             shiny::selectInput(
               ns("dep_mode"), "DEP mode",
               choices = c(
                 "Recommended DEP" = "recommended",
-                "Figure 3 reference workflow" = "archived"
+                "Built-in DEP workflow" = "archived"
               ),
               selected = "recommended"
             ),
@@ -116,12 +116,12 @@ DEP_analysis_ui <- function(id) {
               shiny::tags$div(
                 class = "alert alert-secondary py-2 px-3",
                 shiny::tags$small(
-                  "Uses the Figure 3-compatible Step6 normalized matrix and limma settings."
+                  "Uses the built-in Step6 normalized matrix and predefined limma settings."
                 )
               ),
               shiny::checkboxInput(
                 ns("dep_matrix_shift"),
-                "Apply Figure 3-compatible x + abs(min(x)) shift",
+                "Apply built-in x + abs(min(x)) shift",
                 value = TRUE
               )
             ),
@@ -130,7 +130,7 @@ DEP_analysis_ui <- function(id) {
               choices = c(
                 "Detected in >=2 replicates in both groups (recommended)" = "both_genotypes",
                 "Detected in >=2 replicates in either group" = "either_genotype",
-                "Detected in any comparison sample (reference workflow)" = "archived_any_detected",
+                "Detected in any comparison sample (built-in workflow)" = "archived_any_detected",
                 "All proteins" = "all"
               ),
               selected = "both_genotypes"
@@ -1435,7 +1435,7 @@ DEP_analysis_server <- function(id, shared_state) {
       }
       if (identical(mode, "archived") && is.null(rv$normalized_matrix)) {
         shiny::showNotification(
-          "The Figure 3 reference workflow requires the Step6 normalized matrix.",
+          "The built-in DEP workflow requires the Step6 normalized matrix.",
           type = "error",
           duration = 8
         )
@@ -1514,7 +1514,7 @@ DEP_analysis_server <- function(id, shared_state) {
       progress_message <- if (identical(mode, "recommended")) {
         "Running Recommended DEP"
       } else {
-        "Running Figure 3-compatible limma"
+        "Running built-in limma workflow"
       }
 
       shinyWidgets::updateProgressBar(
@@ -1731,7 +1731,7 @@ DEP_analysis_server <- function(id, shared_state) {
             if (identical(mode, "recommended")) {
               "Recommended DEP"
             } else {
-              "Figure 3 reference DEP"
+              "Built-in DEP workflow"
             },
             " completed. Volcano plots remain unloaded until SHOW VOLCANO is clicked."
           )
