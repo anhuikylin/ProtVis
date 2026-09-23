@@ -2169,6 +2169,10 @@ gsea_server <- function(id, shared_state = NULL) {
     })
 
     output$gsea_plot <- shiny::renderPlot({
+      .protvis_require_optional(
+        "GseaVis",
+        "GSEA enrichment-curve visualization"
+      )
       gsea_res <- gsea_res_val()
       shiny::req(gsea_res, input$pathway)
       print(
@@ -2600,6 +2604,10 @@ gsea_server <- function(id, shared_state = NULL) {
           return()
         }
 
+        .protvis_require_optional(
+          "GseaVis",
+          "GSEA enrichment-curve export"
+        )
         gsea_res <- gsea_res_val()
         shiny::req(
           gsea_res,
