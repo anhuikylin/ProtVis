@@ -1,6 +1,6 @@
 Package: ProtVis
 Title: ProtVis Shiny App
-Version: 0.9.7
+Version: 0.9.8
 Authors@R:
     person(given = "Fei",
            family = "Liang",
@@ -40,20 +40,16 @@ Imports:
     bslib,
     cachem,
     circlize,
-    clusterProfiler,
     colourpicker,
     config,
     corrplot,
     data.table,
     dplyr,
     edgeR,
-    enrichplot,
     fs,
-    fgsea,
     ggplot2,
     ggprism,
     ggsci,
-    golem,
     grDevices,
     grid,
     gridExtra,
@@ -103,6 +99,10 @@ Remotes:
     junjunlab/GseaVis,
     hadley/pryr
 Suggests:
+    golem,
+    fgsea,
+    enrichplot,
+    clusterProfiler,
     GseaVis,
     ggpubr,
     pathview,
