@@ -29,6 +29,12 @@ if (!dir.exists(protvis_library)) {
 if (!dir.exists(protvis_library) || file.access(protvis_library, 2L) != 0L) {
   stop("R library is not writable: ", protvis_library, call. = FALSE)
 }
+.libPaths(unique(c(protvis_library, .libPaths())))
+cran_repo <- unname(getOption("repos")["CRAN"])
+if (length(cran_repo) != 1L || is.na(cran_repo) || !nzchar(cran_repo) ||
+    identical(cran_repo, "@CRAN@")) {
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
+}
 
 protvis_target <- file.path(protvis_library, "ProtVis")
 protvis_lock <- file.path(protvis_library, "00LOCK-ProtVis")
@@ -87,6 +93,23 @@ remotes::install_github(
   force = TRUE,
   upgrade = "never",
   dependencies = TRUE
+)
+
+# A partially restored R library can contain bslib without its cachem runtime
+# dependency. Repair that state before the clean-process verification below.
+if (!requireNamespace("cachem", quietly = TRUE)) {
+  install.packages("cachem", lib = protvis_library, dependencies = TRUE)
+}
+tryCatch(
+  loadNamespace("bslib"),
+  error = function(error) {
+    install.packages(
+      c("cachem", "bslib"),
+      lib = protvis_library,
+      dependencies = TRUE
+    )
+    loadNamespace("bslib")
+  }
 )
 
 database_path <- find.package(

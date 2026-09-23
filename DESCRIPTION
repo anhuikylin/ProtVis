@@ -1,6 +1,6 @@
 Package: ProtVis
 Title: ProtVis Shiny App
-Version: 0.9.3
+Version: 0.9.4
 Authors@R:
     person(given = "Fei",
            family = "Liang",
@@ -39,6 +39,7 @@ Imports:
     bio3d,
     bsicons,
     bslib,
+    cachem,
     circlize,
     clusterProfiler,
     colourpicker,
