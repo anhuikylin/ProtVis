@@ -105,7 +105,10 @@ jobs:
           desc <- read.dcf("DESCRIPTION")
           imports <- strsplit(desc[1, "Imports"], ",")[[1]]
           imports <- trimws(gsub("\\n", "", imports))
-          noisy <- c("GseaVis", "ggpubr", "pathview")
+          noisy <- c(
+            "GseaVis", "ggpubr", "pathview",
+            "golem", "clusterProfiler", "enrichplot", "fgsea"
+          )
           stopifnot(!any(noisy %in% imports))
 
           ns <- readLines("NAMESPACE", warn = FALSE)
@@ -113,7 +116,12 @@ jobs:
             "importFrom(GseaVis,gseaNb)",
             "importFrom(ggpubr,compare_means)",
             "importFrom(ggpubr,stat_compare_means)",
-            "importFrom(pathview,pathview)"
+            "importFrom(pathview,pathview)",
+            "importFrom(golem,bundle_resources)",
+            "importFrom(golem,with_golem_options)",
+            "importFrom(clusterProfiler,GSEA)",
+            "importFrom(clusterProfiler,dotplot)",
+            "importFrom(clusterProfiler,enricher)"
           )
           stopifnot(!any(forbidden %in% ns))
           cat("Optional plotting packages are excluded from eager startup imports.\n")
