@@ -216,7 +216,10 @@ writeLines(
     "resources <- file.path(database_path, 'extdata', manifest$path)",
     "stopifnot(all(file.exists(resources)))",
     "stopifnot(all(file.info(resources)$size == as.numeric(manifest$bytes)))",
-    "xlsx <- resources[grepl('\\\\.xlsx    "launcher <- getExportedValue('ProtVis', 'run_ProtVis')",
+    "xlsx <- resources[endsWith(tolower(manifest$path), '.xlsx')]",
+    "if (length(xlsx)) stopifnot(all(vapply(xlsx, function(path) tryCatch({ z <- suppressWarnings(utils::unzip(path, list = TRUE)); is.data.frame(z) && nrow(z) > 0L }, error = function(e) FALSE), logical(1L))))",
+    "library(ProtVis, lib.loc = protvis_library)",
+    "launcher <- getExportedValue('ProtVis', 'run_ProtVis')",
     "stopifnot(is.function(launcher), is.call(body(launcher)) || is.expression(body(launcher)))"
   ),
   probe_file,
