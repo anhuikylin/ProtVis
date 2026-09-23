@@ -49,17 +49,17 @@ data_imputation_ui <- function(id) {
 
         bslib::accordion(
           bslib::accordion_panel(
-            title = "Imputation Settings",
+            title = "Imputation",
             icon = bsicons::bs_icon("tools"),
             shiny::selectInput(
               ns("choice_method"),
               "Method",
               choices = c(
-                "kNN (MaxQuant recommended)" = "kNN",
-                "RF" = "RF",
-                "Mean" = "Mean",
-                "Median" = "Median",
-                "Minimum" = "Minimum"
+                "k-Nearest Neighbors (kNN)" = "kNN",
+                "Random Forest (RF)" = "RF",
+                "Mean imputation" = "Mean",
+                "Median imputation" = "Median",
+                "Minimum-value imputation" = "Minimum"
               ),
               selected = "kNN"
             ),
