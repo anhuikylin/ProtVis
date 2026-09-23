@@ -829,6 +829,14 @@ gsea_ui <- function(id) {
   names(stats) <- ranked_ids
   pathway_ids <- ranked_ids[archive$hit_mask]
 
+  .protvis_require_optional(
+    "fgsea",
+    "GSEA computation"
+  )
+  .protvis_require_optional(
+    "fgsea",
+    "GSEA computation"
+  )
   set.seed(as.integer(seed))
   fgsea_result <- fgsea::fgseaMultilevel(
     pathways = stats::setNames(
@@ -2082,6 +2090,10 @@ gsea_server <- function(id, shared_state = NULL) {
         )
       )
 
+      .protvis_require_optional(
+        "clusterProfiler",
+        "GSEA analysis"
+      )
       gsea_res <- clusterProfiler::GSEA(
         geneList = gene_ranks,
         TERM2GENE = term2gene,
@@ -2159,6 +2171,14 @@ gsea_server <- function(id, shared_state = NULL) {
       if (nrow(top_df) > 0) {
         sub_res <- gsea_res
         sub_res@result <- top_df
+        .protvis_require_optional(
+          "clusterProfiler",
+          "GSEA dot plot"
+        )
+        .protvis_require_optional(
+          "clusterProfiler",
+          "GSEA dot plot export"
+        )
         print(
           clusterProfiler::dotplot(
             sub_res,
