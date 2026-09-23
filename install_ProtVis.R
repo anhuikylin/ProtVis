@@ -252,39 +252,3 @@ message(
   ". The lazy-load database passed a clean-process verification. Restart R ",
   "before loading the package."
 )
-, manifest$path, ignore.case = TRUE)]",
-    "if (length(xlsx)) stopifnot(all(vapply(xlsx, function(path) tryCatch({ z <- suppressWarnings(utils::unzip(path, list = TRUE)); is.data.frame(z) && nrow(z) > 0L }, error = function(e) FALSE), logical(1L))))",
-    "library(ProtVis, lib.loc = protvis_library)",
-    "launcher <- getExportedValue('ProtVis', 'run_ProtVis')",
-    "stopifnot(is.function(launcher), is.call(body(launcher)) || is.expression(body(launcher)))"
-  ),
-  probe_file,
-  useBytes = TRUE
-)
-rscript <- file.path(
-  R.home("bin"),
-  if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript"
-)
-probe_output <- system2(
-  rscript,
-  c("--vanilla", shQuote(probe_file)),
-  stdout = TRUE,
-  stderr = TRUE
-)
-probe_status <- attr(probe_output, "status")
-if (is.null(probe_status)) probe_status <- 0L
-if (!identical(as.integer(probe_status), 0L)) {
-  stop(
-    "ProtVis was installed but failed the clean-process load test:\n",
-    paste(probe_output, collapse = "\n"),
-    call. = FALSE
-  )
-}
-
-installed_description <- read.dcf(file.path(installed_path, "DESCRIPTION"))
-message(
-  "ProtVis ", installed_description[1L, "Version"],
-  " and its locally installed ProtVisDatabase resources were installed successfully in ", installed_path,
-  ". The lazy-load database passed a clean-process verification. Restart R ",
-  "before loading the package."
-)
