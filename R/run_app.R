@@ -5,10 +5,9 @@
 #' @param enableBookmarking Can be "url", "server", or "disable".
 #' @param uiPattern A regular expression used to determine which requests should be handled by the UI.
 #' @param progress Logical; show a compact console progress bar while ProtVis initializes.
-#' @param ... Arguments to pass to `golem_opts`. See `?golem::get_golem_options` for more details.
+#' @param ... Reserved for backward compatibility; currently ignored.
 #' @return An object that represents the app.
 #' @import shiny
-#' @importFrom golem with_golem_options
 #' @importFrom utils modifyList
 #' @name run_ProtVis
 #' @export
@@ -78,8 +77,6 @@ run_ProtVis <- function(
     startup_bar <- NULL
   }
 
-  golem::with_golem_options(
-    app = app,
-    golem_opts = list(...)
-  )
+  invisible(list(...))
+  app
 }
