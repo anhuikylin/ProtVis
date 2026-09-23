@@ -405,9 +405,9 @@ gsea_ui <- function(id) {
               class = "alert alert-success py-2 small",
               shiny::tags$b("Built-in workflow data"),
               shiny::tags$br(),
-              "Root_VE uses the bundled full retained-protein ",
-              "ranking: 11,049 ranked proteins, 196 map00940 hits, B73−Y12 log2FC ",
-              "metric, weighted GSEA p = 1. Other selected comparisons ",
+              "Root_VE uses the bundled KEGG-annotated comparison set: ",
+              "6,905 ranked proteins, 196 map00940 hits, and the B73−Y12 ",
+              "limma moderated t statistic. Other selected comparisons ",
               "can still be recalculated from the loaded DEP results."
             )
           ),
