@@ -9,6 +9,7 @@ run_ProtVis(
   options = list(),
   enableBookmarking = NULL,
   uiPattern = "/",
+  progress = getOption("protvis.startup.progress", TRUE),
   ...
 )
 }
@@ -20,6 +21,8 @@ run_ProtVis(
 \item{enableBookmarking}{Can be "url", "server", or "disable".}
 
 \item{uiPattern}{A regular expression used to determine which requests should be handled by the UI.}
+
+\item{progress}{Logical; show a compact console progress bar while ProtVis initializes.}
 
 \item{...}{Arguments to pass to `golem_opts`. See `?golem::get_golem_options` for more details.}
 }
