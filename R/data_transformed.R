@@ -38,26 +38,24 @@ data_transformed_ui <- function(id) {
           ns("data_transformed"),
           "Transformation Method",
           choices = list(
-            "Recommended" = c(
-              "Auto (source recommended)" = "auto",
-              "MaxQuant: log2(x × 1e7)" = "maxquant_log2",
-              "log2" = "log2",
-              "None" = "None",
-              "log10" = "log10"
+            "Transformation" = c(
+              "log2 transformation" = "auto",
+              "Scaled log2 transformation (×10^7)" = "maxquant_log2",
+              "log2 transformation (direct)" = "log2",
+              "log10 transformation" = "log10",
+              "No transformation" = "None"
             ),
-            "Advanced" = c(
-              "Z-Score" = "Z-Score",
+            "Scaling" = c(
+              "Z-score standardization" = "Z-Score",
               "Scale only" = "scale",
               "Center only" = "center",
-              "Scale + center" = "scale-center"
+              "Scale and center" = "scale-center"
             )
           ),
           selected = "auto"
         ),
         shiny::div(
-          "Auto uses the source-specific preset. For MaxQuant this applies ",
-          "the built-in preset: log2(intensity × 1e7). Advanced scaling methods ",
-          "remain available for exploratory analysis or visualization.",
+          "Select the transformation applied before imputation and normalization.",
           style = "font-size:12px;color:#657789;line-height:1.45;margin-top:-6px;margin-bottom:10px;"
         ),
 
