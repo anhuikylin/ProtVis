@@ -833,10 +833,6 @@ gsea_ui <- function(id) {
     "fgsea",
     "GSEA computation"
   )
-  .protvis_require_optional(
-    "fgsea",
-    "GSEA computation"
-  )
   set.seed(as.integer(seed))
   fgsea_result <- fgsea::fgseaMultilevel(
     pathways = stats::setNames(
@@ -1294,6 +1290,10 @@ gsea_ui <- function(id) {
   rank_vector <- pathway$rank_vector
   pathway_genes <- pathway$pathway_genes
 
+  .protvis_require_optional(
+    "fgsea",
+    "GSEA computation"
+  )
   set.seed(as.integer(seed))
   fgsea_result <- fgsea::fgseaMultilevel(
     pathways = stats::setNames(
@@ -2175,10 +2175,6 @@ gsea_server <- function(id, shared_state = NULL) {
           "clusterProfiler",
           "GSEA dot plot"
         )
-        .protvis_require_optional(
-          "clusterProfiler",
-          "GSEA dot plot export"
-        )
         print(
           clusterProfiler::dotplot(
             sub_res,
@@ -2563,6 +2559,10 @@ gsea_server <- function(id, shared_state = NULL) {
         shiny::req(gsea_res, top_df)
         sub_res <- gsea_res
         sub_res@result <- top_df
+        .protvis_require_optional(
+          "clusterProfiler",
+          "GSEA dot plot export"
+        )
         grDevices::pdf(
           file,
           width = 8,
