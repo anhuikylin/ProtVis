@@ -5,11 +5,11 @@
 # public UI/server names below replace the earlier fixed-median implementation.
 
 .protvis_norm_methods <- c(
-  "Median" = "median",
-  "Quantile" = "quantile",
-  "VSN" = "vsn",
-  "Cyclic Loess" = "cyclic_loess",
-  "RLR" = "rlr"
+  "Median normalization" = "median",
+  "Quantile normalization" = "quantile",
+  "Variance Stabilizing Normalization (VSN)" = "vsn",
+  "Cyclic Loess normalization" = "cyclic_loess",
+  "Robust Linear Regression (RLR)" = "rlr"
 )
 
 .protvis_norm_matrix <- function(x) {
