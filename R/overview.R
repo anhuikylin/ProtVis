@@ -47,7 +47,7 @@ overview_ui <- function(id) {
             shiny::checkboxInput(ns("cor_cluster_rows"), "Cluster rows", TRUE),
             shiny::checkboxInput(ns("cor_cluster_columns"), "Cluster columns", TRUE),
             shiny::checkboxInput(ns("cor_show_numbers"), "Show correlation values", TRUE),
-            shiny::checkboxInput(ns("cor_show_column_names"), "Show sample names", FALSE),
+            shiny::checkboxInput(ns("cor_show_column_names"), "Show sample names", TRUE),
             shiny::actionButton(ns("run_correlation"), "Run Correlation"),
             shiny::numericInput(ns("cor_plot_width"), "Download Plot Width (inches)", value = 10),
             shiny::numericInput(ns("cor_plot_height"), "Download Plot Height (inches)", value = 7),
