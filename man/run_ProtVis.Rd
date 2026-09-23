@@ -24,7 +24,7 @@ run_ProtVis(
 
 \item{progress}{Logical; show a compact console progress bar while ProtVis initializes.}
 
-\item{...}{Arguments to pass to `golem_opts`. See `?golem::get_golem_options` for more details.}
+\item{...}{Reserved for backward compatibility; currently ignored.}
 }
 \value{
 An object that represents the app.
