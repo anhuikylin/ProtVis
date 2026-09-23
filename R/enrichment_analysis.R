@@ -20,7 +20,6 @@
 #' @importFrom readxl read_excel excel_sheets
 #' @importFrom tools file_ext
 #' @importFrom DT DTOutput renderDT datatable
-#' @importFrom clusterProfiler enricher
 #' @importFrom ggplot2 ggplot aes geom_col geom_point coord_flip theme_bw labs
 #'   theme element_text scale_size_continuous
 #' @importFrom graphics plot text par
@@ -1137,6 +1136,10 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       if (!length(gene_clusters)) {
         return(NULL)
       }
+      .protvis_require_optional(
+        "clusterProfiler",
+        "KEGG enrichment comparison"
+      )
 
       tryCatch(
         clusterProfiler::compareCluster(
@@ -1343,6 +1346,10 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
         return(NULL)
       }
 
+      .protvis_require_optional(
+        "clusterProfiler",
+        "over-representation analysis"
+      )
       enriched <- tryCatch(
         clusterProfiler::enricher(
           gene = genes,
@@ -1475,6 +1482,10 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
       top_n <- attr(data, "plot_top_n") %||% 10L
     }
 
+    .protvis_require_optional(
+      "enrichplot",
+      "enrichment dot plot"
+    )
     plot <- enrichplot::dotplot(
       object,
       showCategory = max(1L, as.integer(top_n)),
@@ -3493,6 +3504,13 @@ enrichment_analysis_server <- function(id, shared_state) {
       rv$go_res <- NULL
       rv$kegg_res <- NULL
       rv$analysis_message <- NULL
+
+      if (base::any(c("go_analysis", "kegg_analysis") %in% input$choices)) {
+        .protvis_require_optional(
+          "clusterProfiler",
+          "GO/KEGG enrichment analysis"
+        )
+      }
 
       if ("go_analysis" %in% input$choices) {
         t2g.go <- normalise_term2gene(rv$background_data$GO_background)
