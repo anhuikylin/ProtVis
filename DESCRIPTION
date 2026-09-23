@@ -1,6 +1,6 @@
 Package: ProtVis
 Title: ProtVis Shiny App
-Version: 0.9.5
+Version: 0.9.6
 Authors@R:
     person(given = "Fei",
            family = "Liang",
@@ -23,7 +23,6 @@ Imports:
     DEqMS,
     DT,
     GO.db,
-    GseaVis,
     MASS,
     MSstats,
     MsBackendMgf,
@@ -53,7 +52,6 @@ Imports:
     fgsea,
     ggplot2,
     ggprism,
-    ggpubr,
     ggsci,
     golem,
     grDevices,
@@ -70,7 +68,6 @@ Imports:
     openxlsx,
     parallel,
     patchwork,
-    pathview,
     pheatmap,
     plotly,
     preprocessCore,
@@ -106,6 +103,9 @@ Remotes:
     junjunlab/GseaVis,
     hadley/pryr
 Suggests:
+    GseaVis,
+    ggpubr,
+    pathview,
     ShinyWGCNA,
     arrow,
     QFeatures,
