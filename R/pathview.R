@@ -60,7 +60,6 @@ pathview_ui <- function(id) {
 #' @importFrom dplyr filter select
 #' @importFrom clusterProfiler enricher
 #' @importFrom utils head
-#' @importFrom pathview pathview
 #' @export
 #'
 utils::globalVariables(c("ko", "KO", "pathway", "Description"))
@@ -172,6 +171,14 @@ pathview_server <- function(id, shared_state = NULL) {
     # ---------- Pathview PNG Drawing ----------
     shiny::observeEvent(input$run, {
       shiny::req(geneList_react(), input$selected_pathway)
+      if (!requireNamespace("pathview", quietly = TRUE)) {
+        shiny::showNotification(
+          "The optional package 'pathview' is required for KEGG pathway rendering.",
+          type = "error",
+          duration = 8
+        )
+        return()
+      }
       pid <- base::sub("^(map|ko)", "", input$selected_pathway)
       geneList <- geneList_react()
       # KO ID sanity check
