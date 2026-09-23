@@ -146,6 +146,10 @@ on.exit(unlink(probe_file, force = TRUE), add = TRUE)
 writeLines(
   c(
     paste0("protvis_library <- ", deparse(protvis_library)),
+    # --vanilla deliberately ignores the user's R_LIBS_USER/Rprofile. Restore
+    # the library search path used for installation so transitive dependencies
+    # (such as bslib -> cachem) remain visible to this independent process.
+    paste0(".libPaths(", paste(capture.output(dput(.libPaths())), collapse = "\n"), ")"),
     "library(ProtVisDatabase, lib.loc = protvis_library)",
     "stopifnot(nzchar(ProtVisDatabase::protvis_database_path('extdata', 'manifest.tsv', must_work = TRUE)))",
     "library(ProtVis, lib.loc = protvis_library)",
