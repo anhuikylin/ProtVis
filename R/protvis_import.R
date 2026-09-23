@@ -89,7 +89,7 @@ protvis_builtin_datasets <- function() {
     description = c(
       paste0(
         "MaxQuant reporter-intensity protein export from MaxQuant_output.xlsx ",
-        "(12,689 protein groups; 30 B73/Y12 samples; corrected sample labels)"
+        "(12,689 protein groups; 30 B73/Y12 samples)"
       ),
       "Proteome Discoverer adapter view of 5,000 real Zea mays B73/Y12 protein groups",
       "DIA-NN adapter view of 5,000 real Zea mays B73/Y12 protein groups",
