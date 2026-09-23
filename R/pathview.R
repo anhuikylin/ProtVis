@@ -171,12 +171,21 @@ pathview_server <- function(id, shared_state = NULL) {
     # ---------- Pathview PNG Drawing ----------
     shiny::observeEvent(input$run, {
       shiny::req(geneList_react(), input$selected_pathway)
+      tryCatch(
+        .protvis_require_optional(
+          "pathview",
+          "KEGG pathway rendering"
+        ),
+        error = function(error) {
+          shiny::showNotification(
+            conditionMessage(error),
+            type = "error",
+            duration = 8
+          )
+          return(NULL)
+        }
+      )
       if (!requireNamespace("pathview", quietly = TRUE)) {
-        shiny::showNotification(
-          "The optional package 'pathview' is required for KEGG pathway rendering.",
-          type = "error",
-          duration = 8
-        )
         return()
       }
       pid <- base::sub("^(map|ko)", "", input$selected_pathway)
