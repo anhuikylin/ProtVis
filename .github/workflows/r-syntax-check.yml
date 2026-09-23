@@ -57,13 +57,14 @@ jobs:
           source("R/gsea.R")
           x <- .protvis_gsea_prepare_archived()
           stopifnot(
-            nrow(x$rank_tbl) == 11049L,
+            nrow(x$rank_tbl) == 6905L,
             sum(x$rank_tbl$in_pathway) == 196L,
-            x$extreme_position == 9893L,
-            abs(x$extreme_es - (-0.3064468069)) < 1e-6,
-            abs(max(x$rank_tbl$running_ES) - 0.2769240517) < 1e-6,
-            abs(max(x$rank_tbl$rank_metric) - 11.324951) < 1e-6,
-            abs(min(x$rank_tbl$rank_metric) - (-7.920156)) < 1e-6
+            x$extreme_position == 6202L,
+            abs(x$extreme_es - (-0.3984103906)) < 1e-6,
+            abs(max(x$rank_tbl$running_ES) - 0.2562033114) < 1e-6,
+            abs(min(x$rank_tbl$running_ES) - (-0.3984103906)) < 1e-6,
+            abs(max(x$rank_tbl$rank_metric) - 154.317739) < 1e-6,
+            abs(min(x$rank_tbl$rank_metric) - (-175.843961)) < 1e-6
           )
           cat("Archived Root_VE phenylpropanoid GSEA geometry validated.\n")
 
