@@ -5,12 +5,11 @@
 #' for static files within the `app/www` directory.
 #'
 #' @import shiny
-#' @importFrom golem bundle_resources
 #' @name golem_add_external_resources
 #' @export
 #'
 golem_add_external_resources <- function() {
-  golem::add_resource_path(
+  shiny::addResourcePath(
     "www",
     app_sys("app/www")
   )
@@ -74,10 +73,6 @@ golem_add_external_resources <- function() {
       rel = "icon",
       type = "image/x-icon",
       href = "https://raw.githubusercontent.com/anhuikylin/ProtVis/dev/app/www/ProtVis_ico.ico"
-    ),
-    golem::bundle_resources(
-      path = app_sys("app/www"),
-      app_title = "ProtVis"
     ),
     shiny::tags$style(shiny::HTML("
       :root {
