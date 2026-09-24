@@ -245,7 +245,6 @@ gsea_ui <- function(id) {
   )
 
   bslib::page_sidebar(
-    title = "GSEA Analysis",
     fillable = FALSE,
     sidebar = bslib::sidebar(
       width = 330,
