@@ -486,6 +486,13 @@
       labels[i] <- paste0("[p", residues[i], "]")
       next
     }
+    if (nrow(mods) == 1L &&
+        residues[i] == "K" &&
+        (grepl("acetyl", mods$name[[1L]], ignore.case = TRUE) ||
+         abs(mods$mass[[1L]] - 42.010565) < 0.02)) {
+      labels[i] <- "K[Acetyl]"
+      next
+    }
     annotations <- vapply(seq_len(nrow(mods)), function(j) {
       paste0(mods$name[j], " ", sprintf("%+.4f", mods$mass[j]))
     }, character(1L))
