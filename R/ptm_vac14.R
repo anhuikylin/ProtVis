@@ -179,7 +179,7 @@
   missing <- packages[!vapply(packages, requireNamespace, logical(1L), quietly = TRUE)]
   if (length(missing)) {
     stop(
-      "Vac14 validation requires Bioconductor packages: ",
+      "PTM mzIdentML workflow requires Bioconductor packages: ",
       paste(missing, collapse = ", "),
       ". Install them with BiocManager::install(c(\"Spectra\", ",
       "\"MsBackendMgf\", \"PSMatch\", \"BiocParallel\")).",
