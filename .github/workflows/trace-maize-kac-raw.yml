@@ -1,0 +1,44 @@
+name: Trace maize Kac raw spectrum
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - ".github/workflows/trace-maize-kac-raw.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve best raw spectrum to PXD
+        shell: python
+        run: |
+          import json, urllib.request, urllib.parse
+
+          pxds = [
+            "PXD002379","PXD003634","PXD009627","PXD015819","PXD017077",
+            "PXD019635","PXD019804","PXD022863","PXD024698","PXD026269",
+            "PXD026369","PXD026378","PXD026760","PXD026853","PXD027417"
+          ]
+          needle = "qe2_03102014_14_o2"
+
+          for pxd in pxds:
+              url = f"https://www.ebi.ac.uk/pride/ws/archive/v2/projects/{pxd}/files?pageSize=1000"
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as response:
+                      data = json.load(response)
+              except Exception as exc:
+                  print("ERROR", pxd, type(exc).__name__, str(exc))
+                  continue
+
+              content = data.get("_embedded", {}).get("files", [])
+              if not content and isinstance(data.get("files"), list):
+                  content = data["files"]
+
+              for item in content:
+                  name = str(item.get("fileName", ""))
+                  if needle.lower() in name.lower():
+                      print("MATCH", pxd, name)
