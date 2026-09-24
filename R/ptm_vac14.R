@@ -1642,7 +1642,14 @@
       .protvis_record_shared_run(
         shared_state,
         module = "ptm_spectrum",
-        method = "mzIdentML_MGF_fragment_matching",
+        method = if (identical(
+          value$target$benchmark_id %||% "",
+          "maize_kac_peptideatlas_2023_09"
+        )) {
+          "PeptideAtlas_consensus_fragment_matching"
+        } else {
+          "mzIdentML_MGF_fragment_matching"
+        },
         category = "ptm",
         parameters = list(
           fragment_tolerance_da = input$vac14_tolerance,
