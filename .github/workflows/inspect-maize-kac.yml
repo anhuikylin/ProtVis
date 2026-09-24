@@ -96,3 +96,48 @@ jobs:
           print(f"KAC_ENTRIES={len(entries)}")
           for i, e in enumerate(entries[:30], 1):
               print("CANDIDATE", i, json.dumps(e, ensure_ascii=False))
+
+          # Extract the exact internal-K acetylation benchmark entry, including
+          # all spectral-library peaks and provenance metadata.
+          target_name = "VGYNPDK[Acetyl]IAFVPISGFEGDNMIER/3"
+          current = {}
+          peak_lines = []
+          in_peaks = False
+
+          def emit_target(e, peaks):
+              if e.get("Name") != target_name:
+                  return False
+              comment = e.get("Comment", "")
+              print("TARGET_NAME=" + e.get("Name", ""))
+              print("TARGET_FULL_NAME=" + e.get("FullName", ""))
+              print("TARGET_PRECURSOR_MZ=" + e.get("PrecursorMZ", ""))
+              print("TARGET_NUM_PEAKS=" + e.get("NumPeaks", ""))
+              print("TARGET_COMMENT=" + comment)
+              print("TARGET_PXDS=" + ",".join(sorted(set(re.findall(r"PXD\\d+", comment)))))
+              print("TARGET_PEAKS_BEGIN")
+              for p in peaks:
+                  print(p)
+              print("TARGET_PEAKS_END")
+              return True
+
+          with gzip.open(path, "rt", errors="replace") as fh:
+              for line in fh:
+                  line = line.rstrip("\n")
+                  if not line:
+                      if emit_target(current, peak_lines):
+                          break
+                      current = {}
+                      peak_lines = []
+                      in_peaks = False
+                      continue
+                  if in_peaks:
+                      peak_lines.append(line)
+                      continue
+                  if line.startswith("Num peaks: "):
+                      current["NumPeaks"] = line.split(": ", 1)[1]
+                      in_peaks = True
+                      continue
+                  if ": " in line:
+                      key, value = line.split(": ", 1)
+                      if key in {"Name","FullName","PrecursorMZ","Comment","LibID","MW","Status"}:
+                          current[key] = value
