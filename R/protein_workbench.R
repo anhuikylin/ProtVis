@@ -673,10 +673,17 @@
 }
 
 .protvis_pw_save_plot <- function(file, plot, extension, width, height) {
+  device <- base::switch(
+    extension,
+    png = grDevices::png,
+    svg = grDevices::svg,
+    pdf = grDevices::pdf,
+    base::stop("Unsupported plot download format: ", extension, call. = FALSE)
+  )
   ggplot2::ggsave(
     filename = file,
     plot = plot,
-    device = extension,
+    device = device,
     width = width,
     height = height,
     units = "in",
