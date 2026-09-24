@@ -84,6 +84,7 @@
       "best_raw_spectrum",
       "qe2_03102014_14_o2.28787.28787"
     ),
+    best_raw_source_pxd = value("best_raw_source_pxd", "PXD002379"),
     supporting_pxd_ids = value("supporting_pxd_ids"),
     peptideatlas_probability = value("peptideatlas_probability"),
     consensus_replicates = value("consensus_replicates"),
@@ -824,6 +825,7 @@
         "PTM benchmark",
         "Modified site",
         "Best raw spectrum",
+        "Original source PXD",
         "Supporting PXD IDs",
         "PeptideAtlas probability",
         "Consensus replicates",
@@ -836,6 +838,7 @@
         paste0("Lys", benchmark$acetyl_position, " · +",
                sprintf("%.6f", benchmark$acetyl_mass), " Da"),
         benchmark$best_raw_spectrum %||% "Not reported",
+        benchmark$best_raw_source_pxd %||% "Not reported",
         benchmark$supporting_pxd_ids %||% "Not reported",
         benchmark$peptideatlas_probability %||% "Not reported",
         benchmark$consensus_replicates %||% "Not reported",
