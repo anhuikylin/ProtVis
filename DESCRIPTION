@@ -1,6 +1,6 @@
 Package: ProtVis
 Title: ProtVis Shiny App
-Version: 0.9.13
+Version: 0.9.14
 Authors@R:
     person(given = "Fei",
            family = "Liang",
