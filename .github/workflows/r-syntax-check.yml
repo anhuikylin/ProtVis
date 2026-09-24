@@ -162,7 +162,8 @@ jobs:
             values[["modified_position"]] == "7",
             values[["mass_shift_da"]] == "42.010565",
             values[["peptideatlas_probability"]] == "1.0000",
-            values[["library_num_peaks"]] == "150"
+            values[["library_num_peaks"]] == "150",
+            values[["best_raw_source_pxd"]] == "PXD002379"
           )
 
           mgf <- readLines(mgf_file, warn = FALSE)
