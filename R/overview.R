@@ -81,7 +81,7 @@ overview_ui <- function(id) {
                           "No scaling" = "none"),
               selected = "row"
             ),
-            shiny::checkboxInput(ns("exp_cluster_rows"), "Cluster samples", TRUE),
+            shiny::checkboxInput(ns("exp_cluster_rows"), "Cluster samples", FALSE),
             shiny::checkboxInput(ns("exp_cluster_columns"), "Cluster proteins", TRUE),
             shiny::checkboxInput(ns("exp_show_feature_names"), "Show protein names", FALSE),
             colourpicker::colourInput(
