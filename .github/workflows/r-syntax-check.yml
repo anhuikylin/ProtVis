@@ -194,19 +194,19 @@ jobs:
           matched <- .protvis_vac14_match_ions(
             peaks,
             kac$candidates,
-            tolerance_da = 0.5
+            tolerance_da = 0.05
           )
           coverage <- kac$key_ions
           coverage$matched <- vapply(
             coverage$mz,
-            function(mz) min(abs(peaks$mz - mz), na.rm = TRUE) <= 0.5,
+            function(mz) min(abs(peaks$mz - mz), na.rm = TRUE) <= 0.05,
             logical(1L)
           )
           stopifnot(
-            nrow(matched) == 39L,
+            nrow(matched) == 37L,
             nrow(coverage) == 46L,
             sum(coverage$matched) == 21L,
-            max(abs(matched$error_da)) < 0.14
+            max(abs(matched$error_da)) < 0.05
           )
 
           source_text <- paste(
@@ -240,7 +240,7 @@ jobs:
           )
           cat(
             "PTM phosphorylation and maize Kac benchmarks validated; ",
-            "39 Kac fragments matched with 21/46 primary b/y ions covered.\n",
+            "37 Kac fragments matched at 0.05 Da with 21/46 primary b/y ions covered.\n",
             sep = ""
           )
 
