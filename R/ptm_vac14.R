@@ -150,7 +150,7 @@
     catalog = catalog,
     spectra = spectra,
     metadata = metadata,
-    source = "Maize PeptideAtlas consensus HR-HCD spectrum",
+    source = "Maize PeptideAtlas reanalysis · consensus HR-HCD spectrum",
     benchmark = target
   )
 }
@@ -843,8 +843,8 @@
       Item = c(
         "PTM benchmark",
         "Modified site",
-        "Best raw spectrum",
-        "Original source PXD",
+        "Best contributing raw spectrum",
+        "Best raw source PXD",
         "Supporting PXD IDs",
         "PeptideAtlas probability",
         "Consensus replicates",
@@ -1597,6 +1597,85 @@
     shiny::updateSelectizeInput(session, "vac14_psm_choice", choices = character(), selected = character())
     status(list(type = "idle", message = "Input changed. Click LOAD PSMs."))
   }
+
+
+  output$vac14_benchmark_note <- shiny::renderUI({
+    ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
+
+    if (identical(ptm_type, "acetylation")) {
+      return(shiny::p(
+        "Maize Kac benchmark: ",
+        shiny::strong("VGYNPDK[Acetyl]IAFVPISGFEGDNMIER"),
+        " · Lys7.",
+        class = "pw-note"
+      ))
+    }
+
+    shiny::p(
+      "Phosphorylation benchmark: ",
+      shiny::strong("AT[pS]GVPFSQYK (Ser3)"),
+      ".",
+      class = "pw-note"
+    )
+  })
+
+  output$vac14_benchmark_info <- shiny::renderUI({
+    ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
+
+    if (identical(ptm_type, "acetylation")) {
+      target <- base::tryCatch(
+        .protvis_maize_kac_target(),
+        error = function(e) NULL
+      )
+      if (base::is.null(target)) {
+        return(shiny::div(
+          class = "alert alert-warning py-2 small",
+          "Maize Kac benchmark data are unavailable. Reinstall ProtVisDatabase."
+        ))
+      }
+
+      source_pxd <- target$best_raw_source_pxd %||% "PXD002379"
+      return(shiny::div(
+        class = "alert alert-info py-2 small",
+        shiny::strong("Maize PeptideAtlas 2023-09"),
+        " · Kac consensus HR-HCD · ",
+        shiny::tags$a(
+          href = target$peptideatlas_build,
+          target = "_blank",
+          rel = "noopener noreferrer",
+          "PeptideAtlas"
+        ),
+        shiny::tags$br(),
+        shiny::span(
+          "Best contributing raw spectrum: ",
+          target$best_raw_spectrum %||% "not reported",
+          " · "
+        ),
+        shiny::tags$a(
+          href = base::paste0(
+            "https://www.ebi.ac.uk/pride/archive/projects/",
+            source_pxd
+          ),
+          target = "_blank",
+          rel = "noopener noreferrer",
+          source_pxd
+        )
+      ))
+    }
+
+    target <- .protvis_vac14_target()
+    shiny::div(
+      class = "alert alert-info py-2 small",
+      shiny::strong("PXD001057"),
+      " · mzIdentML + MGF · ",
+      shiny::tags$a(
+        href = target$base_url,
+        target = "_blank",
+        rel = "noopener noreferrer",
+        "PRIDE"
+      )
+    )
+  })
   shiny::observeEvent(input$vac14_ptm_type, clear_loaded_data(), ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_source, clear_loaded_data(), ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_mzid, clear_loaded_data(), ignoreInit = TRUE)
