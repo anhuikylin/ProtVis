@@ -34,9 +34,12 @@ jobs:
                   print("ERROR", pxd, type(exc).__name__, str(exc))
                   continue
 
-              content = data.get("_embedded", {}).get("files", [])
-              if not content and isinstance(data.get("files"), list):
-                  content = data["files"]
+              if isinstance(data, list):
+                  content = data
+              else:
+                  content = data.get("_embedded", {}).get("files", [])
+                  if not content and isinstance(data.get("files"), list):
+                      content = data["files"]
 
               for item in content:
                   name = str(item.get("fileName", ""))
