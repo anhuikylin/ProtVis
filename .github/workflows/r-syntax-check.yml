@@ -176,7 +176,73 @@ jobs:
             any(mgf == "PEPMASS=904.110900"),
             any(mgf == "CHARGE=3+")
           )
-          cat("PTM phosphorylation and maize Kac benchmarks validated.\n")
+
+          peak_text <- strsplit(
+            trimws(mgf[peak_lines]),
+            "[[:space:]]+"
+          )
+          peak_matrix <- do.call(
+            rbind,
+            lapply(peak_text, as.numeric)
+          )
+          peaks <- data.frame(
+            mz = peak_matrix[, 1L],
+            intensity = peak_matrix[, 2L]
+          )
+          peaks$rel <- peaks$intensity / max(peaks$intensity) * 100
+
+          matched <- .protvis_vac14_match_ions(
+            peaks,
+            kac$candidates,
+            tolerance_da = 0.5
+          )
+          coverage <- kac$key_ions
+          coverage$matched <- vapply(
+            coverage$mz,
+            function(mz) min(abs(peaks$mz - mz), na.rm = TRUE) <= 0.5,
+            logical(1L)
+          )
+          stopifnot(
+            nrow(matched) == 39L,
+            nrow(coverage) == 46L,
+            sum(coverage$matched) == 21L,
+            max(abs(matched$error_da)) < 0.14
+          )
+
+          source_text <- paste(
+            readLines("R/ptm_vac14.R", warn = FALSE),
+            collapse = "\n"
+          )
+          generic_server <- tail(
+            strsplit(
+              source_text,
+              ".protvis_vac14_server <- function",
+              fixed = TRUE
+            )[[1L]],
+            1L
+          )
+          stopifnot(
+            grepl(
+              "output$vac14_benchmark_note",
+              generic_server,
+              fixed = TRUE
+            ),
+            grepl(
+              "output$vac14_benchmark_info",
+              generic_server,
+              fixed = TRUE
+            ),
+            grepl(
+              "PeptideAtlas_consensus_fragment_matching",
+              generic_server,
+              fixed = TRUE
+            )
+          )
+          cat(
+            "PTM phosphorylation and maize Kac benchmarks validated; ",
+            "39 Kac fragments matched with 21/46 primary b/y ions covered.\n",
+            sep = ""
+          )
 
       - name: Validate quiet startup dependency graph
         shell: Rscript {0}
