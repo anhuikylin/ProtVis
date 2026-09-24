@@ -99,6 +99,84 @@ jobs:
           stopifnot(length(forbidden) == 0L)
           cat("Transcriptome GSEA bundled assets validated.\n")
 
+      - name: Validate PTM phosphorylation and maize Kac benchmarks
+        shell: Rscript {0}
+        run: |
+          source("R/ptm_vac14.R")
+
+          phospho <- .protvis_vac14_theoretical()
+          stopifnot(
+            abs(phospho$precursor_2plus - 632.784111) < 1e-6,
+            phospho$fragment_table$AA[[3L]] == "S+80",
+            any(phospho$candidates$label == "b3-98")
+          )
+
+          kac_mod <- data.frame(
+            location = 7L,
+            mass = 42.010565,
+            name = "Acetyl",
+            stringsAsFactors = FALSE
+          )
+          kac <- .protvis_ptm_theoretical(
+            "VGYNPDKIAFVPISGFEGDNMIER",
+            kac_mod
+          )
+          kac_label <- .protvis_modified_sequence_label(
+            "VGYNPDKIAFVPISGFEGDNMIER",
+            kac_mod
+          )
+          proton <- 1.007276466621
+          kac_mz3 <- (kac$mh + 2 * proton) / 3
+          stopifnot(
+            identical(
+              kac_label,
+              "VGYNPDK[Acetyl]IAFVPISGFEGDNMIER"
+            ),
+            abs(kac_mz3 - 904.1108942) < 1e-6,
+            !any(grepl("-98", kac$candidates$label, fixed = TRUE))
+          )
+
+          root <- file.path(
+            "ProtVisDatabase", "inst", "extdata", "ptm", "maize_kac"
+          )
+          meta_file <- file.path(
+            root,
+            "maize_peptideatlas_kac_VGYNPDK_Acetyl.tsv"
+          )
+          mgf_file <- file.path(
+            root,
+            "maize_peptideatlas_kac_VGYNPDK_Acetyl.mgf"
+          )
+          stopifnot(file.exists(meta_file), file.exists(mgf_file))
+
+          meta <- utils::read.delim(
+            meta_file,
+            sep = "\t",
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+          )
+          values <- stats::setNames(meta$value, meta$field)
+          stopifnot(
+            values[["modified_peptide"]] ==
+              "VGYNPDK[Acetyl]IAFVPISGFEGDNMIER",
+            values[["modified_position"]] == "7",
+            values[["mass_shift_da"]] == "42.010565",
+            values[["peptideatlas_probability"]] == "1.0000",
+            values[["library_num_peaks"]] == "150"
+          )
+
+          mgf <- readLines(mgf_file, warn = FALSE)
+          peak_lines <- grepl(
+            "^[0-9]+(?:\\.[0-9]+)?[[:space:]]+[0-9]+",
+            mgf
+          )
+          stopifnot(
+            sum(peak_lines) == 150L,
+            any(mgf == "PEPMASS=904.110900"),
+            any(mgf == "CHARGE=3+")
+          )
+          cat("PTM phosphorylation and maize Kac benchmarks validated.\n")
+
       - name: Validate quiet startup dependency graph
         shell: Rscript {0}
         run: |
