@@ -1698,6 +1698,26 @@ overview_server <- function(id, shared_state) {
           NULL
         }
       )
+
+      if (!base::is.null(rv$qc_density_result)) {
+        .protvis_record_shared_run(
+          shared_state,
+          module = "overview_density",
+          method = "kernel_density",
+          category = "qc",
+          parameters = list(
+            group_by = input$qc_density_group_by %||% "triplicate",
+            bandwidth_adjust = input$qc_density_adjust %||% 1
+          ),
+          plot_config = list(
+            line_width = input$qc_density_linewidth %||% 0.65,
+            line_opacity = input$qc_density_alpha %||% 1,
+            font_size = input$qc_density_base_size %||% 13,
+            show_legend = isTRUE(input$qc_density_show_legend),
+            legend_position = input$qc_density_legend_position %||% "right"
+          )
+        )
+      }
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$run_qc_cv, {
@@ -1713,6 +1733,28 @@ overview_server <- function(id, shared_state) {
           NULL
         }
       )
+
+      if (!base::is.null(rv$qc_cv_result)) {
+        .protvis_record_shared_run(
+          shared_state,
+          module = "overview_protein_cv",
+          method = "coefficient_of_variation",
+          category = "qc",
+          parameters = list(
+            formula = "sd / abs(mean)",
+            histogram_bins = base::as.integer(input$qc_cv_bins %||% 50L)
+          ),
+          plot_config = list(
+            fill_color = input$qc_cv_fill_color %||% "#22c55e",
+            border_color = input$qc_cv_border_color %||% "#FFFFFF",
+            bar_opacity = input$qc_cv_alpha %||% 1,
+            border_line_width = input$qc_cv_border_linewidth %||% 0.5,
+            font_size = input$qc_cv_base_size %||% 13,
+            show_median = isTRUE(input$qc_cv_show_median),
+            median_line_color = input$qc_cv_median_color %||% "#DC2626"
+          )
+        )
+      }
     }, ignoreInit = TRUE)
 
     output$qc_summary <- shiny::renderPrint({
