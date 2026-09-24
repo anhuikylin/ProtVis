@@ -231,35 +231,71 @@ overview_ui <- function(id) {
           bslib::accordion_panel(
             title = "Normalized intensity density",
             icon = bsicons::bs_icon("activity"),
-            shiny::selectInput(
-              ns("qc_density_group_by"),
-              "Line colour grouping",
-              choices = c(
-                "Triplicate group" = "triplicate",
-                "Individual sample" = "sample"
+            bslib::accordion(
+              open = NULL,
+              bslib::accordion_panel(
+                title = "Density parameters",
+                shiny::selectInput(
+                  ns("qc_density_group_by"),
+                  "Line colour grouping",
+                  choices = c(
+                    "Triplicate group" = "triplicate",
+                    "Individual sample" = "sample"
+                  ),
+                  selected = "triplicate"
+                ),
+                shiny::numericInput(
+                  ns("qc_density_adjust"),
+                  "Bandwidth adjustment",
+                  value = 1,
+                  min = 0.1,
+                  max = 5,
+                  step = 0.1
+                )
               ),
-              selected = "triplicate"
-            ),
-            shiny::numericInput(
-              ns("qc_density_adjust"),
-              "Bandwidth adjustment",
-              value = 1,
-              min = 0.1,
-              max = 5,
-              step = 0.1
-            ),
-            shiny::numericInput(
-              ns("qc_density_linewidth"),
-              "Line width",
-              value = 0.65,
-              min = 0.1,
-              max = 3,
-              step = 0.05
-            ),
-            shiny::checkboxInput(
-              ns("qc_density_show_legend"),
-              "Show legend",
-              value = FALSE
+              bslib::accordion_panel(
+                title = "Plot appearance",
+                shiny::numericInput(
+                  ns("qc_density_linewidth"),
+                  "Line width",
+                  value = 0.65,
+                  min = 0.1,
+                  max = 3,
+                  step = 0.05
+                ),
+                shiny::sliderInput(
+                  ns("qc_density_alpha"),
+                  "Line opacity",
+                  min = 0.1,
+                  max = 1,
+                  value = 1,
+                  step = 0.05
+                ),
+                shiny::numericInput(
+                  ns("qc_density_base_size"),
+                  "Font size",
+                  value = 13,
+                  min = 8,
+                  max = 24,
+                  step = 1
+                ),
+                shiny::checkboxInput(
+                  ns("qc_density_show_legend"),
+                  "Show legend",
+                  value = FALSE
+                ),
+                shiny::selectInput(
+                  ns("qc_density_legend_position"),
+                  "Legend position",
+                  choices = c(
+                    "Right" = "right",
+                    "Bottom" = "bottom",
+                    "Top" = "top",
+                    "Left" = "left"
+                  ),
+                  selected = "right"
+                )
+              )
             ),
             shiny::actionButton(
               ns("run_qc_density"),
@@ -292,23 +328,66 @@ overview_ui <- function(id) {
           bslib::accordion_panel(
             title = "Protein coefficient of variation",
             icon = bsicons::bs_icon("bar-chart"),
-            shiny::numericInput(
-              ns("qc_cv_bins"),
-              "Histogram bins",
-              value = 50,
-              min = 10,
-              max = 200,
-              step = 5
-            ),
-            colourpicker::colourInput(
-              ns("qc_cv_fill_color"),
-              "Bar fill colour",
-              value = "#22c55e"
-            ),
-            colourpicker::colourInput(
-              ns("qc_cv_border_color"),
-              "Bar border colour",
-              value = "#FFFFFF"
+            bslib::accordion(
+              open = NULL,
+              bslib::accordion_panel(
+                title = "Histogram parameters",
+                shiny::numericInput(
+                  ns("qc_cv_bins"),
+                  "Histogram bins",
+                  value = 50,
+                  min = 10,
+                  max = 200,
+                  step = 5
+                ),
+                shiny::checkboxInput(
+                  ns("qc_cv_show_median"),
+                  "Show median CV",
+                  value = FALSE
+                )
+              ),
+              bslib::accordion_panel(
+                title = "Plot appearance",
+                colourpicker::colourInput(
+                  ns("qc_cv_fill_color"),
+                  "Bar fill colour",
+                  value = "#22c55e"
+                ),
+                colourpicker::colourInput(
+                  ns("qc_cv_border_color"),
+                  "Bar border colour",
+                  value = "#FFFFFF"
+                ),
+                shiny::sliderInput(
+                  ns("qc_cv_alpha"),
+                  "Bar opacity",
+                  min = 0.1,
+                  max = 1,
+                  value = 1,
+                  step = 0.05
+                ),
+                shiny::numericInput(
+                  ns("qc_cv_border_linewidth"),
+                  "Border line width",
+                  value = 0.5,
+                  min = 0,
+                  max = 3,
+                  step = 0.05
+                ),
+                shiny::numericInput(
+                  ns("qc_cv_base_size"),
+                  "Font size",
+                  value = 13,
+                  min = 8,
+                  max = 24,
+                  step = 1
+                ),
+                colourpicker::colourInput(
+                  ns("qc_cv_median_color"),
+                  "Median line colour",
+                  value = "#DC2626"
+                )
+              )
             ),
             shiny::actionButton(
               ns("run_qc_cv"),
@@ -1517,16 +1596,19 @@ overview_server <- function(id, shared_state) {
         ggplot2::geom_density(
           na.rm = TRUE,
           adjust = input$qc_density_adjust %||% 1,
-          linewidth = input$qc_density_linewidth %||% 0.65
+          linewidth = input$qc_density_linewidth %||% 0.65,
+          alpha = input$qc_density_alpha %||% 1
         ) +
         ggplot2::scale_color_manual(
           values = palette,
           drop = FALSE
         ) +
-        ggplot2::theme_minimal(base_size = 13) +
+        ggplot2::theme_minimal(
+          base_size = input$qc_density_base_size %||% 13
+        ) +
         ggplot2::theme(
           legend.position = if (isTRUE(input$qc_density_show_legend)) {
-            "right"
+            input$qc_density_legend_position %||% "right"
           } else {
             "none"
           },
@@ -1573,18 +1655,34 @@ overview_server <- function(id, shared_state) {
       )
       cv_df <- cv_df[base::is.finite(cv_df$CV), , drop = FALSE]
 
-      ggplot2::ggplot(cv_df, ggplot2::aes(x = CV)) +
+      plot <- ggplot2::ggplot(cv_df, ggplot2::aes(x = CV)) +
         ggplot2::geom_histogram(
           bins = base::as.integer(input$qc_cv_bins %||% 50L),
           fill = input$qc_cv_fill_color %||% "#22c55e",
-          color = input$qc_cv_border_color %||% "#FFFFFF"
+          color = input$qc_cv_border_color %||% "#FFFFFF",
+          alpha = input$qc_cv_alpha %||% 1,
+          linewidth = input$qc_cv_border_linewidth %||% 0.5
         ) +
-        ggplot2::theme_minimal(base_size = 13) +
+        ggplot2::theme_minimal(
+          base_size = input$qc_cv_base_size %||% 13
+        ) +
         ggplot2::labs(
           title = "Protein coefficient of variation",
           x = "CV",
           y = "Protein count"
         )
+
+      if (isTRUE(input$qc_cv_show_median) && base::nrow(cv_df) > 0L) {
+        plot <- plot +
+          ggplot2::geom_vline(
+            xintercept = stats::median(cv_df$CV, na.rm = TRUE),
+            linetype = "dashed",
+            linewidth = 0.7,
+            color = input$qc_cv_median_color %||% "#DC2626"
+          )
+      }
+
+      plot
     }
 
     shiny::observeEvent(input$run_qc_density, {
@@ -1654,7 +1752,7 @@ overview_server <- function(id, shared_state) {
           "Set parameters and click RUN DENSITY to display the plot."
         )
       )
-      print(rv$qc_density_result)
+      print(build_qc_density_plot())
     }, height = 430)
     output$qc_pca_plot <- shiny::renderPlot(
       safe_qc_plot(qc_pca_plot), height = 220
@@ -1666,7 +1764,7 @@ overview_server <- function(id, shared_state) {
           "Set parameters and click RUN CV to display the plot."
         )
       )
-      print(rv$qc_cv_result)
+      print(build_qc_cv_plot())
     }, height = 350)
 
     output$qc_density_download_pdf <- shiny::downloadHandler(
@@ -1684,7 +1782,7 @@ overview_server <- function(id, shared_state) {
           height = input$qc_density_plot_height
         )
         shiny::req(rv$qc_density_result)
-        print(rv$qc_density_result)
+        print(build_qc_density_plot())
         grDevices::dev.off()
       }
     )
@@ -1704,7 +1802,7 @@ overview_server <- function(id, shared_state) {
           height = input$qc_cv_plot_height
         )
         shiny::req(rv$qc_cv_result)
-        print(rv$qc_cv_result)
+        print(build_qc_cv_plot())
         grDevices::dev.off()
       }
     )
