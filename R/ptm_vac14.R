@@ -727,29 +727,69 @@
   protein <- if (length(proteins)) paste(proteins, collapse = "; ") else "Protein not reported"
   spectrum_title <- catalog_row$spectrum_title[[1L]]
   if (!nzchar(spectrum_title)) spectrum_title <- catalog_row$spectrum_id[[1L]]
-  benchmark <- .protvis_vac14_target()
-  is_public_benchmark <- identical(bundle$source, "PRIDE public files") &&
-    identical(sequence, benchmark$sequence) &&
-    (identical(catalog_row$spectrum_id[[1L]], benchmark$spectrum_id) ||
-       identical(spectrum_title, benchmark$spectrum_title))
-  if (is_public_benchmark) protein <- benchmark$protein
+  benchmark <- bundle$benchmark %||% NULL
+  if (base::is.null(benchmark) &&
+      identical(bundle$source, "PRIDE public files")) {
+    benchmark <- .protvis_vac14_target()
+  }
+
+  benchmark_match <- !base::is.null(benchmark) &&
+    identical(sequence, benchmark$sequence)
+
+  benchmark_id <- if (benchmark_match) {
+    benchmark$benchmark_id %||% ""
+  } else {
+    ""
+  }
+  is_public_benchmark <- identical(
+    benchmark_id,
+    "phosphorylation_pxd001057"
+  )
+
+  if (benchmark_match &&
+      base::nzchar(benchmark$protein %||% "")) {
+    protein <- benchmark$protein
+  }
+
   display_sequence <- if (is_public_benchmark) {
     paste0("R.", catalog_row$modified_sequence[[1L]], ".H")
   } else {
     catalog_row$modified_sequence[[1L]]
   }
+
   spectrum_label <- if (is_public_benchmark) {
     paste("Vac14", display_sequence)
+  } else if (benchmark_match &&
+             base::nzchar(benchmark$ptm_type %||% "")) {
+    paste(
+      if (identical(benchmark$ptm_type, "acetylation")) {
+        "Maize Kac"
+      } else {
+        benchmark$ptm_type
+      },
+      display_sequence
+    )
   } else {
     display_sequence
   }
+
+  project <- if (benchmark_match) {
+    benchmark$project %||% "Built-in PTM benchmark"
+  } else {
+    "Uploaded dataset"
+  }
+
   target <- list(
-    project = if (identical(bundle$source, "PRIDE public files")) "PXD001057" else "Uploaded dataset",
-    protein = protein, sequence = sequence,
+    benchmark_id = benchmark_id,
+    ptm_type = if (benchmark_match) benchmark$ptm_type %||% "" else "",
+    project = project,
+    protein = protein,
+    sequence = sequence,
     modified_sequence = catalog_row$modified_sequence[[1L]],
     display_sequence = display_sequence,
     spectrum_label = spectrum_label,
     is_public_benchmark = is_public_benchmark,
+    is_builtin_benchmark = benchmark_match,
     spectrum_id = catalog_row$spectrum_id[[1L]],
     spectrum_title = spectrum_title,
     precursor_mz = if (is.finite(observed_mz)) observed_mz else calculated_precursor,
@@ -776,6 +816,37 @@
               paste0(sum(coverage$matched), "/", nrow(coverage))),
     stringsAsFactors = FALSE
   )
+
+  if (benchmark_match &&
+      identical(benchmark$ptm_type %||% "", "acetylation")) {
+    provenance <- data.frame(
+      Item = c(
+        "PTM benchmark",
+        "Modified site",
+        "Best raw spectrum",
+        "Supporting PXD IDs",
+        "PeptideAtlas probability",
+        "Consensus replicates",
+        "Consensus dot score",
+        "Assigned peak fraction",
+        "Reference DOI"
+      ),
+      Value = c(
+        "Maize lysine acetylation (Kac)",
+        paste0("Lys", benchmark$acetyl_position, " · +",
+               sprintf("%.6f", benchmark$acetyl_mass), " Da"),
+        benchmark$best_raw_spectrum %||% "Not reported",
+        benchmark$supporting_pxd_ids %||% "Not reported",
+        benchmark$peptideatlas_probability %||% "Not reported",
+        benchmark$consensus_replicates %||% "Not reported",
+        benchmark$consensus_dot %||% "Not reported",
+        benchmark$consensus_fraction_assigned_peaks %||% "Not reported",
+        benchmark$paper_doi %||% "Not reported"
+      ),
+      stringsAsFactors = FALSE
+    )
+    summary <- base::rbind(summary, provenance)
+  }
   list(target = target, source = bundle$source, psm_table = psm_table,
        spectrum_match_column = spectrum_match$column, peaks = peaks,
        matched = matched, theoretical = theoretical, key_ions = coverage,
