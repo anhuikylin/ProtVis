@@ -1727,7 +1727,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
   ) +
     patchwork::plot_layout(guides = "collect") +
     patchwork::plot_annotation(
-      title = "Directional KEGG enrichment across DEP comparisons",
+      title = "Enrichment Summary across DEP comparisons",
       subtitle = paste0(
         if (length(evidence)) {
           evidence[[1L]]
@@ -2082,7 +2082,7 @@ enrichment_analysis_ui <- function(id) {
       ),
 
       bslib::nav_panel(
-        "Directional KEGG",
+        "Enrichment Summary",
         shiny::div(
           class = "protvis-directional-kegg",
           shiny::tags$style(shiny::HTML("
@@ -2365,7 +2365,7 @@ enrichment_analysis_ui <- function(id) {
             bslib::card_header(
               shiny::div(
                 shiny::tags$h4(
-                  "Directional KEGG enrichment across DEP comparisons",
+                  "Enrichment Summary across DEP comparisons",
                   class = "directional-kegg-title"
                 ),
                 shiny::tags$p(
@@ -2883,7 +2883,7 @@ enrichment_analysis_server <- function(id, shared_state) {
         ok = TRUE,
         message = paste0(
           "✓ Step4 + Step6 loaded · built-in DEP workflow prepared ",
-          "inside Directional KEGG"
+          "inside Enrichment Summary"
         ),
         step4 = step4,
         step6 = step6,
@@ -3699,7 +3699,7 @@ enrichment_analysis_server <- function(id, shared_state) {
           )
         } else {
           paste0(
-            "No directional KEGG pathways passed BH ≤ ",
+             "No KEGG pathways passed BH ≤ ",
             input$directional_p_adjust %||% 0.05,
             ". Comparison-specific tested protein universes ",
             "were applied."
@@ -3720,7 +3720,7 @@ enrichment_analysis_server <- function(id, shared_state) {
         )
       } else {
         rv$directional_kegg_message <- paste0(
-          "Standard directional KEGG completed: ",
+           "Enrichment Summary completed: ",
           nrow(result),
           " pathways retained across ",
           length(unique(result$Comparison)),
