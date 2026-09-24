@@ -1,6 +1,6 @@
 Package: ProtVis
 Title: ProtVis Shiny App
-Version: 0.9.14
+Version: 0.9.15
 Authors@R:
     person(given = "Fei",
            family = "Liang",
@@ -28,7 +28,7 @@ Imports:
     MsBackendMgf,
     NormalyzerDE,
     PCAtools,
-    ProtVisDatabase (>= 0.1.1),
+    ProtVisDatabase (>= 0.1.4),
     PSMatch,
     RColorBrewer,
     Rtsne,
