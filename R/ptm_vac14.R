@@ -1408,15 +1408,22 @@
     sidebar = bslib::sidebar(
       width = 380,
       shiny::h4("PTM spectrum"),
-      shiny::p(
-        "Select a PSM to visualize fragment-ion annotation. Default: ",
-        shiny::strong("AT[pS]GVPFSQYK (Ser3)"),
-        ".",
-        class = "pw-note"
+      shiny::selectInput(
+        ns("vac14_ptm_type"),
+        "PTM type",
+        choices = c(
+          "Phosphorylation" = "phosphorylation",
+          "Lysine acetylation (Kac)" = "acetylation"
+        ),
+        selected = "phosphorylation"
       ),
+      shiny::uiOutput(ns("vac14_benchmark_note")),
       shiny::radioButtons(
         ns("vac14_source"), "Input source",
-        choices = c("PXD001057 (PRIDE)" = "public", "Upload files" = "upload"),
+        choices = c(
+          "Built-in benchmark" = "public",
+          "Upload files" = "upload"
+        ),
         selected = "public"
       ),
       shiny::conditionalPanel(
@@ -1427,17 +1434,7 @@
       ),
       shiny::conditionalPanel(
         condition = sprintf("input['%s'] === 'public'", ns("vac14_source")),
-        shiny::div(
-          class = "alert alert-info py-2 small",
-          shiny::strong("PXD001057"),
-          " · mzIdentML + MGF · ",
-          shiny::tags$a(
-            href = .protvis_vac14_target()$base_url,
-            target = "_blank",
-            rel = "noopener noreferrer",
-            "PRIDE"
-          )
-        )
+        shiny::uiOutput(ns("vac14_benchmark_info"))
       ),
       shiny::actionButton(
         ns("vac14_load"), "LOAD PSMs",
