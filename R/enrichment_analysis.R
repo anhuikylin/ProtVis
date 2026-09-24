@@ -3699,7 +3699,7 @@ enrichment_analysis_server <- function(id, shared_state) {
           )
         } else {
           paste0(
-             "No KEGG pathways passed BH ≤ ",
+            "No KEGG pathways passed BH ≤ ",
             input$directional_p_adjust %||% 0.05,
             ". Comparison-specific tested protein universes ",
             "were applied."
@@ -3720,7 +3720,7 @@ enrichment_analysis_server <- function(id, shared_state) {
         )
       } else {
         rv$directional_kegg_message <- paste0(
-           "Enrichment Summary completed: ",
+          "Enrichment Summary completed: ",
           nrow(result),
           " pathways retained across ",
           length(unique(result$Comparison)),
