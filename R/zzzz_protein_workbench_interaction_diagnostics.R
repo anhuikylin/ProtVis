@@ -201,7 +201,18 @@
               bslib::card(bslib::card_header("Interaction database references"), DT::DTOutput(ns("interaction_xrefs"))),
               bslib::card(
                 full_screen = TRUE,
-                .protvis_pw_plot_card_header("STRING interaction network", ns, "interaction_plot"),
+                bslib::card_header(
+                  shiny::div(
+                    style = "display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;",
+                    shiny::span("STRING interaction network"),
+                    shiny::downloadButton(
+                      ns("download_interaction_plot_pdf"),
+                      "DOWNLOAD PDF",
+                      icon = bsicons::bs_icon("file-earmark-pdf"),
+                      class = "btn-sm btn-outline-primary"
+                    )
+                  )
+                ),
                 shiny::plotOutput(ns("interaction_plot"), height = "430px")
               )
             ),

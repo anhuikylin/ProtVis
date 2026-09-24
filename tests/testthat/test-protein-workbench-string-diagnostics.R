@@ -33,4 +33,6 @@ test_that("Protein Workbench Interaction UI exposes explicit STRING diagnostics"
   expect_match(html, "Minimum STRING confidence (0-1000)", fixed = TRUE)
   expect_match(html, "Interaction database references", fixed = TRUE)
   expect_match(html, "STRING interaction network", fixed = TRUE)
+  expect_match(html, "DOWNLOAD PDF", fixed = TRUE)
+  expect_match(html, "download_interaction_plot_pdf", fixed = TRUE)
 })
