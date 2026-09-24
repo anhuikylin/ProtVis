@@ -33,7 +33,7 @@ jobs:
         run: |
           install.packages("BiocManager")
           BiocManager::install(
-            c("Spectra", "MsBackendMgf", "PSMatch", "BiocParallel"),
+            c("Spectra", "MsBackendMgf"),
             ask = FALSE,
             update = FALSE
           )
