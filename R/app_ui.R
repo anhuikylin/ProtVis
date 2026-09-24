@@ -1294,12 +1294,6 @@ app_ui <- function(request) {
         psm_explorer_ui("psm_explorer")
       ),
 
-      bslib::nav_panel(
-        "Release data",
-        icon = bsicons::bs_icon("folder2-open"),
-        release_data_ui("release_data1")
-      ),
-
       bslib::nav_menu(
         "Toolkits",
         icon = bsicons::bs_icon("tools"),
@@ -1321,7 +1315,12 @@ app_ui <- function(request) {
           stacked_column_chart_ui("stacked_column_chart")
         ),
         bslib::nav_panel("Correlation chord", icon = bsicons::bs_icon("circle"), correlation_chord_ui("correlation_chord")),
-        bslib::nav_panel("Transcriptome Analysis", icon = bsicons::bs_icon("bar-chart-line"), DEG_ui("DEG"))
+        bslib::nav_panel("Transcriptome Analysis", icon = bsicons::bs_icon("bar-chart-line"), DEG_ui("DEG")),
+        bslib::nav_panel(
+          "Release data",
+          icon = bsicons::bs_icon("folder2-open"),
+          release_data_ui("release_data1")
+        )
       ),
 
       help_ui()
