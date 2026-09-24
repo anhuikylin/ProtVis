@@ -5,12 +5,11 @@
 #' for static files within the `app/www` directory.
 #'
 #' @import shiny
-#' @importFrom golem bundle_resources
 #' @name golem_add_external_resources
 #' @export
 #'
 golem_add_external_resources <- function() {
-  golem::add_resource_path(
+  shiny::addResourcePath(
     "www",
     app_sys("app/www")
   )
@@ -73,11 +72,7 @@ golem_add_external_resources <- function() {
     shiny::tags$link(
       rel = "icon",
       type = "image/x-icon",
-      href = "https://raw.githubusercontent.com/xuebinzhang-lab/ProtVis/dev/app/www/ProtVis_ico.ico"
-    ),
-    golem::bundle_resources(
-      path = app_sys("app/www"),
-      app_title = "ProtVis"
+      href = "https://raw.githubusercontent.com/anhuikylin/ProtVis/dev/app/www/ProtVis_ico.ico"
     ),
     shiny::tags$style(shiny::HTML("
       :root {
@@ -1299,12 +1294,6 @@ app_ui <- function(request) {
         psm_explorer_ui("psm_explorer")
       ),
 
-      bslib::nav_panel(
-        "Release data",
-        icon = bsicons::bs_icon("folder2-open"),
-        release_data_ui("release_data1")
-      ),
-
       bslib::nav_menu(
         "Toolkits",
         icon = bsicons::bs_icon("tools"),
@@ -1326,7 +1315,12 @@ app_ui <- function(request) {
           stacked_column_chart_ui("stacked_column_chart")
         ),
         bslib::nav_panel("Correlation chord", icon = bsicons::bs_icon("circle"), correlation_chord_ui("correlation_chord")),
-        bslib::nav_panel("DEG Analyse", icon = bsicons::bs_icon("bar-chart-line"), DEG_ui("DEG"))
+        bslib::nav_panel("Transcriptome Analysis", icon = bsicons::bs_icon("bar-chart-line"), DEG_ui("DEG")),
+        bslib::nav_panel(
+          "Release data",
+          icon = bsicons::bs_icon("folder2-open"),
+          release_data_ui("release_data1")
+        )
       ),
 
       help_ui()

@@ -3,7 +3,7 @@
 #' The default workflow is Recommended DEP: observed Step4 log2 intensities,
 #' sample-wise median centering, no imputation, detection filtering, and
 #' limma empirical-Bayes statistics with BH FDR control. The historical
-#' Step6 workflow is retained as an explicit Archived reproduction mode.
+#' Step6 workflow is retained as an explicit built-in workflow mode.
 #'
 #' @param id Module namespace.
 #' @return Shiny UI.
@@ -37,14 +37,14 @@ DEP_analysis_ui <- function(id) {
             title = "Analysis parameters",
             icon = bsicons::bs_icon("sliders"),
             shiny::tags$small(
-              "Recommended DEP is the default. Archived reproduction remains available for historical comparability.",
+              "Recommended DEP is the default. A built-in workflow with predefined settings is also available.",
               style = "color:#6c757d;"
             ),
             shiny::selectInput(
               ns("dep_mode"), "DEP mode",
               choices = c(
                 "Recommended DEP" = "recommended",
-                "Archived reproduction" = "archived"
+                "Built-in DEP workflow" = "archived"
               ),
               selected = "recommended"
             ),
@@ -116,12 +116,12 @@ DEP_analysis_ui <- function(id) {
               shiny::tags$div(
                 class = "alert alert-secondary py-2 px-3",
                 shiny::tags$small(
-                  "Uses the historical Step6 normalized matrix and archived limma settings."
+                  "Uses the built-in Step6 normalized matrix and predefined limma settings."
                 )
               ),
               shiny::checkboxInput(
                 ns("dep_matrix_shift"),
-                "Apply historical x + abs(min(x)) shift",
+                "Apply built-in x + abs(min(x)) shift",
                 value = TRUE
               )
             ),
@@ -130,7 +130,7 @@ DEP_analysis_ui <- function(id) {
               choices = c(
                 "Detected in >=2 replicates in both groups (recommended)" = "both_genotypes",
                 "Detected in >=2 replicates in either group" = "either_genotype",
-                "Detected in any comparison sample (archived)" = "archived_any_detected",
+                "Detected in any comparison sample (built-in workflow)" = "archived_any_detected",
                 "All proteins" = "all"
               ),
               selected = "both_genotypes"
@@ -161,7 +161,7 @@ DEP_analysis_ui <- function(id) {
         shiny::hr(),
         shiny::h5("Demo CompareGroup"),
         shiny::tags$small(
-          "The built-in demo uses the five archived B73 vs Y12 developmental comparisons.",
+          "The built-in demo includes five B73 vs Y12 developmental comparisons.",
           style = "color:#6c757d;"
         ),
         DT::DTOutput(ns("demo_compare_table")),
@@ -259,16 +259,6 @@ DEP_analysis_ui <- function(id) {
                 ),
                 colourpicker::colourInput(
                   ns("summary_up"), "Up", value = "#FA8072"
-                ),
-                shiny::tags$hr(),
-                shiny::tags$strong("Presence/absence evidence"),
-                colourpicker::colourInput(
-                  ns("summary_group1_only"),
-                  "Group1 only", value = "#E76F51"
-                ),
-                colourpicker::colourInput(
-                  ns("summary_group2_only"),
-                  "Group2 only", value = "#2A9D8F"
                 ),
                 shiny::numericInput(
                   ns("summary_width"), "PDF width (inch)",
@@ -638,12 +628,13 @@ DEP_analysis_ui <- function(id) {
     quantitative <- results[[key]]
     q_counts <- c(
       "Upregulated" = 0L,
+      "Not significant" = 0L,
       "Downregulated" = 0L
     )
     if (!is.null(quantitative) && nrow(quantitative)) {
       q_tab <- table(factor(
         quantitative$regulation,
-        levels = c("Upregulated", "Downregulated")
+        levels = c("Upregulated", "Not significant", "Downregulated")
       ))
       q_counts[names(q_tab)] <- as.integer(q_tab)
     }
@@ -662,6 +653,14 @@ DEP_analysis_ui <- function(id) {
       p_counts[names(p_tab)] <- as.integer(p_tab)
     }
 
+    all_retained_counts <- c(
+      "Upregulated" = q_counts[["Upregulated"]] +
+        p_counts[["Detected in Group1 only"]],
+      "Not significant" = q_counts[["Not significant"]],
+      "Downregulated" = q_counts[["Downregulated"]] +
+        p_counts[["Detected in Group2 only"]]
+    )
+
     rbind(
       data.frame(
         Comparison = key,
@@ -671,6 +670,7 @@ DEP_analysis_ui <- function(id) {
         Evidence = "Quantitative DEP",
         Direction = names(q_counts),
         Protein_number = as.integer(q_counts),
+        Total_proteins = NA_integer_,
         stringsAsFactors = FALSE
       ),
       data.frame(
@@ -681,6 +681,18 @@ DEP_analysis_ui <- function(id) {
         Evidence = "Presence/absence",
         Direction = names(p_counts),
         Protein_number = as.integer(p_counts),
+        Total_proteins = NA_integer_,
+        stringsAsFactors = FALSE
+      ),
+      data.frame(
+        Comparison = key,
+        Group1 = g1,
+        Group2 = g2,
+        Stage = stage,
+        Evidence = "All retained differential evidence",
+        Direction = names(all_retained_counts),
+        Protein_number = as.integer(all_retained_counts),
+        Total_proteins = sum(all_retained_counts),
         stringsAsFactors = FALSE
       )
     )
@@ -717,7 +729,10 @@ DEP_analysis_ui <- function(id) {
       "Detected in Group1 only",
       "Detected in Group2 only"
     ),
-    labels = c("Group1 only", "Group2 only")
+    labels = c(
+      "Group1 detected / Group2 not detected",
+      "Group2 detected / Group1 not detected"
+    )
   )
 
   ggplot2::ggplot(
@@ -731,20 +746,19 @@ DEP_analysis_ui <- function(id) {
     ggplot2::geom_col(
       colour = "black",
       linewidth = 0.3,
-      width = 0.72,
-      position = ggplot2::position_dodge(width = 0.78)
+      width = 0.72
     ) +
     ggplot2::coord_flip() +
     ggplot2::scale_fill_manual(
       values = c(
-        "Group1 only" = group1_only,
-        "Group2 only" = group2_only
+        "Group1 detected / Group2 not detected" = group1_only,
+        "Group2 detected / Group1 not detected" = group2_only
       ),
       drop = FALSE
     ) +
     ggplot2::labs(
-      title = "Evidence 2 · Presence/absence",
-      subtitle = "Proteins detected in one group but absent from the other",
+      title = "Evidence 2 · Retained detected/undetected proteins",
+      subtitle = "Kept as differential evidence without imputation",
       x = NULL,
       y = "Protein number",
       fill = NULL
@@ -768,14 +782,44 @@ DEP_analysis_ui <- function(id) {
     )
 }
 
+.protvis_dep_all_retained_summary_plot <- function(
+    counts, up = "#FA8072", ns = "#B3B3B3", down = "#90EE90") {
+  retained <- counts[
+    counts$Evidence == "All retained differential evidence",
+    , drop = FALSE
+  ]
+  if (!nrow(retained)) {
+    return(
+      ggplot2::ggplot() +
+        ggplot2::theme_void() +
+        ggplot2::annotate(
+          "text", x = 0, y = 0,
+          label = "No retained differential evidence."
+        )
+    )
+  }
+
+  .protvis_dep_summary_plot(retained, up = up, ns = ns, down = down) +
+    ggplot2::labs(
+      title = "All retained proteins · differential analysis result",
+      subtitle = paste0(
+        "Group1-only detections are included as up; Group2-only detections ",
+        "are included as down."
+      )
+    ) +
+    ggplot2::theme(
+      plot.subtitle = ggplot2::element_text(
+        hjust = 0.5, size = 8.5, colour = "#6c757d"
+      )
+    )
+}
+
 .protvis_dep_parallel_evidence_plot <- function(
     quantitative_counts,
     evidence_counts,
     up = "#FA8072",
     ns = "#B3B3B3",
-    down = "#90EE90",
-    group1_only = "#E76F51",
-    group2_only = "#2A9D8F") {
+    down = "#90EE90") {
   quantitative <- .protvis_dep_summary_plot(
     quantitative_counts,
     up = up,
@@ -792,24 +836,24 @@ DEP_analysis_ui <- function(id) {
       )
     )
 
-  presence <- .protvis_dep_presence_summary_plot(
+  all_retained <- .protvis_dep_all_retained_summary_plot(
     evidence_counts,
-    group1_only = group1_only,
-    group2_only = group2_only
+    up = up,
+    ns = ns,
+    down = down
   )
 
   patchwork::wrap_plots(
     quantitative,
-    presence,
+    all_retained,
     ncol = 2,
-    widths = c(1.08, 0.92)
+    widths = c(1, 1)
   ) +
     patchwork::plot_annotation(
-      title = "Two parallel differential-protein evidence streams",
+      title = "Differential-protein results with detected/undetected proteins retained",
       subtitle = paste0(
-        "Quantitative abundance differences and presence/absence evidence ",
-        "are reported separately rather than forcing missing proteins into ",
-        "the same statistical model."
+        "The right panel retains one-group-only detections in the final ",
+        "Up/Not significant/Down differential-protein count."
       ),
       theme = ggplot2::theme(
         plot.title = ggplot2::element_text(
@@ -926,37 +970,37 @@ DEP_analysis_ui <- function(id) {
     )
 }
 
-.protvis_dep_presence_count_data <- function(presence, group1, group2) {
-  patterns <- c(
-    "Detected in Group1 only",
-    "Detected in Group2 only"
-  )
-  observed <- if (is.data.frame(presence) &&
-                  "Pattern" %in% names(presence)) {
+.protvis_dep_all_retained_count_data <- function(result, presence) {
+  directions <- c("Upregulated", "Not significant", "Downregulated")
+  quantitative <- if (is.data.frame(result) && "regulation" %in% names(result)) {
+    as.integer(table(factor(as.character(result$regulation), levels = directions)))
+  } else {
+    rep.int(0L, length(directions))
+  }
+
+  patterns <- c("Detected in Group1 only", "Detected in Group2 only")
+  observed <- if (is.data.frame(presence) && "Pattern" %in% names(presence)) {
     as.character(presence$Pattern)
   } else {
     character()
   }
-  counts <- as.integer(table(factor(observed, levels = patterns)))
-  labels <- c(
-    paste(as.character(group1), "only"),
-    paste(as.character(group2), "only")
-  )
+  detected_only <- as.integer(table(factor(observed, levels = patterns)))
+
   data.frame(
-    Direction = factor(labels, levels = labels),
-    Protein_number = counts,
+    Direction = factor(directions, levels = directions),
+    Protein_number = c(
+      quantitative[[1]] + detected_only[[1]],
+      quantitative[[2]],
+      quantitative[[3]] + detected_only[[2]]
+    ),
     stringsAsFactors = FALSE
   )
 }
 
-.protvis_dep_presence_count_plot <- function(
-    presence, group1, group2, title = NULL,
-    group1_only = "#E76F51", group2_only = "#2A9D8F") {
-  counts <- .protvis_dep_presence_count_data(presence, group1, group2)
-  colours <- stats::setNames(
-    c(group1_only, group2_only),
-    as.character(counts$Direction)
-  )
+.protvis_dep_all_retained_count_plot <- function(
+    result, presence, title = NULL,
+    up = "#FA8072", ns = "#B3B3B3", down = "#90EE90") {
+  counts <- .protvis_dep_all_retained_count_data(result, presence)
 
   ggplot2::ggplot(
     counts,
@@ -964,7 +1008,11 @@ DEP_analysis_ui <- function(id) {
   ) +
     ggplot2::geom_col(colour = "black", linewidth = 0.3) +
     ggplot2::coord_flip() +
-    ggplot2::scale_fill_manual(values = colours, drop = FALSE) +
+    ggplot2::scale_fill_manual(values = c(
+      "Upregulated" = up,
+      "Not significant" = ns,
+      "Downregulated" = down
+    )) +
     ggplot2::theme_bw() +
     ggplot2::labs(
       x = NULL,
@@ -1064,6 +1112,8 @@ DEP_analysis_server <- function(id, shared_state) {
     reset_dep <- function() {
       rv$dep_results <- list()
       rv$presence_absence <- list()
+      shared_state$dep_results <- list()
+      shared_state$presence_absence <- list()
       rv$dep_analysis_matrix <- NULL
       rv$dep_summary <- data.frame()
       rv$evidence_summary <- data.frame()
@@ -1385,7 +1435,7 @@ DEP_analysis_server <- function(id, shared_state) {
       }
       if (identical(mode, "archived") && is.null(rv$normalized_matrix)) {
         shiny::showNotification(
-          "Archived reproduction requires the Step6 normalized matrix.",
+          "The built-in DEP workflow requires the Step6 normalized matrix.",
           type = "error",
           duration = 8
         )
@@ -1464,7 +1514,7 @@ DEP_analysis_server <- function(id, shared_state) {
       progress_message <- if (identical(mode, "recommended")) {
         "Running Recommended DEP"
       } else {
-        "Running archived-compatible limma"
+        "Running built-in limma workflow"
       }
 
       shinyWidgets::updateProgressBar(
@@ -1607,6 +1657,10 @@ DEP_analysis_server <- function(id, shared_state) {
         comparison_order
       )
       rv$dep_ready <- length(rv$dep_results) > 0
+      # Make the just-computed results immediately available to downstream
+      # modules (including Directional KEGG) without requiring a file reload.
+      shared_state$dep_results <- rv$dep_results
+      shared_state$presence_absence <- rv$presence_absence
 
       if (inherits(shared_state$dataset, "ProtVis_dataset") && rv$dep_ready) {
         dataset <- shared_state$dataset
@@ -1677,7 +1731,7 @@ DEP_analysis_server <- function(id, shared_state) {
             if (identical(mode, "recommended")) {
               "Recommended DEP"
             } else {
-              "Archived DEP"
+              "Built-in DEP workflow"
             },
             " completed. Volcano plots remain unloaded until SHOW VOLCANO is clicked."
           )
@@ -1701,9 +1755,7 @@ DEP_analysis_server <- function(id, shared_state) {
         rv$evidence_summary,
         up = input$summary_up %||% "#FA8072",
         ns = input$summary_ns %||% "#B3B3B3",
-        down = input$summary_down %||% "#90EE90",
-        group1_only = input$summary_group1_only %||% "#E76F51",
-        group2_only = input$summary_group2_only %||% "#2A9D8F"
+        down = input$summary_down %||% "#90EE90"
       ))
     })
 
@@ -1716,9 +1768,7 @@ DEP_analysis_server <- function(id, shared_state) {
           rv$evidence_summary,
           up = input$summary_up %||% "#FA8072",
           ns = input$summary_ns %||% "#B3B3B3",
-          down = input$summary_down %||% "#90EE90",
-          group1_only = input$summary_group1_only %||% "#E76F51",
-          group2_only = input$summary_group2_only %||% "#2A9D8F"
+          down = input$summary_down %||% "#90EE90"
         )
         ggplot2::ggsave(
           file, plot = plot, device = "pdf",
@@ -1806,9 +1856,15 @@ DEP_analysis_server <- function(id, shared_state) {
           if (!nrow(presence)) {
             presence <- data.frame(
               Message = if (identical(rv$dep_params$mode, "recommended")) {
-                "No presence/absence candidate met the current detection rule."
+                paste(
+                  "No retained detected/undetected differential protein met",
+                  "the current detection rule."
+                )
               } else {
-                "Presence/absence candidates are reported only in Recommended DEP."
+                paste(
+                  "Detected/undetected differential proteins are reported",
+                  "only in Recommended DEP."
+                )
               },
               stringsAsFactors = FALSE
             )
@@ -1834,17 +1890,13 @@ DEP_analysis_server <- function(id, shared_state) {
         )
 
         output[[presence_count_id]] <- shiny::renderPlot({
-          print(.protvis_dep_presence_count_plot(
+          print(.protvis_dep_all_retained_count_plot(
+            rv$dep_results[[key]],
             rv$presence_absence[[key]] %||% data.frame(),
-            group1 = g1,
-            group2 = g2,
             title = .protvis_dep_stage_label(g1),
-            group1_only = input[[paste0(
-              "presence_count_group1_", i
-            )]] %||% "#E76F51",
-            group2_only = input[[paste0(
-              "presence_count_group2_", i
-            )]] %||% "#2A9D8F"
+            up = input[[paste0("bar_up_", i)]] %||% "#FA8072",
+            ns = input[[paste0("bar_ns_", i)]] %||% "#B3B3B3",
+            down = input[[paste0("bar_down_", i)]] %||% "#90EE90"
           ))
         })
 
@@ -1853,17 +1905,13 @@ DEP_analysis_server <- function(id, shared_state) {
             paste0("Presence_absence_count_", key, ".pdf")
           },
           content = function(file) {
-            plot <- .protvis_dep_presence_count_plot(
+            plot <- .protvis_dep_all_retained_count_plot(
+              rv$dep_results[[key]],
               rv$presence_absence[[key]] %||% data.frame(),
-              group1 = g1,
-              group2 = g2,
               title = .protvis_dep_stage_label(g1),
-              group1_only = input[[paste0(
-                "presence_count_group1_", i
-              )]] %||% "#E76F51",
-              group2_only = input[[paste0(
-                "presence_count_group2_", i
-              )]] %||% "#2A9D8F"
+              up = input[[paste0("bar_up_", i)]] %||% "#FA8072",
+              ns = input[[paste0("bar_ns_", i)]] %||% "#B3B3B3",
+              down = input[[paste0("bar_down_", i)]] %||% "#90EE90"
             )
             ggplot2::ggsave(
               file, plot = plot, device = "pdf",
@@ -2148,13 +2196,17 @@ DEP_analysis_server <- function(id, shared_state) {
             bslib::card(
               height = "560px",
               bslib::card_header(
-                paste("Evidence 2 · Presence/absence candidates -", g1, "vs", g2)
+                paste(
+                  "Evidence 2 · Retained detected/undetected proteins -",
+                  g1, "vs", g2
+                )
               ),
               bslib::card_body(
                 shiny::tags$small(
                   paste0(
-                    "Recommended DEP does not impute proteins that are absent ",
-                    "from one group. Such candidates are reported separately."
+                    "Proteins detected in one group and not detected in the ",
+                    "other are retained as separate differential evidence; ",
+                    "they are not imputed or included in Evidence 1 testing."
                   ),
                   style = "color:#6c757d;"
                 ),
@@ -2162,7 +2214,7 @@ DEP_analysis_server <- function(id, shared_state) {
                 shiny::br(),
                 shiny::downloadButton(
                   ns(presence_download_id),
-                  "DOWNLOAD CANDIDATES"
+                  "DOWNLOAD RETAINED PROTEINS"
                 ),
                 shiny::br(),
                 shiny::br(),
@@ -2173,7 +2225,7 @@ DEP_analysis_server <- function(id, shared_state) {
               height = "560px",
               bslib::card_header(
                 paste(
-                  "Evidence 2 · Presence/absence count -",
+                  "All retained proteins · Differential analysis count -",
                   g1, "vs", g2
                 )
               ),
@@ -2181,14 +2233,17 @@ DEP_analysis_server <- function(id, shared_state) {
                 bslib::layout_sidebar(
                   sidebar = bslib::sidebar(
                     width = 240,
-                    colourpicker::colourInput(
-                      ns(paste0("presence_count_group1_", i)),
-                      paste(g1, "only"), "#E76F51"
+                    shiny::tags$small(
+                      paste0(
+                        "Uses the same Up / Not significant / Down colors ",
+                        "as Evidence 1. ", g1,
+                        "-only detections are included as Up; ", g2,
+                        "-only detections are included as Down."
+                      ),
+                      style = "color:#6c757d;"
                     ),
-                    colourpicker::colourInput(
-                      ns(paste0("presence_count_group2_", i)),
-                      paste(g2, "only"), "#2A9D8F"
-                    ),
+                    shiny::br(),
+                    shiny::br(),
                     shiny::numericInput(
                       ns(paste0("presence_count_width_", i)),
                       "PDF width", 7, min = 4, max = 20
@@ -2199,7 +2254,7 @@ DEP_analysis_server <- function(id, shared_state) {
                     ),
                     shiny::downloadButton(
                       ns(presence_count_download_id),
-                      "DOWNLOAD PRESENCE/ABSENCE COUNT"
+                      "DOWNLOAD ALL RETAINED DEP COUNT"
                     )
                   ),
                   shiny::plotOutput(

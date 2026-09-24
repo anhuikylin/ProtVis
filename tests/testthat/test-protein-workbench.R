@@ -66,3 +66,69 @@ test_that("Protein Workbench is exposed as a separate Toolkits module", {
   expect_match(app_html, "Plant-mPLoc", fixed = TRUE)
   expect_match(app_html, "swissmodel", fixed = TRUE)
 })
+
+
+test_that("Protein Workbench static plots expose PNG, SVG and PDF downloads", {
+  html <- as.character(ProtVis::protein_workbench_ui("pw_download_test"))
+  expected_ids <- c(
+    "download_composition_plot_png",
+    "download_composition_plot_svg",
+    "download_composition_plot_pdf",
+    "download_hydropathy_plot_png",
+    "download_hydropathy_plot_svg",
+    "download_hydropathy_plot_pdf",
+    "download_domain_plot_png",
+    "download_domain_plot_svg",
+    "download_domain_plot_pdf",
+    "download_interaction_plot_png",
+    "download_interaction_plot_svg",
+    "download_interaction_plot_pdf"
+  )
+  for (id in expected_ids) {
+    expect_match(html, id, fixed = TRUE)
+  }
+
+  base_source <- base::paste(
+    base::readLines(testthat::test_path("..", "..", "R", "protein_workbench.R")),
+    collapse = "\n"
+  )
+  interaction_source <- base::paste(
+    base::readLines(testthat::test_path("..", "..", "R", "zzzz_protein_workbench_interaction_diagnostics.R")),
+    collapse = "\n"
+  )
+  expect_match(base_source, "ProtVis_residue_composition", fixed = TRUE)
+  expect_match(base_source, "ProtVis_Kyte_Doolittle_hydropathy", fixed = TRUE)
+  expect_match(base_source, "ProtVis_domain_architecture", fixed = TRUE)
+  expect_match(interaction_source, "ProtVis_STRING_interaction_network", fixed = TRUE)
+})
+
+
+test_that("Protein Workbench exposes AlphaFold PDB download support", {
+  module_source <- base::paste(
+    base::readLines(testthat::test_path("..", "..", "R", "protein_workbench.R")),
+    collapse = "\n"
+  )
+  expect_match(module_source, "DOWNLOAD PDB", fixed = TRUE)
+  expect_match(module_source, "download_alphafold_pdb", fixed = TRUE)
+  expect_match(module_source, "_AlphaFold.pdb", fixed = TRUE)
+  expect_match(module_source, 'contentType = "chemical/x-pdb"', fixed = TRUE)
+})
+
+
+test_that("Protein Workbench MaizeGDB annotation output uses the module session namespace", {
+  module_source <- base::paste(
+    base::readLines(testthat::test_path("..", "..", "R", "protein_workbench.R")),
+    collapse = "\n"
+  )
+  expect_match(
+    module_source,
+    'DT::DTOutput\(session\\$ns\("maizegdb_table"\)\)',
+    fixed = FALSE
+  )
+  expect_false(
+    grepl(
+      'DT::DTOutput\(ns\("maizegdb_table"\)\)',
+      module_source
+    )
+  )
+})

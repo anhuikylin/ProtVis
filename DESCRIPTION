@@ -1,6 +1,6 @@
 Package: ProtVis
 Title: ProtVis Shiny App
-Version: 0.9.1
+Version: 0.9.16
 Authors@R:
     person(given = "Fei",
            family = "Liang",
@@ -23,12 +23,12 @@ Imports:
     DEqMS,
     DT,
     GO.db,
-    GseaVis,
     MASS,
     MSstats,
     MsBackendMgf,
     NormalyzerDE,
     PCAtools,
+    ProtVisDatabase (>= 0.1.4),
     PSMatch,
     RColorBrewer,
     Rtsne,
@@ -38,8 +38,8 @@ Imports:
     bio3d,
     bsicons,
     bslib,
+    cachem,
     circlize,
-    clusterProfiler,
     colourpicker,
     config,
     corrplot,
@@ -49,9 +49,7 @@ Imports:
     fs,
     ggplot2,
     ggprism,
-    ggpubr,
     ggsci,
-    golem,
     grDevices,
     grid,
     gridExtra,
@@ -66,7 +64,6 @@ Imports:
     openxlsx,
     parallel,
     patchwork,
-    pathview,
     pheatmap,
     plotly,
     preprocessCore,
@@ -98,9 +95,17 @@ Imports:
     httr,
     rvest
 Remotes:
+    anhuikylin/ProtVisDatabase,
     junjunlab/GseaVis,
     hadley/pryr
 Suggests:
+    golem,
+    fgsea,
+    enrichplot,
+    clusterProfiler,
+    GseaVis,
+    ggpubr,
+    pathview,
     ShinyWGCNA,
     arrow,
     QFeatures,
