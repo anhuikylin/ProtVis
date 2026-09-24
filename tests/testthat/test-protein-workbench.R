@@ -101,3 +101,15 @@ test_that("Protein Workbench static plots expose PNG, SVG and PDF downloads", {
   expect_match(base_source, "ProtVis_domain_architecture", fixed = TRUE)
   expect_match(interaction_source, "ProtVis_STRING_interaction_network", fixed = TRUE)
 })
+
+
+test_that("Protein Workbench exposes AlphaFold PDB download support", {
+  module_source <- base::paste(
+    base::readLines(testthat::test_path("..", "..", "R", "protein_workbench.R")),
+    collapse = "\n"
+  )
+  expect_match(module_source, "DOWNLOAD PDB", fixed = TRUE)
+  expect_match(module_source, "download_alphafold_pdb", fixed = TRUE)
+  expect_match(module_source, "_AlphaFold.pdb", fixed = TRUE)
+  expect_match(module_source, 'contentType = "chemical/x-pdb"', fixed = TRUE)
+})

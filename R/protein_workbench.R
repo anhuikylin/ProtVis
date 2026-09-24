@@ -1263,7 +1263,16 @@ protein_workbench_ui <- function(id) {
               bslib::layout_columns(
                 col_widths = c(5, 7),
                 bslib::card(bslib::card_header("Structure resources"), DT::DTOutput(ns("structure_table"))),
-                bslib::card(bslib::card_header("AlphaFold structure"), r3dmol::r3dmolOutput(ns("alphafold_view"), height = "470px"))
+                bslib::card(
+                  bslib::card_header(
+                    shiny::div(
+                      style = "display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;",
+                      shiny::span("AlphaFold structure"),
+                      shiny::uiOutput(ns("alphafold_pdb_download_ui"))
+                    )
+                  ),
+                  r3dmol::r3dmolOutput(ns("alphafold_view"), height = "470px")
+                )
               ),
               shiny::br(),
               DT::DTOutput(ns("alphafold_table"))
@@ -1862,6 +1871,32 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       if (!base::nrow(table)) table <- base::data.frame(Message = "No structure cross-reference is available.")
       DT::datatable(table, rownames = FALSE, options = base::list(pageLength = 12, scrollX = TRUE))
     })
+
+    output$alphafold_pdb_download_ui <- shiny::renderUI({
+      pdb <- rv$alphafold_pdb
+      if (base::is.null(pdb) || !base::nzchar(base::as.character(pdb))) return(NULL)
+      shiny::downloadButton(
+        session$ns("download_alphafold_pdb"),
+        "DOWNLOAD PDB",
+        icon = bsicons::bs_icon("download"),
+        class = "btn-sm btn-outline-primary"
+      )
+    })
+
+    output$download_alphafold_pdb <- shiny::downloadHandler(
+      filename = function() {
+        accession <- current_accession()
+        if (!base::nzchar(accession)) accession <- "protein"
+        accession <- base::gsub("[^A-Za-z0-9._-]+", "_", accession)
+        base::paste0(accession, "_AlphaFold.pdb")
+      },
+      content = function(file) {
+        pdb <- rv$alphafold_pdb
+        shiny::req(!base::is.null(pdb), base::nzchar(base::as.character(pdb)))
+        base::writeLines(base::as.character(pdb), con = file, useBytes = TRUE)
+      },
+      contentType = "chemical/x-pdb"
+    )
 
     output$alphafold_view <- r3dmol::renderR3dmol({
       .protvis_pw_model_view(rv$alphafold_pdb)
