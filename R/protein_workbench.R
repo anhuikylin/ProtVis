@@ -61,6 +61,250 @@
   httr::content(response, as = "text", encoding = "UTF-8")
 }
 
+.protvis_pw_xml_escape <- function(x) {
+  x <- base::as.character(x %||% "")
+  x <- base::gsub("&", "&amp;", x, fixed = TRUE)
+  x <- base::gsub('"', "&quot;", x, fixed = TRUE)
+  x <- base::gsub("<", "&lt;", x, fixed = TRUE)
+  x <- base::gsub(">", "&gt;", x, fixed = TRUE)
+  x
+}
+
+.protvis_pw_maize_gene_id <- function(identifier) {
+  identifier <- base::trimws(base::as.character(identifier %||% ""))
+  if (!base::nzchar(identifier) ||
+      !base::grepl("^Zm", identifier, ignore.case = TRUE)) {
+    return("")
+  }
+
+  gene_id <- base::sub("_[TP][0-9]+.*$", "", identifier, ignore.case = TRUE)
+  gene_id <- base::sub("\\.[0-9]+$", "", gene_id)
+  if (!base::grepl("^Zm[A-Za-z0-9]+$", gene_id, ignore.case = TRUE)) {
+    return("")
+  }
+  gene_id
+}
+
+.protvis_pw_maizemine_rows <- function(gene_id, paths, timeout = 30) {
+  if (!base::nzchar(gene_id) || !base::length(paths)) {
+    return(base::data.frame())
+  }
+
+  query_xml <- base::sprintf(
+    '<query model="genomic" view="%s"><constraint path="Gene" op="LOOKUP" value="%s"/></query>',
+    base::paste(paths, collapse = " "),
+    .protvis_pw_xml_escape(gene_id)
+  )
+
+  raw <- .protvis_pw_http_json(
+    "https://maizemine.rnet.missouri.edu/maizemine/service/query/results",
+    query = base::list(
+      query = query_xml,
+      format = "jsonrows"
+    ),
+    timeout = timeout,
+    not_found = NULL
+  )
+
+  results <- raw$results %||% base::list()
+  if (base::is.data.frame(results)) {
+    out <- results
+    if (base::ncol(out) == base::length(paths)) {
+      base::names(out) <- paths
+    }
+    return(out)
+  }
+  if (!base::length(results)) return(base::data.frame())
+
+  rows <- base::lapply(results, function(row) {
+    if (base::is.data.frame(row)) {
+      row <- base::as.list(row[1, , drop = FALSE])
+    }
+
+    if (base::is.list(row) && !base::is.null(base::names(row)) &&
+        base::any(base::nzchar(base::names(row)))) {
+      values <- base::lapply(paths, function(path) {
+        short <- base::sub("^Gene\\.", "", path)
+        value <- row[[path]] %||% row[[short]] %||% NA_character_
+        if (base::is.list(value)) {
+          value <- base::paste(.protvis_pw_leaf_values(value), collapse = "; ")
+        }
+        value <- base::as.character(value %||% NA_character_)
+        if (!base::length(value)) NA_character_ else value[[1L]]
+      })
+    } else {
+      values <- base::as.list(
+        base::unlist(row, recursive = TRUE, use.names = FALSE)
+      )
+      if (base::length(values) < base::length(paths)) {
+        values <- c(
+          values,
+          base::rep(
+            base::list(NA_character_),
+            base::length(paths) - base::length(values)
+          )
+        )
+      }
+      values <- values[base::seq_along(paths)]
+    }
+
+    base::as.data.frame(
+      stats::setNames(values, paths),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  })
+
+  out <- base::do.call(base::rbind, rows)
+  base::rownames(out) <- NULL
+  out
+}
+
+.protvis_pw_maizegdb_live <- function(identifier) {
+  gene_id <- .protvis_pw_maize_gene_id(identifier)
+  if (!base::nzchar(gene_id)) {
+    return(base::list(
+      gene_id = "",
+      url = "",
+      table = base::data.frame(),
+      status = "not_maize"
+    ))
+  }
+
+  maizegdb_url <- base::paste0(
+    "https://www.maizegdb.org/gene_center/gene/",
+    utils::URLencode(gene_id, reserved = TRUE)
+  )
+
+  summary_paths <- c(
+    "Gene.primaryIdentifier",
+    "Gene.symbol",
+    "Gene.name",
+    "Gene.length",
+    "Gene.chromosome.primaryIdentifier",
+    "Gene.chromosomeLocation.start",
+    "Gene.chromosomeLocation.end"
+  )
+
+  summary <- base::tryCatch(
+    .protvis_pw_maizemine_rows(gene_id, summary_paths),
+    error = function(e) base::data.frame()
+  )
+
+  rows <- base::list()
+  if (base::nrow(summary)) {
+    first <- summary[1, , drop = FALSE]
+    get_value <- function(path) {
+      value <- first[[path]]
+      if (base::is.null(value) || !base::length(value) ||
+          base::is.na(value[[1L]]) ||
+          !base::nzchar(base::as.character(value[[1L]]))) {
+        return("")
+      }
+      base::as.character(value[[1L]])
+    }
+
+    chromosome <- get_value("Gene.chromosome.primaryIdentifier")
+    start <- get_value("Gene.chromosomeLocation.start")
+    end <- get_value("Gene.chromosomeLocation.end")
+    coordinate <- if (base::nzchar(chromosome)) chromosome else ""
+    if (base::nzchar(start)) coordinate <- base::paste0(coordinate, ":", start)
+    if (base::nzchar(end)) coordinate <- base::paste0(coordinate, "..", end)
+
+    summary_values <- c(
+      "Gene model" = get_value("Gene.primaryIdentifier"),
+      "Gene symbol" = get_value("Gene.symbol"),
+      "Gene name" = get_value("Gene.name"),
+      "Chromosomal location" = coordinate,
+      "Gene length (bp)" = get_value("Gene.length")
+    )
+    summary_values <- summary_values[base::nzchar(summary_values)]
+
+    if (base::length(summary_values)) {
+      rows[[base::length(rows) + 1L]] <- base::data.frame(
+        source = "MaizeGDB / MaizeMine",
+        category = "Gene summary",
+        annotation = base::names(summary_values),
+        value = base::unname(summary_values),
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  go_paths <- c(
+    "Gene.goAnnotation.ontologyTerm.identifier",
+    "Gene.goAnnotation.ontologyTerm.name",
+    "Gene.goAnnotation.ontologyTerm.namespace"
+  )
+  go <- base::tryCatch(
+    .protvis_pw_maizemine_rows(gene_id, go_paths),
+    error = function(e) base::data.frame()
+  )
+  if (base::nrow(go) && base::all(go_paths %in% base::names(go))) {
+    go_id <- base::as.character(go[[go_paths[[1L]]]])
+    go_name <- base::as.character(go[[go_paths[[2L]]]])
+    go_ns <- base::as.character(go[[go_paths[[3L]]]])
+    keep <- !base::is.na(go_id) & base::nzchar(go_id)
+    if (base::any(keep)) {
+      go_table <- base::data.frame(
+        source = "MaizeGDB / MaizeMine",
+        category = ifelse(
+          base::is.na(go_ns[keep]) | !base::nzchar(go_ns[keep]),
+          "Gene Ontology",
+          base::paste0("GO · ", go_ns[keep])
+        ),
+        annotation = go_id[keep],
+        value = go_name[keep],
+        stringsAsFactors = FALSE
+      )
+      rows[[base::length(rows) + 1L]] <- base::unique(go_table)
+    }
+  }
+
+  pathway_paths <- c(
+    "Gene.pathways.identifier",
+    "Gene.pathways.name"
+  )
+  pathways <- base::tryCatch(
+    .protvis_pw_maizemine_rows(gene_id, pathway_paths),
+    error = function(e) base::data.frame()
+  )
+  if (base::nrow(pathways) &&
+      base::all(pathway_paths %in% base::names(pathways))) {
+    pathway_id <- base::as.character(pathways[[pathway_paths[[1L]]]])
+    pathway_name <- base::as.character(pathways[[pathway_paths[[2L]]]])
+    keep <- (!base::is.na(pathway_id) & base::nzchar(pathway_id)) |
+      (!base::is.na(pathway_name) & base::nzchar(pathway_name))
+    if (base::any(keep)) {
+      pathway_table <- base::data.frame(
+        source = "MaizeGDB / MaizeMine",
+        category = "Pathway",
+        annotation = ifelse(
+          base::is.na(pathway_id[keep]) | !base::nzchar(pathway_id[keep]),
+          "Pathway",
+          pathway_id[keep]
+        ),
+        value = pathway_name[keep],
+        stringsAsFactors = FALSE
+      )
+      rows[[base::length(rows) + 1L]] <- base::unique(pathway_table)
+    }
+  }
+
+  table <- if (base::length(rows)) {
+    base::unique(base::do.call(base::rbind, rows))
+  } else {
+    base::data.frame()
+  }
+
+  base::list(
+    gene_id = gene_id,
+    url = maizegdb_url,
+    table = table,
+    status = if (base::nrow(table)) "loaded" else "unavailable"
+  )
+}
+
 .protvis_pw_protein_name <- function(entry) {
   description <- entry$proteinDescription
   candidates <- base::list(
@@ -757,7 +1001,12 @@ utils::globalVariables(c("Residue", "Count", "position", "hydropathy", "start", 
 protein_workbench_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
-    shiny::tags$style(shiny::HTML("\n      .pw-note {color:#657789;font-size:12px;line-height:1.55;}\n      .pw-kpis {display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-bottom:14px;}\n      .pw-kpi {border:1px solid #dbe8f3;border-radius:14px;background:#f8fbff;padding:13px 15px;}\n      .pw-kpi strong {display:block;color:#1787c9;font-size:19px;line-height:1.2;overflow-wrap:anywhere;}\n      .pw-kpi span {display:block;color:#657789;font-size:11px;margin-top:5px;text-transform:uppercase;letter-spacing:.05em;}\n      .pw-resource-grid {display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px;}\n      .pw-resource {display:block;border:1px solid #dbe8f3;border-radius:14px;background:#fff;padding:16px;text-decoration:none!important;}\n      .pw-resource:hover {border-color:#9ccce8;background:#f8fbff;}\n      .pw-resource strong {display:block;color:#1f3447;margin-bottom:5px;}\n      .pw-resource span {color:#657789;font-size:12px;}\n      .pw-batch-status {margin-top:10px;padding:10px 12px;border:1px solid;border-radius:10px;font-size:12px;line-height:1.5;}\n      .pw-batch-status-success {color:#17764d;background:#eef9f2;border-color:#bde5cc;}\n      .pw-batch-status-warning {color:#825b12;background:#fff8e6;border-color:#f1d79c;}\n      @media(max-width:1000px){.pw-kpis{grid-template-columns:repeat(2,1fr)}.pw-resource-grid{grid-template-columns:1fr 1fr}}\n    ")),
+    shiny::tags$style(shiny::HTML("\n      .pw-note {color:#657789;font-size:12px;line-height:1.55;}\n      .pw-kpis {display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-bottom:14px;}\n      .pw-kpi {border:1px solid #dbe8f3;border-radius:14px;background:#f8fbff;padding:13px 15px;}\n      .pw-kpi strong {display:block;color:#1787c9;font-size:19px;line-height:1.2;overflow-wrap:anywhere;}\n      .pw-kpi span {display:block;color:#657789;font-size:11px;margin-top:5px;text-transform:uppercase;letter-spacing:.05em;}\n      .pw-resource-grid {display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px;}\n      .pw-resource {display:block;border:1px solid #dbe8f3;border-radius:14px;background:#fff;padding:16px;text-decoration:none!important;}\n      .pw-resource:hover {border-color:#9ccce8;background:#f8fbff;}\n      .pw-resource strong {display:block;color:#1f3447;margin-bottom:5px;}\n      .pw-resource span {color:#657789;font-size:12px;}\n      .pw-maizegdb-live {border:1px solid #cfe5f3;border-radius:12px;background:#f7fbfe;margin-bottom:14px;overflow:hidden;}
+      .pw-maizegdb-live-head {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid #dbe8f3;}
+      .pw-maizegdb-live-head strong {color:#1f3447;}
+      .pw-maizegdb-live-body {padding:10px 12px;}
+      .pw-live-badge {display:inline-flex;align-items:center;border-radius:999px;background:#e8f5fc;color:#1787c9;padding:2px 8px;font-size:11px;font-weight:700;margin-left:8px;}
+      .pw-batch-status {margin-top:10px;padding:10px 12px;border:1px solid;border-radius:10px;font-size:12px;line-height:1.5;}\n      .pw-batch-status-success {color:#17764d;background:#eef9f2;border-color:#bde5cc;}\n      .pw-batch-status-warning {color:#825b12;background:#fff8e6;border-color:#f1d79c;}\n      @media(max-width:1000px){.pw-kpis{grid-template-columns:repeat(2,1fr)}.pw-resource-grid{grid-template-columns:1fr 1fr}}\n    ")),
     bslib::layout_sidebar(
       sidebar = bslib::sidebar(
         width = 550,
@@ -886,7 +1135,11 @@ protein_workbench_ui <- function(id) {
             ),
             bslib::nav_panel(
               "Annotations",
-              shiny::p("UniProt sequence features including regions, active sites, binding sites, variants and processing features.", class = "pw-note"),
+              shiny::uiOutput(ns("maizegdb_annotation_panel")),
+              shiny::p(
+                "UniProt sequence features including regions, active sites, binding sites, variants and processing features.",
+                class = "pw-note"
+              ),
               DT::DTOutput(ns("features_table"))
             ),
             bslib::nav_panel(
@@ -938,6 +1191,10 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       interpro = base::data.frame(),
       alphafold = NULL,
       alphafold_pdb = NULL,
+      maizegdb = base::data.frame(),
+      maizegdb_gene = "",
+      maizegdb_url = "",
+      maizegdb_status = "not_maize",
       local_sequence = "",
       batch_results = base::data.frame(),
       batch_requested = base::character(),
@@ -995,6 +1252,10 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       rv$interpro <- base::data.frame()
       rv$alphafold <- NULL
       rv$alphafold_pdb <- NULL
+      rv$maizegdb <- base::data.frame()
+      rv$maizegdb_gene <- ""
+      rv$maizegdb_url <- ""
+      rv$maizegdb_status <- "not_maize"
       rv$local_sequence <- ""
       rv$message <- "Protein Workbench cleared."
     })
@@ -1049,7 +1310,32 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         }
 
         if (base::nzchar(query)) {
-          rv$message <- "Searching UniProt..."
+          maize_gene <- .protvis_pw_maize_gene_id(query)
+          if (base::nzchar(maize_gene)) {
+            rv$message <- "Searching UniProt and MaizeGDB..."
+            maize_live <- base::tryCatch(
+              .protvis_pw_maizegdb_live(query),
+              error = function(e) base::list(
+                gene_id = maize_gene,
+                url = base::paste0(
+                  "https://www.maizegdb.org/gene_center/gene/",
+                  utils::URLencode(maize_gene, reserved = TRUE)
+                ),
+                table = base::data.frame(),
+                status = "unavailable"
+              )
+            )
+            rv$maizegdb <- maize_live$table %||% base::data.frame()
+            rv$maizegdb_gene <- maize_live$gene_id %||% maize_gene
+            rv$maizegdb_url <- maize_live$url %||% ""
+            rv$maizegdb_status <- maize_live$status %||% "unavailable"
+          } else {
+            rv$maizegdb <- base::data.frame()
+            rv$maizegdb_gene <- ""
+            rv$maizegdb_url <- ""
+            rv$maizegdb_status <- "not_maize"
+            rv$message <- "Searching UniProt..."
+          }
           hits <- .protvis_pw_search_uniprot(query, input$organism_id %||% NULL, size = 25L)
           rv$search <- hits
           if (!base::nrow(hits)) base::stop("No UniProt entries matched the query.")
@@ -1077,6 +1363,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
           search = rv$search,
           summary = .protvis_pw_summary_table(rv$entry),
           comments = .protvis_pw_comments_table(rv$entry),
+          maizegdb = rv$maizegdb,
           interpro = rv$interpro,
           sequence_stats = .protvis_pw_sequence_stats(sequence_value)
         )
@@ -1174,9 +1461,44 @@ protein_workbench_server <- function(id, shared_state = NULL) {
 
     output$header_links <- shiny::renderUI({
       accession <- current_accession()
-      if (!base::nzchar(accession)) return(NULL)
-      links <- .protvis_pw_external_links(accession)
-      shiny::tags$a(href = links$UniProt, target = "_blank", class = "btn btn-outline-primary btn-sm", "Open UniProt")
+      maize_gene <- .protvis_pw_maize_gene_id(input$query %||% "")
+      buttons <- base::list()
+
+      if (base::nzchar(accession)) {
+        links <- .protvis_pw_external_links(
+          accession,
+          entry = rv$entry,
+          query = input$query
+        )
+        buttons[[base::length(buttons) + 1L]] <- shiny::tags$a(
+          href = links$UniProt,
+          target = "_blank",
+          class = "btn btn-outline-primary btn-sm",
+          "Open UniProt"
+        )
+      }
+
+      if (base::nzchar(maize_gene)) {
+        maize_url <- rv$maizegdb_url %||% ""
+        if (!base::nzchar(maize_url)) {
+          maize_url <- base::paste0(
+            "https://www.maizegdb.org/gene_center/gene/",
+            utils::URLencode(maize_gene, reserved = TRUE)
+          )
+        }
+        buttons[[base::length(buttons) + 1L]] <- shiny::tags$a(
+          href = maize_url,
+          target = "_blank",
+          class = "btn btn-outline-primary btn-sm",
+          "Open MaizeGDB"
+        )
+      }
+
+      if (!base::length(buttons)) return(NULL)
+      shiny::div(
+        style = "display:flex;gap:8px;flex-wrap:wrap;",
+        buttons
+      )
     })
 
     output$summary_table <- DT::renderDT({
@@ -1262,6 +1584,76 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         ggplot2::geom_hline(yintercept = 0, linetype = 2, linewidth = 0.35) +
         ggplot2::labs(x = "Residue position", y = "Hydropathy") +
         ggplot2::theme_minimal(base_size = 12)
+    })
+
+    output$maizegdb_annotation_panel <- shiny::renderUI({
+      gene_id <- .protvis_pw_maize_gene_id(input$query %||% "")
+      if (!base::nzchar(gene_id)) return(NULL)
+
+      status_text <- if (base::identical(rv$maizegdb_status, "loaded")) {
+        base::paste0(
+          "Live MaizeGDB/MaizeMine annotation for ",
+          rv$maizegdb_gene %||% gene_id,
+          "."
+        )
+      } else {
+        base::paste0(
+          "MaizeGDB live annotation is currently unavailable for ",
+          gene_id,
+          "; the direct MaizeGDB record remains available."
+        )
+      }
+
+      maize_url <- rv$maizegdb_url %||% ""
+      if (!base::nzchar(maize_url)) {
+        maize_url <- base::paste0(
+          "https://www.maizegdb.org/gene_center/gene/",
+          utils::URLencode(gene_id, reserved = TRUE)
+        )
+      }
+
+      shiny::div(
+        class = "pw-maizegdb-live",
+        shiny::div(
+          class = "pw-maizegdb-live-head",
+          shiny::div(
+            shiny::strong("MaizeGDB live annotation"),
+            shiny::span("LIVE", class = "pw-live-badge")
+          ),
+          shiny::tags$a(
+            href = maize_url,
+            target = "_blank",
+            class = "btn btn-outline-primary btn-sm",
+            "Open MaizeGDB"
+          )
+        ),
+        shiny::div(
+          class = "pw-maizegdb-live-body",
+          shiny::p(status_text, class = "pw-note"),
+          DT::DTOutput(ns("maizegdb_table"))
+        )
+      )
+    })
+
+    output$maizegdb_table <- DT::renderDT({
+      table <- rv$maizegdb
+      if (!base::nrow(table)) {
+        table <- base::data.frame(
+          Message = "No live MaizeGDB annotation was returned.",
+          stringsAsFactors = FALSE
+        )
+      }
+      DT::datatable(
+        table,
+        rownames = FALSE,
+        filter = if (base::nrow(table) > 1L &&
+                     !"Message" %in% base::names(table)) "top" else "none",
+        options = base::list(
+          pageLength = 10,
+          scrollX = TRUE,
+          autoWidth = TRUE
+        )
+      )
     })
 
     output$features_table <- DT::renderDT({
