@@ -1198,15 +1198,16 @@
   bslib::layout_sidebar(
     sidebar = bslib::sidebar(
       width = 380,
-      shiny::h4("PTM peptide-spectrum visualization"),
+      shiny::h4("PTM spectrum"),
       shiny::p(
-        "Load all PSMs from mzIdentML, select any peptide/spectrum, and visualize its dynamic fragment annotation. ",
-        "Changing the selection refreshes the table and spectrum automatically; the button reruns it manually. ",
-        shiny::strong("AT[pS]GVPFSQYK (Ser3)"), " remains the default public benchmark."
+        "Select a PSM to visualize fragment-ion annotation. Default: ",
+        shiny::strong("AT[pS]GVPFSQYK (Ser3)"),
+        ".",
+        class = "pw-note"
       ),
       shiny::radioButtons(
         ns("vac14_source"), "Input source",
-        choices = c("PRIDE PXD001057 files" = "public", "Upload files" = "upload"),
+        choices = c("PXD001057 (PRIDE)" = "public", "Upload files" = "upload"),
         selected = "public"
       ),
       shiny::conditionalPanel(
@@ -1219,23 +1220,25 @@
         condition = sprintf("input['%s'] === 'public'", ns("vac14_source")),
         shiny::div(
           class = "alert alert-info py-2 small",
-          shiny::strong("PXD001057 files"), shiny::tags$br(),
-          "E1R2_SCX5_soluble.mzid.gz", shiny::tags$br(),
-          "E1R2_SCX5_soluble.mzid_E1R2_SCX5_soluble.MGF", shiny::tags$br(),
-          shiny::tags$a(href = .protvis_vac14_target()$base_url,
-                        target = "_blank", rel = "noopener noreferrer",
-                        "Open PRIDE archive")
+          shiny::strong("PXD001057"),
+          " · mzIdentML + MGF · ",
+          shiny::tags$a(
+            href = .protvis_vac14_target()$base_url,
+            target = "_blank",
+            rel = "noopener noreferrer",
+            "PRIDE"
+          )
         )
       ),
       shiny::actionButton(
-        ns("vac14_load"), "LOAD PSM LIST",
+        ns("vac14_load"), "LOAD PSMs",
         class = "btn-outline-primary w-100 pv-run-button",
         icon = bsicons::bs_icon("list-ul")
       ),
       shiny::selectizeInput(
-        ns("vac14_psm_choice"), "Select peptide / PSM",
+        ns("vac14_psm_choice"), "Peptide / PSM",
         choices = NULL, multiple = FALSE,
-        options = list(placeholder = "Load files first, then search peptide or spectrum")
+        options = list(placeholder = "Search peptide or spectrum")
       ),
       shiny::numericInput(ns("vac14_tolerance"), "Fragment tolerance (Da)",
                           value = 0.5, min = 0.01, max = 2, step = 0.01),
@@ -1244,7 +1247,7 @@
         shiny::column(6, colourpicker::colourInput(ns("vac14_y_color"), "y ions", "#2E63C4"))
       ),
       shiny::actionButton(
-        ns("vac14_run"), "VISUALIZE SELECTED PEPTIDE",
+        ns("vac14_run"), "VISUALIZE",
         class = "btn-primary w-100 pv-run-button",
         icon = bsicons::bs_icon("play-fill")
       ),
