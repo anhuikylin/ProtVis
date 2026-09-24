@@ -106,7 +106,7 @@
 }
 
 .protvis_maize_kac_bundle <- function() {
-  .protvis_vac14_require_packages()
+  .protvis_ptm_require_spectrum_packages()
   target <- .protvis_maize_kac_target()
 
   modifications <- base::data.frame(
@@ -153,6 +153,25 @@
     source = "Maize PeptideAtlas consensus HR-HCD spectrum",
     benchmark = target
   )
+}
+
+.protvis_ptm_require_spectrum_packages <- function() {
+  packages <- c("Spectra", "MsBackendMgf")
+  missing <- packages[!base::vapply(
+    packages,
+    base::requireNamespace,
+    quietly = TRUE,
+    FUN.VALUE = logical(1L)
+  )]
+  if (base::length(missing)) {
+    stop(
+      "PTM spectrum visualization requires Bioconductor packages: ",
+      base::paste(missing, collapse = ", "),
+      ". Install them with BiocManager::install(c(\"Spectra\", \"MsBackendMgf\" )).",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 .protvis_vac14_require_packages <- function() {
