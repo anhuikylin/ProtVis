@@ -638,6 +638,93 @@
     ggplot2::theme(plot.margin = ggplot2::margin(12, 12, 12, 12))
 }
 
+.protvis_pw_plot_download_controls <- function(ns, id_prefix) {
+  shiny::div(
+    style = "display:flex;align-items:center;gap:6px;white-space:nowrap;",
+    shiny::downloadButton(
+      ns(base::paste0("download_", id_prefix, "_png")),
+      "PNG",
+      icon = bsicons::bs_icon("download"),
+      class = "btn-sm btn-outline-secondary"
+    ),
+    shiny::downloadButton(
+      ns(base::paste0("download_", id_prefix, "_svg")),
+      "SVG",
+      icon = bsicons::bs_icon("download"),
+      class = "btn-sm btn-outline-secondary"
+    ),
+    shiny::downloadButton(
+      ns(base::paste0("download_", id_prefix, "_pdf")),
+      "PDF",
+      icon = bsicons::bs_icon("download"),
+      class = "btn-sm btn-outline-secondary"
+    )
+  )
+}
+
+.protvis_pw_plot_card_header <- function(title, ns, id_prefix) {
+  bslib::card_header(
+    shiny::div(
+      style = "display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;",
+      shiny::span(title),
+      .protvis_pw_plot_download_controls(ns, id_prefix)
+    )
+  )
+}
+
+.protvis_pw_save_plot <- function(file, plot, extension, width, height) {
+  ggplot2::ggsave(
+    filename = file,
+    plot = plot,
+    device = extension,
+    width = width,
+    height = height,
+    units = "in",
+    dpi = 600,
+    bg = "white",
+    limitsize = FALSE
+  )
+}
+
+.protvis_pw_register_plot_downloads <- function(
+  output,
+  id_prefix,
+  filename_prefix,
+  plot_fun,
+  width = 8,
+  height = 5
+) {
+  base::stopifnot(base::is.function(plot_fun))
+  for (extension in c("png", "svg", "pdf")) {
+    base::local({
+      ext <- extension
+      output_id <- base::paste0("download_", id_prefix, "_", ext)
+      output[[output_id]] <- shiny::downloadHandler(
+        filename = function() base::paste0(filename_prefix, ".", ext),
+        content = function(file) {
+          current_height <- if (base::is.function(height)) height() else height
+          current_width <- if (base::is.function(width)) width() else width
+          .protvis_pw_save_plot(
+            file = file,
+            plot = plot_fun(),
+            extension = ext,
+            width = current_width,
+            height = current_height
+          )
+        },
+        contentType = base::switch(
+          ext,
+          png = "image/png",
+          svg = "image/svg+xml",
+          pdf = "application/pdf",
+          "application/octet-stream"
+        )
+      )
+    })
+  }
+  invisible(NULL)
+}
+
 .protvis_pw_fasta <- function(sequence, accession = "protein") {
   sequence <- .protvis_pw_clean_sequence(sequence)
   chunks <- base::substring(sequence, base::seq(1, base::nchar(sequence), 60), base::seq(60, base::nchar(sequence) + 59, 60))
@@ -1115,8 +1202,15 @@ protein_workbench_ui <- function(id) {
               shiny::br(),
               bslib::layout_columns(
                 col_widths = c(5, 7),
-                bslib::card(bslib::card_header("Residue composition"), shiny::plotOutput(ns("composition_plot"), height = "360px")),
-                bslib::card(bslib::card_header("Kyte-Doolittle hydropathy"), shiny::sliderInput(ns("hydro_window"), "Window", min = 3, max = 31, value = 9, step = 2), shiny::plotOutput(ns("hydropathy_plot"), height = "310px"))
+                bslib::card(
+                  .protvis_pw_plot_card_header("Residue composition", ns, "composition_plot"),
+                  shiny::plotOutput(ns("composition_plot"), height = "360px")
+                ),
+                bslib::card(
+                  .protvis_pw_plot_card_header("Kyte-Doolittle hydropathy", ns, "hydropathy_plot"),
+                  shiny::sliderInput(ns("hydro_window"), "Window", min = 3, max = 31, value = 9, step = 2),
+                  shiny::plotOutput(ns("hydropathy_plot"), height = "310px")
+                )
               )
             ),
             bslib::nav_panel(
@@ -1150,6 +1244,10 @@ protein_workbench_ui <- function(id) {
             bslib::nav_panel(
               "Domains",
               shiny::p("InterPro is queried when a UniProt accession is available; UniProt cross-references remain available as a fallback.", class = "pw-note"),
+              shiny::div(
+                style = "display:flex;justify-content:flex-end;margin-bottom:8px;",
+                .protvis_pw_plot_download_controls(ns, "domain_plot")
+              ),
               shiny::uiOutput(ns("domain_plot_ui")),
               DT::DTOutput(ns("domain_table"))
             ),
@@ -1562,7 +1660,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       )
     })
 
-    output$composition_plot <- shiny::renderPlot({
+    composition_plot_current <- shiny::reactive({
       table <- .protvis_pw_composition(current_sequence())
       if (!base::nrow(table)) {
         return(.protvis_pw_empty_plot("No sequence loaded."))
@@ -1573,7 +1671,20 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         ggplot2::theme_minimal(base_size = 12)
     })
 
-    output$hydropathy_plot <- shiny::renderPlot({
+    output$composition_plot <- shiny::renderPlot({
+      composition_plot_current()
+    })
+
+    .protvis_pw_register_plot_downloads(
+      output = output,
+      id_prefix = "composition_plot",
+      filename_prefix = "ProtVis_residue_composition",
+      plot_fun = composition_plot_current,
+      width = 6.5,
+      height = 5
+    )
+
+    hydropathy_plot_current <- shiny::reactive({
       table <- .protvis_pw_hydropathy(current_sequence(), input$hydro_window %||% 9L)
       table <- table[!base::is.na(table$hydropathy), , drop = FALSE]
       if (!base::nrow(table)) {
@@ -1585,6 +1696,19 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         ggplot2::labs(x = "Residue position", y = "Hydropathy") +
         ggplot2::theme_minimal(base_size = 12)
     })
+
+    output$hydropathy_plot <- shiny::renderPlot({
+      hydropathy_plot_current()
+    })
+
+    .protvis_pw_register_plot_downloads(
+      output = output,
+      id_prefix = "hydropathy_plot",
+      filename_prefix = "ProtVis_Kyte_Doolittle_hydropathy",
+      plot_fun = hydropathy_plot_current,
+      width = 8,
+      height = 4.8
+    )
 
     output$maizegdb_annotation_panel <- shiny::renderUI({
       gene_id <- .protvis_pw_maize_gene_id(input$query %||% "")
@@ -1685,7 +1809,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       shiny::plotOutput(session$ns("domain_plot"), height = base::paste0(height, "px"))
     })
 
-    output$domain_plot <- shiny::renderPlot({
+    domain_plot_current <- shiny::reactive({
       plot_data <- domain_plot_data()
       if (!base::nrow(plot_data)) {
         return(.protvis_pw_empty_plot("InterPro positional domains will appear here when available."))
@@ -1704,6 +1828,27 @@ protein_workbench_server <- function(id, shared_state = NULL) {
           plot.margin = ggplot2::margin(8, 12, 8, 10)
         )
     })
+
+    output$domain_plot <- shiny::renderPlot({
+      domain_plot_current()
+    })
+
+    .protvis_pw_register_plot_downloads(
+      output = output,
+      id_prefix = "domain_plot",
+      filename_prefix = "ProtVis_domain_architecture",
+      plot_fun = domain_plot_current,
+      width = 10,
+      height = function() {
+        base::max(
+          4,
+          base::min(
+            16,
+            .protvis_pw_domain_plot_height(base::nrow(domain_plot_data())) / 100
+          )
+        )
+      }
+    )
 
     output$structure_table <- DT::renderDT({
       table <- if (base::is.null(rv$entry)) base::data.frame() else .protvis_pw_structure_table(rv$entry, rv$alphafold)

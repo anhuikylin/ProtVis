@@ -199,7 +199,11 @@
             bslib::layout_columns(
               col_widths = c(5, 7),
               bslib::card(bslib::card_header("Interaction database references"), DT::DTOutput(ns("interaction_xrefs"))),
-              bslib::card(full_screen = TRUE, bslib::card_header("STRING interaction network"), shiny::plotOutput(ns("interaction_plot"), height = "430px"))
+              bslib::card(
+                full_screen = TRUE,
+                .protvis_pw_plot_card_header("STRING interaction network", ns, "interaction_plot"),
+                shiny::plotOutput(ns("interaction_plot"), height = "430px")
+              )
             ),
             shiny::br(),
             bslib::card(
@@ -440,15 +444,28 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       DT::datatable(table, rownames = FALSE, filter = if (base::nrow(table) > 1L) "top" else "none", options = base::list(pageLength = 20, scrollX = TRUE, autoWidth = TRUE))
     })
 
-    output$interaction_plot <- shiny::renderPlot({
+    interaction_plot_current <- shiny::reactive({
       plot <- .protvis_pw_interaction_plot(rv_context$partners)
-      if (base::is.null(plot)) {
-        graphics::plot.new()
-        message <- if (base::nrow(rv_context$diagnostics) && !base::nrow(rv_context$mapping)) "STRING mapping failed. See diagnostics." else "No STRING partners to display at the current threshold."
-        graphics::text(0.5, 0.5, message)
-        return(invisible(NULL))
+      if (!base::is.null(plot)) return(plot)
+      message <- if (base::nrow(rv_context$diagnostics) && !base::nrow(rv_context$mapping)) {
+        "STRING mapping failed. See diagnostics."
+      } else {
+        "No STRING partners to display at the current threshold."
       }
-      plot
+      .protvis_pw_empty_plot(message)
     })
+
+    output$interaction_plot <- shiny::renderPlot({
+      interaction_plot_current()
+    })
+
+    .protvis_pw_register_plot_downloads(
+      output = output,
+      id_prefix = "interaction_plot",
+      filename_prefix = "ProtVis_STRING_interaction_network",
+      plot_fun = interaction_plot_current,
+      width = 8.5,
+      height = 5.5
+    )
   })
 }
