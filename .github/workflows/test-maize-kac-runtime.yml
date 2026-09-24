@@ -46,6 +46,9 @@ jobs:
       - name: Run real maize Kac spectrum pipeline
         shell: Rscript {0}
         run: |
+          `%||%` <- function(x, y) {
+            if (is.null(x) || length(x) == 0L) y else x
+          }
           source("R/ptm_vac14.R")
 
           target <- .protvis_maize_kac_target()
