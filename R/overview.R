@@ -1345,6 +1345,21 @@ overview_server <- function(id, shared_state) {
           ),
           plot_data = list(
             archived_umap = DR_results$reproduction
+          ),
+          plot_config = list(
+            point_size = input$dr_point_size,
+            point_alpha = input$dr_point_alpha,
+            ellipse_alpha = input$dr_ellipse_alpha,
+            ellipse_linewidth = input$dr_ellipse_linewidth,
+            show_region_labels = input$dr_show_region_labels,
+            region_label_size = input$dr_region_label_size,
+            group_colors = c(
+              "Root_VE" = input$dr_color_root_ve,
+              "Root_V1.V2" = input$dr_color_root_v1v2,
+              "Root_V4" = input$dr_color_root_v4,
+              "Leaf_VE.V1.V2" = input$dr_color_leaf_vev2,
+              "Leaf_V4.V6.V8" = input$dr_color_leaf_v4v8
+            )
           )
         )
       }
