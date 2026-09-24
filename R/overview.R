@@ -110,9 +110,110 @@ overview_ui <- function(id) {
             title = "Dimensionality Reduction",
             icon = dimensionality_reduction_icon,
             shiny::helpText(
-              "Runs the built-in UMAP preset: transformed pre-KNN ",
-              "intensity matrix, five early developmental groups, seed 10086, ",
-              "group colours, species shapes, and four biological-region ellipses."
+              "UMAP of the transformed pre-KNN intensity matrix for the five ",
+              "early developmental groups."
+            ),
+            bslib::accordion(
+              open = NULL,
+              bslib::accordion_panel(
+                title = "UMAP parameters",
+                shiny::numericInput(
+                  ns("dr_n_neighbors"),
+                  "Neighbors",
+                  value = 15,
+                  min = 2,
+                  max = 50,
+                  step = 1
+                ),
+                shiny::numericInput(
+                  ns("dr_min_dist"),
+                  "Minimum distance",
+                  value = 0.1,
+                  min = 0,
+                  max = 0.99,
+                  step = 0.05
+                ),
+                shiny::numericInput(
+                  ns("dr_seed"),
+                  "Random seed",
+                  value = 10086,
+                  min = 1,
+                  step = 1
+                )
+              ),
+              bslib::accordion_panel(
+                title = "Plot appearance",
+                shiny::numericInput(
+                  ns("dr_point_size"),
+                  "Point size",
+                  value = 2.3,
+                  min = 0.5,
+                  max = 8,
+                  step = 0.1
+                ),
+                shiny::sliderInput(
+                  ns("dr_point_alpha"),
+                  "Point opacity",
+                  min = 0.1,
+                  max = 1,
+                  value = 0.85,
+                  step = 0.05
+                ),
+                shiny::sliderInput(
+                  ns("dr_ellipse_alpha"),
+                  "Ellipse opacity",
+                  min = 0,
+                  max = 0.8,
+                  value = 0.18,
+                  step = 0.02
+                ),
+                shiny::numericInput(
+                  ns("dr_ellipse_linewidth"),
+                  "Ellipse line width",
+                  value = 0.35,
+                  min = 0,
+                  max = 3,
+                  step = 0.05
+                ),
+                shiny::checkboxInput(
+                  ns("dr_show_region_labels"),
+                  "Show region labels",
+                  value = TRUE
+                ),
+                shiny::numericInput(
+                  ns("dr_region_label_size"),
+                  "Region label size",
+                  value = 2.6,
+                  min = 1,
+                  max = 8,
+                  step = 0.1
+                ),
+                colourpicker::colourInput(
+                  ns("dr_color_root_ve"),
+                  "Root_VE",
+                  value = "#00468B"
+                ),
+                colourpicker::colourInput(
+                  ns("dr_color_root_v1v2"),
+                  "Root_V1.V2",
+                  value = "#ED0000"
+                ),
+                colourpicker::colourInput(
+                  ns("dr_color_root_v4"),
+                  "Root_V4",
+                  value = "#42B540"
+                ),
+                colourpicker::colourInput(
+                  ns("dr_color_leaf_vev2"),
+                  "Leaf_VE.V1.V2",
+                  value = "#0099B4"
+                ),
+                colourpicker::colourInput(
+                  ns("dr_color_leaf_v4v8"),
+                  "Leaf_V4.V6.V8",
+                  value = "#925E9F"
+                )
+              )
             ),
             shiny::actionButton(ns("DR_analyse"), "Run UMAP"),
             shiny::numericInput(
@@ -977,7 +1078,12 @@ overview_server <- function(id, shared_state) {
       "Leaf_V4.V6.V8"
     )
 
-    run_archived_umap <- function(data) {
+    run_archived_umap <- function(
+        data,
+        n_neighbors = 15L,
+        min_dist = 0.1,
+        seed = 10086L
+    ) {
       if (base::is.null(data)) {
         stop(
           "Step4 transformed data are required for the built-in UMAP preset.",
@@ -1009,8 +1115,31 @@ overview_server <- function(id, shared_state) {
         stop("Too few complete positive features remain for UMAP.", call. = FALSE)
       }
 
-      base::set.seed(10086)
-      fit <- umap::umap(base::t(matrix))
+      n_neighbors <- base::as.integer(n_neighbors)
+      min_dist <- base::as.numeric(min_dist)
+      seed <- base::as.integer(seed)
+
+      if (!base::is.finite(n_neighbors) || n_neighbors < 2L) {
+        n_neighbors <- 15L
+      }
+      n_neighbors <- base::min(n_neighbors, base::ncol(matrix) - 1L)
+
+      if (!base::is.finite(min_dist) || min_dist < 0 || min_dist >= 1) {
+        min_dist <- 0.1
+      }
+      if (!base::is.finite(seed) || seed < 1L) {
+        seed <- 10086L
+      }
+
+      config <- umap::umap.defaults
+      config$n_neighbors <- n_neighbors
+      config$min_dist <- min_dist
+
+      base::set.seed(seed)
+      fit <- umap::umap(
+        base::t(matrix),
+        config = config
+      )
       df <- base::as.data.frame(
         fit$layout[, 1:2, drop = FALSE],
         stringsAsFactors = FALSE
@@ -1061,7 +1190,16 @@ overview_server <- function(id, shared_state) {
       df
     }
 
-    plot_archived_umap <- function(df) {
+    plot_archived_umap <- function(
+        df,
+        point_size = 2.3,
+        point_alpha = 0.85,
+        ellipse_alpha = 0.18,
+        ellipse_linewidth = 0.35,
+        show_region_labels = TRUE,
+        region_label_size = 2.6,
+        group_colors = NULL
+    ) {
       region_centres <- df |>
         dplyr::group_by(Region) |>
         dplyr::summarise(
@@ -1070,32 +1208,48 @@ overview_server <- function(id, shared_state) {
           .groups = "drop"
         )
 
-      ggplot2::ggplot(df, ggplot2::aes(UMAP1, UMAP2)) +
+      if (base::is.null(group_colors)) {
+        group_colors <- c(
+          "Root_VE" = "#00468B",
+          "Root_V1.V2" = "#ED0000",
+          "Root_V4" = "#42B540",
+          "Leaf_VE.V1.V2" = "#0099B4",
+          "Leaf_V4.V6.V8" = "#925E9F"
+        )
+      }
+
+      plot <- ggplot2::ggplot(df, ggplot2::aes(UMAP1, UMAP2)) +
         ggplot2::stat_ellipse(
           ggplot2::aes(group = Region, fill = Region),
           geom = "polygon",
           type = "norm",
-          alpha = 0.18,
+          alpha = ellipse_alpha,
           colour = "black",
-          linewidth = 0.35,
+          linewidth = ellipse_linewidth,
           show.legend = FALSE
         ) +
         ggplot2::geom_point(
           ggplot2::aes(colour = Group, shape = Species),
-          size = 2.3,
-          alpha = 0.85
-        ) +
-        ggplot2::geom_label(
-          data = region_centres,
-          ggplot2::aes(
-            x = UMAP1, y = UMAP2, label = Region
-          ),
-          inherit.aes = FALSE,
-          size = 2.6,
-          label.size = NA,
-          fill = scales::alpha("white", 0.65)
-        ) +
-        ggsci::scale_color_lancet() +
+          size = point_size,
+          alpha = point_alpha
+        )
+
+      if (isTRUE(show_region_labels)) {
+        plot <- plot +
+          ggplot2::geom_label(
+            data = region_centres,
+            ggplot2::aes(
+              x = UMAP1, y = UMAP2, label = Region
+            ),
+            inherit.aes = FALSE,
+            size = region_label_size,
+            label.size = NA,
+            fill = scales::alpha("white", 0.65)
+          )
+      }
+
+      plot +
+        ggplot2::scale_color_manual(values = group_colors) +
         ggplot2::scale_fill_manual(
           values = c(
             "Root VE-V2" = "#F4A6A1",
@@ -1147,7 +1301,12 @@ overview_server <- function(id, shared_state) {
         value = 0.5,
         {
           result <- tryCatch(
-            run_archived_umap(rv$transformed_matrix),
+            run_archived_umap(
+              rv$transformed_matrix,
+              n_neighbors = input$dr_n_neighbors,
+              min_dist = input$dr_min_dist,
+              seed = input$dr_seed
+            ),
             error = function(e) {
               shiny::showNotification(
                 base::paste(
@@ -1173,7 +1332,9 @@ overview_server <- function(id, shared_state) {
           category = "dimensionality_reduction",
           parameters = list(
             source_stage = "Step4_data_transformed",
-            seed = 10086L,
+            seed = as.integer(input$dr_seed),
+            n_neighbors = as.integer(input$dr_n_neighbors),
+            min_dist = as.numeric(input$dr_min_dist),
             groups = archived_umap_groups,
             ellipse_regions = c(
               "Root VE-V2", "Root V4", "Leaf VE-V2", "Leaf V4-V8"
@@ -1196,7 +1357,24 @@ overview_server <- function(id, shared_state) {
           "Run UMAP to display the built-in preset."
         )
       )
-      print(plot_archived_umap(DR_results$reproduction))
+      print(
+        plot_archived_umap(
+          DR_results$reproduction,
+          point_size = input$dr_point_size,
+          point_alpha = input$dr_point_alpha,
+          ellipse_alpha = input$dr_ellipse_alpha,
+          ellipse_linewidth = input$dr_ellipse_linewidth,
+          show_region_labels = input$dr_show_region_labels,
+          region_label_size = input$dr_region_label_size,
+          group_colors = c(
+            "Root_VE" = input$dr_color_root_ve,
+            "Root_V1.V2" = input$dr_color_root_v1v2,
+            "Root_V4" = input$dr_color_root_v4,
+            "Leaf_VE.V1.V2" = input$dr_color_leaf_vev2,
+            "Leaf_V4.V6.V8" = input$dr_color_leaf_v4v8
+          )
+        )
+      )
     })
 
     output$dr_download_pdf <- shiny::downloadHandler(
@@ -1214,7 +1392,24 @@ overview_server <- function(id, shared_state) {
           width = input$dr_plot_width,
           height = input$dr_plot_height
         )
-        print(plot_archived_umap(DR_results$reproduction))
+        print(
+          plot_archived_umap(
+            DR_results$reproduction,
+            point_size = input$dr_point_size,
+            point_alpha = input$dr_point_alpha,
+            ellipse_alpha = input$dr_ellipse_alpha,
+            ellipse_linewidth = input$dr_ellipse_linewidth,
+            show_region_labels = input$dr_show_region_labels,
+            region_label_size = input$dr_region_label_size,
+            group_colors = c(
+              "Root_VE" = input$dr_color_root_ve,
+              "Root_V1.V2" = input$dr_color_root_v1v2,
+              "Root_V4" = input$dr_color_root_v4,
+              "Leaf_VE.V1.V2" = input$dr_color_leaf_vev2,
+              "Leaf_V4.V6.V8" = input$dr_color_leaf_v4v8
+            )
+          )
+        )
         grDevices::dev.off()
       }
     )
