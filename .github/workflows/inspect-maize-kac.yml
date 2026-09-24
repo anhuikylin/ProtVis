@@ -113,7 +113,7 @@ jobs:
               print("TARGET_PRECURSOR_MZ=" + e.get("PrecursorMZ", ""))
               print("TARGET_NUM_PEAKS=" + e.get("NumPeaks", ""))
               print("TARGET_COMMENT=" + comment)
-              print("TARGET_PXDS=" + ",".join(sorted(set(re.findall(r"PXD\\d+", comment)))))
+              print("TARGET_PXDS=" + ",".join(sorted(set(re.findall(r"PXD\d+", comment)))))
               print("TARGET_PEAKS_BEGIN")
               for p in peaks:
                   print(p)
@@ -133,7 +133,7 @@ jobs:
                   if in_peaks:
                       peak_lines.append(line)
                       continue
-                  if line.startswith("Num peaks: "):
+                  if line.startswith("NumPeaks: "):
                       current["NumPeaks"] = line.split(": ", 1)[1]
                       in_peaks = True
                       continue
