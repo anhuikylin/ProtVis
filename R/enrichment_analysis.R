@@ -937,7 +937,7 @@ plot_enrichment_dot <- function(enrich_df, top_n = 10, point_color = "#2c7bb6", 
     result$matrix_source <- "Step6_data_normalization"
     result$test_method <- "archived_eBayes"
     result$reproduction_source <-
-      "Directional KEGG auto-rebuild from Step4 + Step6"
+      "Enrichment Summary auto-rebuild from Step4 + Step6"
 
     rebuilt[[comparison]] <- result
   }
@@ -3747,7 +3747,7 @@ enrichment_analysis_server <- function(id, shared_state) {
               x = 0,
               y = 0,
               label = rv$directional_kegg_message %||%
-                "No directional KEGG result available.",
+                "No enrichment summary result available.",
               colour = "#64748B",
               size = 4
             )
@@ -3786,7 +3786,7 @@ enrichment_analysis_server <- function(id, shared_state) {
         text(
           0, 0,
           rv$directional_kegg_message %||%
-            "No directional KEGG result available."
+            "No enrichment summary result available."
         )
         return(invisible(NULL))
       }
