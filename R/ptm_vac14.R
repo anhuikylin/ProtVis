@@ -1676,7 +1676,17 @@
       )
     )
   })
-  shiny::observeEvent(input$vac14_ptm_type, clear_loaded_data(), ignoreInit = TRUE)
+  shiny::observeEvent(input$vac14_ptm_type, {
+    clear_loaded_data()
+    shiny::updateNumericInput(
+      session,
+      "vac14_tolerance",
+      value = if (identical(
+        input$vac14_ptm_type %||% "phosphorylation",
+        "acetylation"
+      )) 0.05 else 0.5
+    )
+  }, ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_source, clear_loaded_data(), ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_mzid, clear_loaded_data(), ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_mgf, clear_loaded_data(), ignoreInit = TRUE)
