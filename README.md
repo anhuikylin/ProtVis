@@ -26,7 +26,7 @@ For detailed tutorials, parameter explanations, examples, and complete workflows
 - **Pre-processing**: filtering, transformation, imputation, normalization, missing-value visualization, dimensionality reduction, and QC.
 - **Differential protein analysis**: Recommended DEP plus limma, DEqMS, proDA, and MSstats workflows.
 - **Functional analysis**: enrichment analysis, directional KEGG, GSEA, pathway visualization, co-enrichment, PPI, WGCNA, Venn, and expression profiling.
-- **PTM / PSM inspection**: peptide/PSM browsing, PTM-aware fragment matching, and annotated spectra.
+- **PTM / PSM inspection**: peptide/PSM browsing, PTM-aware fragment matching, annotated spectra, and built-in phosphorylation / maize K-acetylation benchmarks.
 - **Multi-omics and metaproteomics**: taxonomy, function, taxon × function, peptide-centric analysis, and compatible multi-omics inputs.
 - **Reproducible project state**: `ProtVis_dataset`, checkpoints, provenance, append-only analysis runs, and resumable workflows.
 - **GUI and CLI**: Shiny interface plus `run_protvis_cli()` for scripted workflows.
