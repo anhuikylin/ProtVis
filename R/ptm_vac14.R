@@ -1119,6 +1119,68 @@
     }
   })
 
+  output$vac14_benchmark_note <- shiny::renderUI({
+    ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
+
+    if (identical(ptm_type, "acetylation")) {
+      return(shiny::p(
+        "Maize Kac benchmark: ",
+        shiny::strong("VGYNPDK[Acetyl]IAFVPISGFEGDNMIER"),
+        " · internal Lys7 acetylation.",
+        class = "pw-note"
+      ))
+    }
+
+    shiny::p(
+      "Phosphorylation benchmark: ",
+      shiny::strong("AT[pS]GVPFSQYK (Ser3)"),
+      ".",
+      class = "pw-note"
+    )
+  })
+
+  output$vac14_benchmark_info <- shiny::renderUI({
+    ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
+
+    if (identical(ptm_type, "acetylation")) {
+      target <- base::tryCatch(
+        .protvis_maize_kac_target(),
+        error = function(e) NULL
+      )
+      if (base::is.null(target)) {
+        return(shiny::div(
+          class = "alert alert-warning py-2 small",
+          "Maize Kac benchmark data are unavailable. Reinstall ProtVisDatabase."
+        ))
+      }
+
+      return(shiny::div(
+        class = "alert alert-info py-2 small",
+        shiny::strong("Maize PeptideAtlas 2023-09"),
+        " · Kac · z=3 · ",
+        shiny::tags$a(
+          href = target$peptideatlas_build,
+          target = "_blank",
+          rel = "noopener noreferrer",
+          "PeptideAtlas"
+        )
+      ))
+    }
+
+    target <- .protvis_vac14_target()
+    shiny::div(
+      class = "alert alert-info py-2 small",
+      shiny::strong("PXD001057"),
+      " · mzIdentML + MGF · ",
+      shiny::tags$a(
+        href = target$base_url,
+        target = "_blank",
+        rel = "noopener noreferrer",
+        "PRIDE"
+      )
+    )
+  })
+
   output$vac14_status <- shiny::renderUI({
     value <- status()
     class <- switch(value$type,
@@ -1481,7 +1543,8 @@
   bundle <- shiny::reactiveVal(NULL)
   result <- shiny::reactiveVal(NULL)
   status <- shiny::reactiveVal(list(
-    type = "idle", message = "Load the mzIdentML and MGF files to list their peptide-spectrum matches."
+    type = "idle",
+    message = "Choose a PTM benchmark or upload mzIdentML + MGF files."
   ))
   load_running <- shiny::reactiveVal(FALSE)
   run_running <- shiny::reactiveVal(FALSE)
@@ -1499,8 +1562,9 @@
     result(NULL)
     completed_signature(NULL)
     shiny::updateSelectizeInput(session, "vac14_psm_choice", choices = character(), selected = character())
-    status(list(type = "idle", message = "Input changed. Click LOAD PSM LIST."))
+    status(list(type = "idle", message = "Input changed. Click LOAD PSMs."))
   }
+  shiny::observeEvent(input$vac14_ptm_type, clear_loaded_data(), ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_source, clear_loaded_data(), ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_mzid, clear_loaded_data(), ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_mgf, clear_loaded_data(), ignoreInit = TRUE)
@@ -1568,6 +1632,8 @@
         category = "ptm",
         parameters = list(
           fragment_tolerance_da = input$vac14_tolerance,
+          ptm_type = input$vac14_ptm_type %||% NA_character_,
+          benchmark_id = value$target$benchmark_id %||% NA_character_,
           source = loaded$source %||% input$vac14_source,
           psm_index = choice,
           b_ion_color = input$vac14_b_color,
@@ -1640,23 +1706,65 @@
     }, add = TRUE)
     result(NULL)
     completed_signature(NULL)
-    status(list(type = "running", message = "Reading mzIdentML and MGF files…"))
+    status(list(
+      type = "running",
+      message = if (identical(input$vac14_source, "upload")) {
+        "Reading mzIdentML and MGF files…"
+      } else {
+        "Loading built-in PTM benchmark…"
+      }
+    ))
     tryCatch({
       loaded <- shiny::withProgress(message = "Loading peptide-spectrum matches", value = 0, {
-        shiny::incProgress(0.15, detail = "Preparing files")
-        selected <- if (identical(input$vac14_source, "upload")) {
-          .protvis_vac14_prepare_uploads(input$vac14_mzid, input$vac14_mgf)
+        shiny::incProgress(0.15, detail = "Preparing benchmark or input files")
+
+        if (identical(input$vac14_source, "upload")) {
+          selected <- .protvis_vac14_prepare_uploads(
+            input$vac14_mzid,
+            input$vac14_mgf
+          )
+          shiny::incProgress(0.35, detail = "Reading all PSMs and spectra")
+          answer <- .protvis_ptm_load_bundle(
+            selected$mzid,
+            selected$mgf,
+            selected$source
+          )
+        } else if (identical(
+          input$vac14_ptm_type %||% "phosphorylation",
+          "acetylation"
+        )) {
+          shiny::incProgress(0.35, detail = "Loading maize Kac consensus spectrum")
+          answer <- .protvis_maize_kac_bundle()
         } else {
-          .protvis_vac14_download_files()
+          selected <- .protvis_vac14_download_files()
+          shiny::incProgress(0.35, detail = "Reading PXD001057 PSMs and spectra")
+          answer <- .protvis_ptm_load_bundle(
+            selected$mzid,
+            selected$mgf,
+            selected$source
+          )
+          answer$benchmark <- .protvis_vac14_target()
         }
-        shiny::incProgress(0.35, detail = "Reading all PSMs and spectra")
-        .protvis_ptm_load_bundle(selected$mzid, selected$mgf, selected$source)
+
+        shiny::incProgress(0.45, detail = "Preparing selectable PSMs")
+        answer
       })
       bundle(loaded)
-      choices <- stats::setNames(as.character(loaded$catalog$psm_index), loaded$catalog$label)
-      target <- .protvis_vac14_target()
-      default_hit <- which(loaded$catalog$spectrum_id == target$spectrum_id &
-                             loaded$catalog$sequence == target$sequence)
+      choices <- stats::setNames(
+        as.character(loaded$catalog$psm_index),
+        loaded$catalog$label
+      )
+
+      target <- loaded$benchmark %||% NULL
+      if (!base::is.null(target) &&
+          base::nzchar(target$sequence %||% "")) {
+        default_hit <- which(
+          loaded$catalog$sequence == target$sequence
+        )
+      } else {
+        default_hit <- integer()
+      }
+
       selected_value <- if (length(default_hit)) {
         as.character(loaded$catalog$psm_index[default_hit[[1L]]])
       } else {
