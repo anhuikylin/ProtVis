@@ -1157,15 +1157,26 @@
         ))
       }
 
+      source_pxd <- target$best_raw_source_pxd %||% "PXD002379"
       return(shiny::div(
         class = "alert alert-info py-2 small",
         shiny::strong("Maize PeptideAtlas 2023-09"),
-        " · Kac · z=3 · ",
+        " · consensus HR-HCD · ",
         shiny::tags$a(
           href = target$peptideatlas_build,
           target = "_blank",
           rel = "noopener noreferrer",
           "PeptideAtlas"
+        ),
+        " · ",
+        shiny::tags$a(
+          href = base::paste0(
+            "https://www.ebi.ac.uk/pride/archive/projects/",
+            source_pxd
+          ),
+          target = "_blank",
+          rel = "noopener noreferrer",
+          source_pxd
         )
       ))
     }
