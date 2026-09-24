@@ -1770,7 +1770,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         shiny::div(
           class = "pw-maizegdb-live-body",
           shiny::p(status_text, class = "pw-note"),
-          DT::DTOutput(ns("maizegdb_table"))
+          DT::DTOutput(session$ns("maizegdb_table"))
         )
       )
     })

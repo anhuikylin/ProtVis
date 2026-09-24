@@ -113,3 +113,22 @@ test_that("Protein Workbench exposes AlphaFold PDB download support", {
   expect_match(module_source, "_AlphaFold.pdb", fixed = TRUE)
   expect_match(module_source, 'contentType = "chemical/x-pdb"', fixed = TRUE)
 })
+
+
+test_that("Protein Workbench MaizeGDB annotation output uses the module session namespace", {
+  module_source <- base::paste(
+    base::readLines(testthat::test_path("..", "..", "R", "protein_workbench.R")),
+    collapse = "\n"
+  )
+  expect_match(
+    module_source,
+    'DT::DTOutput\(session\\$ns\("maizegdb_table"\)\)',
+    fixed = FALSE
+  )
+  expect_false(
+    grepl(
+      'DT::DTOutput\(ns\("maizegdb_table"\)\)',
+      module_source
+    )
+  )
+})
