@@ -2,6 +2,8 @@
 
 .protvis_vac14_target <- function() {
   list(
+    benchmark_id = "phosphorylation_pxd001057",
+    ptm_type = "phosphorylation",
     project = "PXD001057",
     protein = "AT2G01690.1 (Vac14)",
     sequence = "ATSGVPFSQYK",
@@ -20,6 +22,135 @@
     mzid_gz = "E1R2_SCX5_soluble.mzid.gz",
     mzid = "E1R2_SCX5_soluble.mzid",
     mgf = "E1R2_SCX5_soluble.mzid_E1R2_SCX5_soluble.MGF"
+  )
+}
+
+
+.protvis_maize_kac_metadata <- function() {
+  path <- ProtVisDatabase::protvis_database_path(
+    "extdata",
+    "ptm",
+    "maize_kac",
+    "maize_peptideatlas_kac_VGYNPDK_Acetyl.tsv",
+    must_work = TRUE
+  )
+  table <- utils::read.delim(
+    path,
+    sep = "\t",
+    header = TRUE,
+    quote = "",
+    comment.char = "",
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  if (!base::all(c("field", "value") %in% base::names(table))) {
+    stop("The maize K-acetylation benchmark metadata is malformed.", call. = FALSE)
+  }
+  stats::setNames(base::as.character(table$value), base::as.character(table$field))
+}
+
+.protvis_maize_kac_target <- function() {
+  meta <- .protvis_maize_kac_metadata()
+  value <- function(name, default = "") {
+    answer <- meta[[name]]
+    if (base::is.null(answer) || !base::length(answer) ||
+        base::is.na(answer[[1L]]) || !base::nzchar(answer[[1L]])) {
+      return(default)
+    }
+    base::as.character(answer[[1L]])
+  }
+
+  list(
+    benchmark_id = value("benchmark_id", "maize_kac_peptideatlas_2023_09"),
+    ptm_type = "acetylation",
+    project = value("dataset", "Maize PeptideAtlas 2023-09"),
+    organism = value("organism", "Zea mays"),
+    protein = value("primary_maize_protein", "Zm00001eb285220_P003"),
+    sequence = value("peptide", "VGYNPDKIAFVPISGFEGDNMIER"),
+    modified_sequence = value(
+      "modified_peptide",
+      "VGYNPDK[Acetyl]IAFVPISGFEGDNMIER"
+    ),
+    modification = value("modification", "N6-acetyl-L-lysine (Kac)"),
+    acetyl_position = base::as.integer(value("modified_position", "7")),
+    acetyl_mass = base::as.numeric(value("mass_shift_da", "42.010565")),
+    precursor_mz = base::as.numeric(value("precursor_mz", "904.110900")),
+    precursor_charge = base::as.integer(value("precursor_charge", "3")),
+    spectrum_title = paste0(
+      "MaizePeptideAtlas_2023-09_",
+      "VGYNPDK[Acetyl]IAFVPISGFEGDNMIER/3"
+    ),
+    best_raw_spectrum = value(
+      "best_raw_spectrum",
+      "qe2_03102014_14_o2.28787.28787"
+    ),
+    supporting_pxd_ids = value("supporting_pxd_ids"),
+    peptideatlas_probability = value("peptideatlas_probability"),
+    consensus_replicates = value("consensus_replicates"),
+    consensus_dot = value("consensus_dot"),
+    consensus_fraction_assigned_peaks = value(
+      "consensus_fraction_assigned_peaks"
+    ),
+    source_library = value("source_library"),
+    peptideatlas_build = value("peptideatlas_build"),
+    paper_doi = value("paper_doi", "10.1021/acs.jproteome.4c00320"),
+    mgf = ProtVisDatabase::protvis_database_path(
+      "extdata",
+      "ptm",
+      "maize_kac",
+      "maize_peptideatlas_kac_VGYNPDK_Acetyl.mgf",
+      must_work = TRUE
+    )
+  )
+}
+
+.protvis_maize_kac_bundle <- function() {
+  .protvis_vac14_require_packages()
+  target <- .protvis_maize_kac_target()
+
+  modifications <- base::data.frame(
+    location = target$acetyl_position,
+    mass = target$acetyl_mass,
+    name = "Acetyl",
+    stringsAsFactors = FALSE
+  )
+
+  psm <- base::data.frame(
+    sequence = target$sequence,
+    spectrumID = "index=0",
+    chargeState = target$precursor_charge,
+    passThreshold = TRUE,
+    experimentalMassToCharge = target$precursor_mz,
+    calculatedMassToCharge = target$precursor_mz,
+    spectrum.title = target$spectrum_title,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  psm$DatabaseAccess <- I(base::list(target$protein))
+  psm$modLocation <- I(base::list(modifications$location))
+  psm$modMass <- I(base::list(modifications$mass))
+  psm$modName <- I(base::list(modifications$name))
+
+  catalog <- .protvis_ptm_psm_catalog(psm)
+  spectra <- Spectra::Spectra(
+    target$mgf,
+    source = MsBackendMgf::MsBackendMgf()
+  )
+  metadata <- base::as.data.frame(
+    Spectra::spectraData(spectra),
+    optional = TRUE
+  )
+  if (!base::length(spectra)) {
+    stop("The bundled maize K-acetylation spectrum is empty.", call. = FALSE)
+  }
+
+  list(
+    psm = psm,
+    catalog = catalog,
+    spectra = spectra,
+    metadata = metadata,
+    source = "Maize PeptideAtlas consensus HR-HCD spectrum",
+    benchmark = target
   )
 }
 
