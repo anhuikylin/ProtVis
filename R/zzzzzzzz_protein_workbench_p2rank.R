@@ -390,9 +390,7 @@
     "-f", base::shQuote(local_pdb),
     "-o", base::shQuote(out_dir),
     "-threads", base::as.character(threads),
-    "-visualizations", "0",
-    "-export_pocket_descriptors", "1",
-    "-pocket_grid_format", "csv"
+    "-visualizations", "0"
   )
   if (identical(profile, "alphafold")) {
     args <- c("predict", "-c", "alphafold", args[-1L])
