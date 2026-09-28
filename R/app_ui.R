@@ -1298,7 +1298,7 @@ app_ui <- function(request) {
         "Toolkits",
         icon = bsicons::bs_icon("tools"),
         bslib::nav_panel("Protein Extract", icon = bsicons::bs_icon("file-earmark-medical"), protein_extract_ui("protein_extract")),
-        bslib::nav_panel("Plant-mPLoc", icon = bsicons::bs_icon("geo-alt"), plant_mploc_ui("plant_mploc")),
+        bslib::nav_panel("Subcellular localization", icon = bsicons::bs_icon("geo-alt"), subcellular_localization_ui("subcellular_localization")),
         bslib::nav_panel("Background Make", icon = bsicons::bs_icon("collection"), background_make_ui("background_make")),
         bslib::nav_panel("Protein Links", icon = bsicons::bs_icon("link-45deg"), protein_links_ui("prot_links")),
         bslib::nav_panel("Protein Structure", icon = bsicons::bs_icon("diagram-3"), protein_structure_ui("protein_structure")),
