@@ -77,3 +77,35 @@ test_that("Protein Workbench fpocket integration keeps execution and visualizati
   expect_match(source, "druggability_score", fixed = TRUE)
   expect_match(source, "Full fpocket results", fixed = TRUE)
 })
+
+
+test_that("Protein Workbench binding pocket includes built-in 1HEL demo", {
+  html <- as.character(ProtVis::protein_workbench_ui("pw_pocket_demo_test"))
+
+  expect_match(html, "Built-in demo · 1HEL lysozyme", fixed = TRUE)
+  expect_match(html, "USE BUILT-IN DEMO", fixed = TRUE)
+  expect_match(html, "Download demo PDB", fixed = TRUE)
+  expect_match(html, "hen egg white lysozyme", fixed = TRUE)
+  expect_match(html, "1.70 Å", fixed = TRUE)
+
+  for (id in c(
+    "use_pocket_demo",
+    "download_pocket_demo"
+  )) {
+    expect_match(html, id, fixed = TRUE)
+  }
+})
+
+test_that("Protein Workbench pocket demo reuses bundled ProtVisDatabase structure", {
+  source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "zzzzzzz_protein_workbench_pocket.R")),
+    collapse = "\n"
+  )
+
+  expect_match(source, '.protvis_pw_pocket_demo_path', fixed = TRUE)
+  expect_match(source, '"extdata", "structure", "1hel.pdb"', fixed = TRUE)
+  expect_match(source, 'package = "ProtVisDatabase"', fixed = TRUE)
+  expect_match(source, 'selected = "demo"', fixed = TRUE)
+  expect_match(source, 'shinyjs::click(session$ns("run_pocket"))', fixed = TRUE)
+  expect_match(source, 'ProtVis_binding_pocket_demo_1HEL.pdb', fixed = TRUE)
+})
