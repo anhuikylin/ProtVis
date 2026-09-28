@@ -169,13 +169,11 @@
   )
 }
 
-.protvis_pw_p2rank_batch_command <- function(command, args) {
-  base::paste0(
-    '"',
-    base::shQuote(command, type = "cmd"),
-    " ",
-    base::paste(args, collapse = " "),
-    '"'
+.protvis_pw_p2rank_classpath <- function(install_dir) {
+  base::paste(
+    base::file.path(install_dir, "bin", "p2rank.jar"),
+    base::file.path(install_dir, "bin", "lib", "*"),
+    sep = .Platform$path.sep
   )
 }
 
@@ -194,20 +192,30 @@
   is_windows <- identical(.Platform$OS.type, "windows")
 
   if (is_windows && is_batch) {
-    comspec <- base::Sys.getenv("COMSPEC", unset = "cmd.exe")
-    batch_path <- base::normalizePath(
-      executable,
-      winslash = "\\",
-      mustWork = TRUE
+    java <- .protvis_pw_java_status()
+    if (!base::nzchar(java$executable)) {
+      base::stop(java$message, call. = FALSE)
+    }
+
+    install_dir <- base::dirname(executable)
+    jar <- base::file.path(install_dir, "bin", "p2rank.jar")
+    if (!base::file.exists(jar)) {
+      base::stop(
+        base::paste0("P2Rank JAR was not found: ", jar),
+        call. = FALSE
+      )
+    }
+
+    java_args <- c(
+      "-Xmx2048m",
+      "-cp",
+      base::shQuote(.protvis_pw_p2rank_classpath(install_dir)),
+      "cz.siret.prank.program.Main",
+      args
     )
     return(base::system2(
-      comspec,
-      args = c(
-        "/d",
-        "/s",
-        "/c",
-        .protvis_pw_p2rank_batch_command(batch_path, args)
-      ),
+      java$executable,
+      args = java_args,
       stdout = TRUE,
       stderr = TRUE,
       timeout = timeout
