@@ -37,9 +37,8 @@
     matched <- names(.subcellular_location_aliases)[vapply(
       .subcellular_location_aliases,
       function(aliases) any(vapply(aliases, function(a) {
-        identical(low, tolower(a)) ||
-          grepl(paste0("(^|[^[:alnum:]])", gsub("([.()])", "\\\\1", tolower(a)),
-                       "([^[:alnum:]]|$)"), low, perl = TRUE)
+        a <- tolower(a)
+        identical(low, a) || (nchar(a) >= 4L && grepl(a, low, fixed = TRUE))
       }, logical(1))),
       logical(1)
     )]
