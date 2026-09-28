@@ -20,6 +20,16 @@
   ""
 }
 
+
+.protvis_pw_pocket_demo_path <- function() {
+  path <- base::system.file(
+    "extdata", "structure", "1hel.pdb",
+    package = "ProtVisDatabase"
+  )
+  if (!base::nzchar(path) || !base::file.exists(path)) return("")
+  path
+}
+
 .protvis_pw_fpocket_info_file <- function(out_dir, stem) {
   candidates <- c(
     base::file.path(out_dir, base::paste0(stem, "_info.txt")),
@@ -231,9 +241,28 @@
               "Structure source",
               choices = c(
                 "Current AlphaFold structure" = "alphafold",
+                "Built-in demo · 1HEL lysozyme" = "demo",
                 "Upload PDB" = "upload"
               ),
               selected = "alphafold"
+            ),
+            shiny::div(
+              style = "margin-bottom:10px;",
+              shiny::actionButton(
+                ns("use_pocket_demo"),
+                "USE BUILT-IN DEMO",
+                icon = bsicons::bs_icon("database"),
+                class = "btn-outline-primary"
+              ),
+              shiny::downloadButton(
+                ns("download_pocket_demo"),
+                "Download demo PDB",
+                class = "btn-sm btn-outline-secondary"
+              )
+            ),
+            shiny::div(
+              "Demo: PDB 1HEL · hen egg white lysozyme · X-ray structure (1.70 Å).",
+              style = "font-size:11px;color:#657789;margin-bottom:10px;"
             ),
             shiny::conditionalPanel(
               condition = base::sprintf("input['%s'] === 'upload'", ns("pocket_structure_source")),
@@ -305,8 +334,10 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       pdb_text = "",
       pdb_path = "",
       result = NULL,
-      message = "Use the current AlphaFold structure or upload a PDB, then run fpocket."
+      message = "Use the current AlphaFold structure, built-in 1HEL demo, or upload a PDB, then run fpocket."
     )
+
+    pocket_demo_path <- .protvis_pw_pocket_demo_path()
 
     current_accession_pocket <- shiny::reactive({
       base::trimws(base::as.character(input$accession %||% ""))
@@ -338,6 +369,35 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       if (base::nrow(hit)) hit[1L, , drop = FALSE] else table[1L, , drop = FALSE]
     })
 
+    shiny::observeEvent(input$use_pocket_demo, {
+      if (!base::nzchar(pocket_demo_path) || !base::file.exists(pocket_demo_path)) {
+        shiny::showNotification(
+          "Built-in 1HEL PDB was not found. Reinstall ProtVisDatabase.",
+          type = "error",
+          duration = 6
+        )
+        return(NULL)
+      }
+      shiny::updateRadioButtons(
+        session,
+        "pocket_structure_source",
+        selected = "demo"
+      )
+      rv_pocket$message <- "Built-in demo selected: PDB 1HEL (hen egg white lysozyme). Running fpocket..."
+      shinyjs::click(session$ns("run_pocket"))
+    })
+
+    output$download_pocket_demo <- shiny::downloadHandler(
+      filename = function() "ProtVis_binding_pocket_demo_1HEL.pdb",
+      content = function(file) {
+        if (!base::nzchar(pocket_demo_path) || !base::file.exists(pocket_demo_path)) {
+          base::stop("Built-in 1HEL PDB was not found.", call. = FALSE)
+        }
+        base::file.copy(pocket_demo_path, file, overwrite = TRUE)
+      },
+      contentType = "chemical/x-pdb"
+    )
+
     shiny::observeEvent(input$run_pocket, {
       base::tryCatch({
         source <- input$pocket_structure_source %||% "alphafold"
@@ -350,6 +410,16 @@ protein_workbench_server <- function(id, shared_state = NULL) {
             }
             rv_pocket$pdb_path <- input$pocket_pdb$datapath
             rv_pocket$pdb_text <- base::paste(base::readLines(rv_pocket$pdb_path, warn = FALSE), collapse = "\n")
+          } else if (identical(source, "demo")) {
+            if (!base::nzchar(pocket_demo_path) || !base::file.exists(pocket_demo_path)) {
+              base::stop("Built-in 1HEL PDB was not found. Reinstall ProtVisDatabase.", call. = FALSE)
+            }
+            shiny::setProgress(0.18, detail = "Loading built-in PDB 1HEL")
+            rv_pocket$pdb_path <- pocket_demo_path
+            rv_pocket$pdb_text <- base::paste(
+              base::readLines(pocket_demo_path, warn = FALSE),
+              collapse = "\n"
+            )
           } else {
             shiny::setProgress(0.18, detail = "Loading AlphaFold structure")
             structure <- load_alphafold_pdb()
