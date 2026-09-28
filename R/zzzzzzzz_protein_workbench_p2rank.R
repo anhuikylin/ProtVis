@@ -169,6 +169,16 @@
   )
 }
 
+.protvis_pw_p2rank_batch_command <- function(command, args) {
+  base::paste0(
+    '"',
+    base::shQuote(command, type = "cmd"),
+    " ",
+    base::paste(args, collapse = " "),
+    '"'
+  )
+}
+
 .protvis_pw_system2_p2rank <- function(executable, args, timeout = 600) {
   executable <- base::normalizePath(
     executable,
@@ -187,7 +197,12 @@
     comspec <- base::Sys.getenv("COMSPEC", unset = "cmd.exe")
     return(base::system2(
       comspec,
-      args = c("/d", "/s", "/c", base::shQuote(command), args),
+      args = c(
+        "/d",
+        "/s",
+        "/c",
+        .protvis_pw_p2rank_batch_command(command, args)
+      ),
       stdout = TRUE,
       stderr = TRUE,
       timeout = timeout
@@ -397,7 +412,13 @@
       !base::nzchar(predictions_file)) {
     base::stop(
       base::paste0(
-        "P2Rank failed. ",
+        "P2Rank failed",
+        if (!identical(base::as.integer(exit_status), 0L)) {
+          base::paste0(" (exit status ", base::as.integer(exit_status), ")")
+        } else {
+          ""
+        },
+        ". ",
         base::paste(utils::tail(output, 12L), collapse = " | ")
       ),
       call. = FALSE
