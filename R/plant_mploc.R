@@ -13,6 +13,20 @@
   "Vacuole" = "Vacuole"
 )
 .plant_mploc_locations <- names(.plant_mploc_location_aliases)
+.plant_mploc_abbreviations <- c(
+  PM = "Cell membrane", CM = "Cell membrane",
+  CW = "Cell wall",
+  CH = "Chloroplast", CL = "Chloroplast",
+  CY = "Cytoplasm",
+  ER = "Endoplasmic reticulum",
+  EX = "Extracellular",
+  GA = "Golgi apparatus", GB = "Golgi apparatus",
+  M = "Mitochondrion", MT = "Mitochondrion",
+  NU = "Nucleus",
+  PE = "Peroxisome", PX = "Peroxisome",
+  PL = "Plastid",
+  VA = "Vacuole"
+)
 
 .plant_mploc_url <- "http://www.csbio.sjtu.edu.cn/bioinf/plant-multi/"
 
@@ -134,7 +148,14 @@
     "(?:\\s*(?:[.,;/]|and|&)\\s*(?:", location_pattern, "))*[.!]?$"
   )
   exact_lines <- lines[grepl(exact_pattern, lines, ignore.case = TRUE, perl = TRUE)]
-  candidates <- unique(c(result_lines, exact_lines))
+  abbreviation_pattern <- paste0(
+    "^(?:", paste(names(.plant_mploc_abbreviations), collapse = "|"), ")",
+    "(?:[[:space:],;/|]+(?:", paste(names(.plant_mploc_abbreviations), collapse = "|"), "))*[.!]?$"
+  )
+  abbreviation_lines <- lines[
+    grepl(abbreviation_pattern, lines, ignore.case = FALSE, perl = TRUE)
+  ]
+  candidates <- unique(c(result_lines, exact_lines, abbreviation_lines))
   if (!length(candidates)) {
     candidates <- lines[vapply(lines, function(line) {
       any(vapply(location_aliases, function(alias) {
@@ -160,6 +181,21 @@
       }, logical(1)))
     }, logical(1))
   ]
+  abbreviation_tokens <- unlist(regmatches(
+    candidates,
+    gregexpr(
+      paste0(
+        "(?<![[:alnum:]])(?:",
+        paste(names(.plant_mploc_abbreviations), collapse = "|"),
+        ")(?![[:alnum:]])"
+      ),
+      candidates,
+      perl = TRUE
+    )
+  ), use.names = FALSE)
+  abbreviation_hits <- unname(.plant_mploc_abbreviations[abbreviation_tokens])
+  hits <- unique(c(hits, abbreviation_hits))
+  hits <- .plant_mploc_locations[.plant_mploc_locations %in% hits]
   if (!length(hits)) NA_character_ else hits
 }
 
