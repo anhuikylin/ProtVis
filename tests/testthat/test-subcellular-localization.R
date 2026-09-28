@@ -73,3 +73,25 @@ test_that("effective Toolkits UI uses the same localization module as the server
   ))
   expect_false(grepl('plant_mploc_ui("plant_mploc")', active_ui, fixed = TRUE))
 })
+
+test_that("DeepLoc web result can rescue unavailable automatic sources", {
+  provider <- .subcellular_import_deeploc("chloroplast; Lysosome/Vacuole")
+  expect_equal(provider$status, "success")
+  expect_equal(provider$prediction, c("Chloroplast", "Lysosome/Vacuole"))
+  expect_match(provider$details, "user", ignore.case = TRUE)
+
+  providers <- list(
+    .subcellular_provider_result("Plant-mPLoc", "unavailable", error = "timeout"),
+    "DeepLoc 2.1" = provider
+  )
+  summary <- .subcellular_consensus(providers)
+  expect_equal(summary$successful, 1L)
+  expect_setequal(summary$prediction, c("Chloroplast", "Lysosome/Vacuole"))
+  expect_error(.subcellular_import_deeploc("unknown compartment"), "DeepLoc")
+})
+
+test_that("DeepLoc FASTA export validates sequence length and protein ID", {
+  fasta <- .subcellular_deeploc_fasta("ACDEFGHIKLMN", "protein 1")
+  expect_true(startsWith(fasta, ">protein_1\n"))
+  expect_error(.subcellular_deeploc_fasta("ACD", "short"), "at least 10")
+})
