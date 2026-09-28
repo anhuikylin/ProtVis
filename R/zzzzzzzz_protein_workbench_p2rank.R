@@ -700,7 +700,15 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         "p2rank_profile",
         selected = "default"
       )
-      rv_pocket$message <- "Built-in 1HEL demo selected. Running P2Rank..."
+      # Render the 1HEL structure before starting the synchronous P2Rank process.
+      # This gives the 3D panel useful content while prediction is still running.
+      rv_pocket$pdb_path <- pocket_demo_path
+      rv_pocket$pdb_text <- base::paste(
+        base::readLines(pocket_demo_path, warn = FALSE),
+        collapse = "\n"
+      )
+      rv_pocket$result <- NULL
+      rv_pocket$message <- "Built-in 1HEL structure loaded. Running P2Rank..."
       shinyjs::click(session$ns("run_pocket"))
     })
 
