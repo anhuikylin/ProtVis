@@ -26,29 +26,84 @@
   base::normalizePath(exe, winslash = "/", mustWork = TRUE)
 }
 
+.protvis_pw_docker_status <- function() {
+  exe <- .protvis_pw_docker_executable()
+  if (!base::nzchar(exe)) {
+    return(base::list(
+      available = FALSE,
+      running = FALSE,
+      executable = "",
+      message = "Docker CLI was not found."
+    ))
+  }
+
+  output <- base::tryCatch(
+    base::system2(
+      exe,
+      args = c("info", "--format", "{{.ServerVersion}}"),
+      stdout = TRUE,
+      stderr = TRUE,
+      timeout = 12
+    ),
+    error = function(e) structure(base::conditionMessage(e), status = 1L)
+  )
+  status <- base::attr(output, "status") %||% 0L
+  text <- base::paste(output, collapse = " | ")
+  running <- identical(base::as.integer(status), 0L) &&
+    base::length(output) > 0L &&
+    base::nzchar(base::trimws(base::as.character(output[[1L]])))
+
+  base::list(
+    available = TRUE,
+    running = running,
+    executable = exe,
+    message = if (running) {
+      base::paste0("Docker engine ready · server ", base::trimws(output[[1L]]))
+    } else {
+      base::paste0(
+        "Docker CLI is installed, but the Docker engine is not running. ",
+        "Start Docker Desktop and wait until the engine reports that it is running. ",
+        if (base::nzchar(text)) base::paste0("Docker message: ", text) else ""
+      )
+    }
+  )
+}
+
 .protvis_pw_fpocket_backend <- function(path = "") {
   native <- .protvis_pw_fpocket_executable(path)
   if (base::nzchar(native)) {
     return(base::list(
       type = "native",
       executable = native,
-      label = base::paste0("Native fpocket · ", native)
+      label = base::paste0("Native fpocket · ", native),
+      message = "Native fpocket is ready."
     ))
   }
 
-  docker <- .protvis_pw_docker_executable()
-  if (base::nzchar(docker)) {
+  docker <- .protvis_pw_docker_status()
+  if (isTRUE(docker$available) && isTRUE(docker$running)) {
     return(base::list(
       type = "docker",
-      executable = docker,
-      label = "Docker · official fpocket/fpocket image"
+      executable = docker$executable,
+      label = "Docker · official fpocket/fpocket image",
+      message = docker$message
+    ))
+  }
+
+  if (isTRUE(docker$available) && !isTRUE(docker$running)) {
+    return(base::list(
+      type = "docker_stopped",
+      executable = docker$executable,
+      label = "Docker Desktop engine is not running",
+      message = docker$message
     ))
   }
 
   base::list(
     type = "missing",
     executable = "",
-    label = "fpocket backend not detected"
+    label = "fpocket backend not detected",
+    message = "Neither native fpocket nor Docker was detected."
   )
 }
 
@@ -166,6 +221,15 @@
   if (!base::file.exists(pdb_path)) base::stop("PDB structure file was not found.", call. = FALSE)
 
   backend <- .protvis_pw_fpocket_backend(fpocket_path)
+  if (identical(backend$type, "docker_stopped")) {
+    base::stop(
+      paste0(
+        "Docker Desktop is installed but its engine is not running. ",
+        "Start Docker Desktop, wait until the engine is ready, then run pocket prediction again."
+      ),
+      call. = FALSE
+    )
+  }
   if (identical(backend$type, "missing")) {
     base::stop(
       paste0(
@@ -569,7 +633,9 @@ protein_workbench_server <- function(id, shared_state = NULL) {
           if (identical(backend$type, "native")) {
             base::paste0("Ready · native fpocket: ", backend$executable)
           } else if (identical(backend$type, "docker")) {
-            "Ready · Docker detected. ProtVis will use the official fpocket/fpocket image."
+            base::paste0("Ready · ", backend$message, ". ProtVis will use the official fpocket/fpocket image.")
+          } else if (identical(backend$type, "docker_stopped")) {
+            "Docker Desktop is installed, but its engine is not running. Start Docker Desktop and wait until it is fully ready, then run again."
           } else {
             "No fpocket backend detected. Install fpocket or Docker Desktop, then restart ProtVis."
           },
