@@ -195,13 +195,18 @@
 
   if (is_windows && is_batch) {
     comspec <- base::Sys.getenv("COMSPEC", unset = "cmd.exe")
+    batch_path <- base::normalizePath(
+      executable,
+      winslash = "\\",
+      mustWork = TRUE
+    )
     return(base::system2(
       comspec,
       args = c(
         "/d",
         "/s",
         "/c",
-        .protvis_pw_p2rank_batch_command(command, args)
+        .protvis_pw_p2rank_batch_command(batch_path, args)
       ),
       stdout = TRUE,
       stderr = TRUE,
