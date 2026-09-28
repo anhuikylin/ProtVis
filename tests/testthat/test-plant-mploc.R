@@ -80,8 +80,8 @@ test_that("Plant-mPLoc prefers the prediction submit control", {
 test_that("Plant-mPLoc is wired into the application", {
   ui <- paste(readLines(testthat::test_path("..", "..", "R", "app_ui.R")), collapse = "\n")
   server <- paste(readLines(testthat::test_path("..", "..", "R", "app_server.R")), collapse = "\n")
-  expect_match(ui, 'plant_mploc_ui\\("plant_mploc"\\)')
-  expect_match(server, 'plant_mploc_server\\("plant_mploc"\\)')
+  expect_match(ui, 'subcellular_localization_ui\\("subcellular_localization"\\)')
+  expect_match(server, 'subcellular_localization_server\\("subcellular_localization"\\)')
   module <- paste(readLines(testthat::test_path("..", "..", "R", "plant_mploc.R")), collapse = "\n")
   expect_match(module, 'ns\\("load_demo"\\)')
   expect_match(module, "updateTextAreaInput")
