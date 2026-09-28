@@ -189,12 +189,20 @@
 
   residues <- .protvis_pw_pdb_residues(pocket_file)
   if (base::nrow(residues)) {
-    resi <- base::sort(base::unique(residues$resi))
-    viewer <- viewer |>
-      r3dmol::m_add_style(
-        sel = r3dmol::m_sel(resi = resi),
+    chains <- base::unique(residues$chain)
+    for (chain in chains) {
+      chain_resi <- base::sort(base::unique(residues$resi[residues$chain == chain]))
+      selection <- if (base::nzchar(chain)) {
+        r3dmol::m_sel(chain = chain, resi = chain_resi)
+      } else {
+        r3dmol::m_sel(resi = chain_resi)
+      }
+      viewer <- r3dmol::m_add_style(
+        viewer,
+        sel = selection,
         style = r3dmol::m_style_sphere(scale = 0.45, color = "#d73027")
       )
+    }
   }
   viewer |> r3dmol::m_zoom_to()
 }
