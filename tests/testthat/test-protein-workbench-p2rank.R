@@ -111,3 +111,11 @@ test_that("P2Rank diagnostics report folder and prank.bat presence", {
   expect_true(diag$candidate_exists[["prank_bat"]])
   expect_true(diag$found)
 })
+
+
+test_that("Binding pocket buttons keep icons fully visible", {
+  html <- as.character(ProtVis::protein_workbench_ui("pw_icon_test"))
+  expect_match(html, "binding_pocket_root", fixed = TRUE)
+  expect_match(html, "overflow:visible", fixed = TRUE)
+  expect_match(html, "display:inline-flex", fixed = TRUE)
+})
