@@ -21,6 +21,7 @@ Imports:
     ComplexHeatmap,
     DESeq2,
     DEqMS,
+    DECIPHER,
     DT,
     GO.db,
     MASS,
