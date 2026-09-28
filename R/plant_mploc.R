@@ -1,8 +1,18 @@
-.plant_mploc_locations <- c(
-  "Cell membrane", "Cell wall", "Chloroplast", "Cytoplasm",
-  "Endoplasmic reticulum", "Extracellular", "Golgi apparatus",
-  "Mitochondrion", "Nucleus", "Peroxisome", "Plastid", "Vacuole"
+.plant_mploc_location_aliases <- list(
+  "Cell membrane" = c("Cell membrane", "Plasma membrane"),
+  "Cell wall" = "Cell wall",
+  "Chloroplast" = "Chloroplast",
+  "Cytoplasm" = "Cytoplasm",
+  "Endoplasmic reticulum" = "Endoplasmic reticulum",
+  "Extracellular" = "Extracellular",
+  "Golgi apparatus" = "Golgi apparatus",
+  "Mitochondrion" = "Mitochondrion",
+  "Nucleus" = "Nucleus",
+  "Peroxisome" = "Peroxisome",
+  "Plastid" = "Plastid",
+  "Vacuole" = "Vacuole"
 )
+.plant_mploc_locations <- names(.plant_mploc_location_aliases)
 
 .plant_mploc_url <- "http://www.csbio.sjtu.edu.cn/bioinf/plant-multi/"
 
@@ -109,10 +119,11 @@
   lines <- lines[nzchar(lines)]
   if (!length(lines)) return(NA_character_)
 
-  location_pattern <- paste(.plant_mploc_locations, collapse = "|")
+  location_aliases <- unlist(.plant_mploc_location_aliases, use.names = FALSE)
+  location_pattern <- paste(location_aliases, collapse = "|")
   result_lines <- lines[
     grepl(
-      "predict(?:ed|ion).*result|subcellular.*location",
+      "predict(?:ed|ion)?.{0,40}(?:result|location|site)|subcellular.{0,30}(?:location|prediction)|location.{0,20}predict",
       lines,
       ignore.case = TRUE,
       perl = TRUE
@@ -124,26 +135,30 @@
   )
   exact_lines <- lines[grepl(exact_pattern, lines, ignore.case = TRUE, perl = TRUE)]
   candidates <- unique(c(result_lines, exact_lines))
+  if (!length(candidates)) {
+    candidates <- lines[vapply(lines, function(line) {
+      any(vapply(location_aliases, function(alias) {
+        grepl(alias, line, ignore.case = TRUE, fixed = TRUE)
+      }, logical(1)))
+    }, logical(1))]
+  }
   if (!length(candidates)) return(NA_character_)
 
-  # Exclude explanatory text that merely lists the server's possible classes.
   candidates <- candidates[
     !grepl(
-      "following|location sites|predictor|input|example|server|identify.*among",
+      "following|location sites|predictor|input|example|server|identify.*among|covers?|includes?|categories|classes",
       candidates,
       ignore.case = TRUE
     )
   ]
   if (!length(candidates)) return(NA_character_)
 
-  hits <- .plant_mploc_locations[
-    vapply(
-      .plant_mploc_locations,
-      function(location) {
-        any(grepl(location, candidates, ignore.case = TRUE, fixed = TRUE))
-      },
-      logical(1)
-    )
+  hits <- names(.plant_mploc_location_aliases)[
+    vapply(names(.plant_mploc_location_aliases), function(location) {
+      any(vapply(.plant_mploc_location_aliases[[location]], function(alias) {
+        any(grepl(alias, candidates, ignore.case = TRUE, fixed = TRUE))
+      }, logical(1)))
+    }, logical(1))
   ]
   if (!length(hits)) NA_character_ else hits
 }
