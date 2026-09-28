@@ -103,27 +103,35 @@
 }
 
 .protvis_pw_system2_p2rank <- function(executable, args, timeout = 600) {
-  is_batch <- base::grepl("\\.(bat|cmd)$", executable, ignore.case = TRUE)
+  executable <- base::normalizePath(
+    executable,
+    winslash = "/",
+    mustWork = TRUE
+  )
+  old_wd <- base::getwd()
+  on.exit(base::setwd(old_wd), add = TRUE)
+  base::setwd(base::dirname(executable))
+
+  command <- base::basename(executable)
+  is_batch <- base::grepl("\\.(bat|cmd)$", command, ignore.case = TRUE)
   is_windows <- identical(.Platform$OS.type, "windows")
 
   if (is_windows && is_batch) {
     comspec <- base::Sys.getenv("COMSPEC", unset = "cmd.exe")
-    cmd_args <- c(
-      "/d", "/s", "/c",
-      base::shQuote(executable),
-      args
-    )
     return(base::system2(
       comspec,
-      args = cmd_args,
+      args = c("/d", "/s", "/c", base::shQuote(command), args),
       stdout = TRUE,
       stderr = TRUE,
       timeout = timeout
     ))
   }
 
+  if (!is_windows && !base::grepl("^/", command)) {
+    command <- base::paste0("./", command)
+  }
   base::system2(
-    executable,
+    command,
     args = args,
     stdout = TRUE,
     stderr = TRUE,
