@@ -23,6 +23,7 @@
   "Nucleus" = c("nucleus", "nuclear", "nucl"),
   "Peroxisome" = c("peroxisome", "peroxisomal", "pero"),
   "Plastid" = c("plastid", "plastidial"),
+  "Lysosome/Vacuole" = c("lysosome/vacuole", "lysosome", "lysosomal"),
   "Vacuole" = c("vacuole", "vacuolar", "vacu")
 )
 
@@ -419,13 +420,45 @@ predict_subcellular_localization <- function(
   )
 }
 
+.subcellular_import_deeploc <- function(location) {
+  labels <- c(
+    "Nucleus", "Cytoplasm", "Extracellular", "Mitochondrion",
+    "Cell membrane", "Endoplasmic reticulum", "Chloroplast",
+    "Golgi apparatus", "Lysosome/Vacuole", "Peroxisome"
+  )
+  parts <- trimws(unlist(strsplit(gsub("\n", ";", location %||% "", fixed = TRUE), "[,;]+")))
+  parts <- parts[nzchar(parts)]
+  matched <- labels[match(tolower(parts), tolower(labels))]
+  if (!length(parts) || anyNA(matched)) {
+    stop(
+      "Enter the predicted localization labels exactly as shown by DeepLoc 2.1, separated by semicolons.",
+      call. = FALSE
+    )
+  }
+  .subcellular_provider_result(
+    "DeepLoc 2.1", "success", unique(matched),
+    details = "Entered from the DeepLoc 2.1 web result by the user",
+    result_url = "https://services.healthtech.dtu.dk/services/DeepLoc-2.1/"
+  )
+}
+
+.subcellular_deeploc_fasta <- function(sequence, id) {
+  sequence <- .plant_mploc_clean_sequence(sequence)
+  if (nchar(sequence) < 10L) {
+    stop("DeepLoc 2.1 requires at least 10 amino acids.", call. = FALSE)
+  }
+  id <- gsub("[^A-Za-z0-9_.-]+", "_", trimws(as.character(id %||% "")))
+  if (!nzchar(id)) id <- "query_protein"
+  .plant_mploc_fasta(sequence, id)
+}
+
 .subcellular_evidence_table <- function(value) {
   rows <- lapply(value$providers, function(x) {
     data.frame(
       source = x$source,
       status = if (identical(x$status, "success")) "Available" else "Unavailable",
       prediction = if (length(x$prediction)) paste(x$prediction, collapse = "; ") else "—",
-      detail = if (!is.null(x$error) && nzchar(x$error)) x$error else "",
+      detail = if (!is.null(x$error) && nzchar(x$error)) x$error else x$details %||% "",
       stringsAsFactors = FALSE
     )
   })
@@ -555,6 +588,33 @@ subcellular_localization_ui <- function(id) {
         )
       ),
       bslib::card(
+        bslib::card_header("DeepLoc 2.1 website result"),
+        bslib::card_body(
+          shiny::p(
+            "If automatic web sources are unavailable, download this protein as FASTA, run DeepLoc 2.1 on its website, and enter the predicted localization labels below.",
+            style = "font-size:13px;color:#667085;"
+          ),
+          shiny::div(
+            style = "display:flex;gap:8px;flex-wrap:wrap;",
+            shiny::downloadButton(ns("deeploc_fasta"), "DOWNLOAD FASTA", class = "btn-outline-primary"),
+            shiny::tags$a(
+              href = "https://services.healthtech.dtu.dk/services/DeepLoc-2.1/",
+              target = "_blank", rel = "noopener noreferrer",
+              class = "btn btn-outline-info",
+              bsicons::bs_icon("box-arrow-up-right"), " Open DeepLoc 2.1"
+            )
+          ),
+          shiny::textAreaInput(
+            ns("deeploc_location"), "Predicted localizations (semicolon separated)",
+            rows = 2, placeholder = "For example: Chloroplast; Cytoplasm"
+          ),
+          shiny::actionButton(
+            ns("import_deeploc"), "ADD DEEPLOC RESULT",
+            icon = bsicons::bs_icon("check-circle"), class = "btn-primary"
+          )
+        )
+      ),
+      bslib::card(
         full_screen = TRUE, min_height = 650,
         bslib::card_header("Subcellular Localization Results"),
         bslib::card_body(
@@ -603,6 +663,71 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
     error_message <- shiny::reactiveVal(NULL)
     running <- shiny::reactiveVal(FALSE)
 
+    output$deeploc_fasta <- shiny::downloadHandler(
+      filename = function() {
+        id <- gsub("[^A-Za-z0-9_.-]+", "_", input$protein_id %||% "")
+        if (!nzchar(id)) id <- "query_protein"
+        paste0(id, "_deeploc.fasta")
+      },
+      content = function(file) {
+        writeLines(.subcellular_deeploc_fasta(input$sequence, input$protein_id), file)
+      },
+      contentType = "text/plain"
+    )
+
+    shiny::observeEvent(input$sequence, {
+      result(NULL)
+      status("Ready")
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$protein_id, {
+      result(NULL)
+      status("Ready")
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$import_deeploc, {
+      tryCatch({
+        sequence <- .plant_mploc_clean_sequence(input$sequence)
+        .subcellular_deeploc_fasta(sequence, input$protein_id)
+        imported <- .subcellular_import_deeploc(input$deeploc_location)
+        value <- result()
+        if (is.null(value) || !identical(value$sequence, sequence) ||
+            !identical(value$protein_id, input$protein_id)) {
+          value <- list(
+            protein_id = input$protein_id, sequence = sequence,
+            length = nchar(sequence), providers = list(),
+            submitted_at = Sys.time()
+          )
+        }
+        value$providers[["DeepLoc 2.1"]] <- imported
+        value$consensus <- .subcellular_consensus(value$providers)
+        class(value) <- "ProtVis_subcellular_localization"
+        evidence <- .subcellular_evidence_table(value)
+        .protvis_record_shared_run(
+          shared_state,
+          module = "subcellular_localization",
+          method = "DeepLoc 2.1 web result",
+          category = "subcellular_localization",
+          parameters = list(
+            protein_id = value$protein_id,
+            website = imported$result_url,
+            entry = "user-entered result"
+          ),
+          tables = list(evidence = evidence, consensus_votes = value$consensus$votes),
+          statistics = list(sequence = sequence)
+        )
+        result(value)
+        error_message(NULL)
+        status("Imported")
+        shiny::showNotification("DeepLoc 2.1 result added.", type = "message")
+      }, error = function(e) {
+        shiny::showNotification(
+          paste("DeepLoc 2.1:", conditionMessage(e)),
+          type = "error", duration = 8
+        )
+      })
+    }, ignoreInit = TRUE)
+
     output$sequence_status <- shiny::renderUI({
       seq <- toupper(gsub("\\s+", "", input$sequence %||% ""))
       if (!nzchar(seq)) {
@@ -641,10 +766,16 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
 
       status("Running")
       error_message(NULL)
+      previous <- result()
       result(NULL)
 
       tryCatch({
         seq <- .plant_mploc_clean_sequence(input$sequence)
+        manual <- if (!is.null(previous) &&
+                      identical(previous$sequence, seq) &&
+                      identical(previous$protein_id, input$protein_id)) {
+          previous$providers[["DeepLoc 2.1"]]
+        } else NULL
         value <- shiny::withProgress(
           message = "Predicting subcellular localization...", value = 0.1,
           {
@@ -659,6 +790,10 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
             ans
           }
         )
+        if (!is.null(manual)) {
+          value$providers[["DeepLoc 2.1"]] <- manual
+          value$consensus <- .subcellular_consensus(value$providers)
+        }
         result(value)
         status(if (value$consensus$successful == value$consensus$requested) {
           "Completed"
@@ -693,6 +828,7 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
       col <- switch(
         s,
         "Completed" = "#157347",
+        "Imported" = "#157347",
         "Completed with warnings" = "#b7791f",
         "Unavailable" = "#b7791f",
         "Failed" = "#b42318",
@@ -752,11 +888,14 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
       }
 
       if (!length(value$consensus$prediction)) {
+        failures <- vapply(value$providers, function(x) {
+          paste0(x$source, ": ", x$error %||% "No usable result")
+        }, character(1))
         return(shiny::div(
           class = "alert alert-warning",
-          shiny::strong("No provider returned a usable prediction."),
-          shiny::br(),
-          "Check the Evidence and Raw responses tabs, or use the external-resource links."
+          shiny::strong("No automatic source returned a usable prediction."),
+          shiny::tags$ul(lapply(failures, shiny::tags$li)),
+          "Use the DeepLoc 2.1 website result panel above to add a verified prediction."
         ))
       }
 
