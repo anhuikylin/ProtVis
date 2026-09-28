@@ -119,6 +119,18 @@
   )
 }
 
+.protvis_pw_default_p2rank_path <- function(
+  candidates = c(
+    base::Sys.getenv("PROTVIS_P2RANK_PATH", unset = ""),
+    "E:/count/p2rank/p2rank_2.5.1"
+  )
+) {
+  candidates <- base::unique(base::trimws(base::as.character(candidates)))
+  candidates <- candidates[base::nzchar(candidates) & base::dir.exists(candidates)]
+  if (!base::length(candidates)) return("")
+  base::normalizePath(candidates[[1L]], winslash = "/", mustWork = TRUE)
+}
+
 .protvis_pw_p2rank_status <- function(path = "") {
   diagnostics <- .protvis_pw_p2rank_path_diagnostics(path)
   exe <- diagnostics$executable
@@ -477,7 +489,7 @@
       shiny::textInput(
         ns("p2rank_path"),
         "P2Rank folder or executable",
-        value = "",
+        value = .protvis_pw_default_p2rank_path(),
         placeholder = "Auto-detect prank.bat / prank; or select P2Rank folder"
       ),
       shiny::selectInput(
