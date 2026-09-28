@@ -119,3 +119,29 @@ test_that("Binding pocket buttons keep icons fully visible", {
   expect_match(html, "overflow:visible", fixed = TRUE)
   expect_match(html, "display:inline-flex", fixed = TRUE)
 })
+
+test_that("Built-in 1HEL structure is previewed before P2Rank starts", {
+  source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "zzzzzzzz_protein_workbench_p2rank.R")),
+    collapse = "\\n"
+  )
+
+  demo_start <- regexpr(
+    "shiny::observeEvent(input$use_pocket_demo",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  click_start <- regexpr(
+    'shinyjs::click(session$ns("run_pocket"))',
+    source,
+    fixed = TRUE
+  )[[1L]]
+
+  expect_gt(demo_start, 0L)
+  expect_gt(click_start, demo_start)
+  demo_setup <- substr(source, demo_start, click_start)
+  expect_match(demo_setup, "rv_pocket$pdb_path <- pocket_demo_path", fixed = TRUE)
+  expect_match(demo_setup, "rv_pocket$pdb_text <- base::paste(", fixed = TRUE)
+  expect_match(demo_setup, "rv_pocket$result <- NULL", fixed = TRUE)
+  expect_match(demo_setup, "Built-in 1HEL structure loaded.", fixed = TRUE)
+})
