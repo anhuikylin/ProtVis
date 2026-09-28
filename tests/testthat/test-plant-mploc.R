@@ -54,6 +54,17 @@ test_that("Plant-mPLoc parser supports single and multiple locations", {
   )
 })
 
+test_that("Plant-mPLoc parser recognizes the plasma-membrane label", {
+  expect_equal(
+    .plant_mploc_extract_prediction("Predicted location: Plasma membrane"),
+    "Cell membrane"
+  )
+  expect_equal(
+    .plant_mploc_extract_prediction("Predicted subcellular locations: Plasma membrane; Nucleus"),
+    c("Cell membrane", "Nucleus")
+  )
+})
+
 test_that("Plant-mPLoc prefers the prediction submit control", {
   form <- list(fields = list(
     reset = list(type = "submit", value = "Clear"),
