@@ -34,6 +34,18 @@ test_that("P2Rank executable detection accepts an extracted folder", {
   )
 })
 
+test_that("Windows P2Rank batch commands quote the complete cmd /c payload", {
+  command <- ProtVis:::.protvis_pw_p2rank_batch_command(
+    "prank.bat",
+    c("predict", "-f", '"C:/Users/test user/input.pdb"')
+  )
+
+  expect_identical(
+    command,
+    '""prank.bat" predict -f "C:/Users/test user/input.pdb""'
+  )
+})
+
 test_that("P2Rank prediction CSV is normalized for ProtVis", {
   pdb <- tempfile(fileext = ".pdb")
   writeLines(c(
