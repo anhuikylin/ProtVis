@@ -20,6 +20,38 @@
   ""
 }
 
+.protvis_pw_docker_executable <- function() {
+  exe <- base::Sys.which("docker")
+  if (!base::nzchar(exe)) return("")
+  base::normalizePath(exe, winslash = "/", mustWork = TRUE)
+}
+
+.protvis_pw_fpocket_backend <- function(path = "") {
+  native <- .protvis_pw_fpocket_executable(path)
+  if (base::nzchar(native)) {
+    return(base::list(
+      type = "native",
+      executable = native,
+      label = base::paste0("Native fpocket · ", native)
+    ))
+  }
+
+  docker <- .protvis_pw_docker_executable()
+  if (base::nzchar(docker)) {
+    return(base::list(
+      type = "docker",
+      executable = docker,
+      label = "Docker · official fpocket/fpocket image"
+    ))
+  }
+
+  base::list(
+    type = "missing",
+    executable = "",
+    label = "fpocket backend not detected"
+  )
+}
+
 
 .protvis_pw_pocket_demo_path <- function() {
   path <- base::system.file(
@@ -132,10 +164,14 @@
 
 .protvis_pw_run_fpocket <- function(pdb_path, fpocket_path = "") {
   if (!base::file.exists(pdb_path)) base::stop("PDB structure file was not found.", call. = FALSE)
-  exe <- .protvis_pw_fpocket_executable(fpocket_path)
-  if (!base::nzchar(exe)) {
+
+  backend <- .protvis_pw_fpocket_backend(fpocket_path)
+  if (identical(backend$type, "missing")) {
     base::stop(
-      "fpocket executable was not found. Install fpocket and add it to PATH, or provide the fpocket executable path.",
+      paste0(
+        "fpocket backend was not found. Install fpocket and add it to PATH, ",
+        "or install Docker Desktop so ProtVis can run the official fpocket/fpocket image automatically."
+      ),
       call. = FALSE
     )
   }
@@ -147,19 +183,45 @@
     base::stop("Could not prepare the PDB file for fpocket.", call. = FALSE)
   }
 
-  output <- base::system2(
-    exe,
-    args = c("-f", base::shQuote(local_pdb)),
-    stdout = TRUE,
-    stderr = TRUE
-  )
+  if (identical(backend$type, "native")) {
+    output <- base::system2(
+      backend$executable,
+      args = c("-f", base::shQuote(local_pdb)),
+      stdout = TRUE,
+      stderr = TRUE
+    )
+  } else {
+    mount_dir <- base::normalizePath(work_dir, winslash = "/", mustWork = TRUE)
+    output <- base::system2(
+      backend$executable,
+      args = c(
+        "run", "--rm",
+        "-v", base::shQuote(base::paste0(mount_dir, ":/workdir")),
+        "fpocket/fpocket",
+        "fpocket", "-f", "/workdir/protvis_structure.pdb"
+      ),
+      stdout = TRUE,
+      stderr = TRUE
+    )
+  }
+
   status <- base::attr(output, "status") %||% 0L
   out_dir <- base::file.path(work_dir, "protvis_structure_out")
   info_file <- .protvis_pw_fpocket_info_file(out_dir, "protvis_structure")
 
   if (!identical(base::as.integer(status), 0L) || !base::dir.exists(out_dir) || !base::nzchar(info_file)) {
+    extra <- if (identical(backend$type, "docker")) {
+      " Docker must be running; on first use the fpocket/fpocket image may need to be pulled."
+    } else {
+      ""
+    }
     base::stop(
-      base::paste0("fpocket failed. ", base::paste(utils::tail(output, 8L), collapse = " | ")),
+      base::paste0(
+        "fpocket failed using ", backend$label, ".",
+        extra,
+        " ",
+        base::paste(utils::tail(output, 10L), collapse = " | ")
+      ),
       call. = FALSE
     )
   }
@@ -181,7 +243,9 @@
   )
 
   base::list(
-    executable = exe,
+    backend = backend$type,
+    backend_label = backend$label,
+    executable = backend$executable,
     work_dir = work_dir,
     out_dir = out_dir,
     info_file = info_file,
@@ -272,7 +336,11 @@
               ns("fpocket_path"),
               "fpocket executable (optional)",
               value = "",
-              placeholder = "Auto-detect from PATH"
+              placeholder = "Auto-detect native fpocket; otherwise use Docker"
+            ),
+            shiny::div(
+              "Backend priority: native fpocket → Docker official image. Docker Desktop is the recommended fallback on Windows.",
+              style = "font-size:11px;color:#657789;margin-bottom:10px;"
             ),
             shiny::actionButton(
               ns("run_pocket"),
@@ -455,7 +523,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
 
         rv_pocket$message <- base::paste0(
           "Completed · ", base::nrow(rv_pocket$result$pockets),
-          " pockets detected · fpocket: ", base::basename(rv_pocket$result$executable)
+          " pockets detected · backend: ", rv_pocket$result$backend_label
         )
 
         clean_table <- rv_pocket$result$pockets
@@ -469,6 +537,8 @@ protein_workbench_server <- function(id, shared_state = NULL) {
           category = "toolkits",
           parameters = base::list(
             structure_source = source,
+            fpocket_backend = rv_pocket$result$backend,
+            fpocket_backend_label = rv_pocket$result$backend_label,
             fpocket_executable = rv_pocket$result$executable
           ),
           tables = base::list(binding_pockets = clean_table),
@@ -492,14 +562,16 @@ protein_workbench_server <- function(id, shared_state = NULL) {
 
     output$pocket_status <- shiny::renderUI({
       ready <- !base::is.null(rv_pocket$result)
-      executable <- .protvis_pw_fpocket_executable(input$fpocket_path %||% "")
+      backend <- .protvis_pw_fpocket_backend(input$fpocket_path %||% "")
       shiny::div(
         shiny::div(rv_pocket$message),
         shiny::div(
-          if (base::nzchar(executable)) {
-            base::paste0("fpocket detected: ", executable)
+          if (identical(backend$type, "native")) {
+            base::paste0("Ready · native fpocket: ", backend$executable)
+          } else if (identical(backend$type, "docker")) {
+            "Ready · Docker detected. ProtVis will use the official fpocket/fpocket image."
           } else {
-            "fpocket not detected on PATH. Install fpocket or provide its executable path."
+            "No fpocket backend detected. Install fpocket or Docker Desktop, then restart ProtVis."
           },
           style = "font-size:11px;margin-top:4px;"
         ),
