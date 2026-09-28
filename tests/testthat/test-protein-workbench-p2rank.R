@@ -34,15 +34,16 @@ test_that("P2Rank executable detection accepts an extracted folder", {
   )
 })
 
-test_that("Windows P2Rank batch commands use an absolute quoted path", {
-  command <- ProtVis:::.protvis_pw_p2rank_batch_command(
-    "E:\\Program Files\\P2Rank\\prank.bat",
-    c("predict", "-f", '"C:/Users/test user/input.pdb"')
-  )
+test_that("P2Rank Windows Java classpath includes the bundled runtime libraries", {
+  classpath <- ProtVis:::.protvis_pw_p2rank_classpath("P2Rank install")
 
   expect_identical(
-    command,
-    '""E:\\Program Files\\P2Rank\\prank.bat" predict -f "C:/Users/test user/input.pdb""'
+    classpath,
+    paste(
+      file.path("P2Rank install", "bin", "p2rank.jar"),
+      file.path("P2Rank install", "bin", "lib", "*"),
+      sep = .Platform$path.sep
+    )
   )
 })
 
@@ -103,6 +104,9 @@ test_that("P2Rank backend supports AlphaFold profile and standard outputs", {
   expect_false(grepl("-pocket_grid_format", source, fixed = TRUE))
   expect_match(source, "pocket_backend = rv_pocket$result$backend", fixed = TRUE)
   expect_match(source, ".protvis_pw_pocket_view", fixed = TRUE)
+  expect_match(source, "cz.siret.prank.program.Main", fixed = TRUE)
+  expect_match(source, ".protvis_pw_p2rank_classpath", fixed = TRUE)
+  expect_false(grepl(".protvis_pw_p2rank_batch_command", source, fixed = TRUE))
 })
 
 
