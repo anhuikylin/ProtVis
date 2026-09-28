@@ -63,6 +63,10 @@ test_that("Plant-mPLoc parser recognizes the plasma-membrane label", {
     .plant_mploc_extract_prediction("Predicted subcellular locations: Plasma membrane; Nucleus"),
     c("Cell membrane", "Nucleus")
   )
+  expect_equal(
+    .plant_mploc_extract_prediction("Predicted locations: PM/PL/CY/M/PX"),
+    c("Cell membrane", "Cytoplasm", "Mitochondrion", "Peroxisome", "Plastid")
+  )
 })
 
 test_that("Plant-mPLoc prefers the prediction submit control", {
