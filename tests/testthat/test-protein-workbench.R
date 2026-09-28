@@ -122,12 +122,12 @@ test_that("Protein Workbench MaizeGDB annotation output uses the module session 
   )
   expect_match(
     module_source,
-    'DT::DTOutput\(session\\$ns\("maizegdb_table"\)\)',
+    'DT::DTOutput\\(session\\$ns\\("maizegdb_table"\\)\\)',
     fixed = FALSE
   )
   expect_false(
     grepl(
-      'DT::DTOutput\(ns\("maizegdb_table"\)\)',
+      'DT::DTOutput\\(ns\\("maizegdb_table"\\)\\)',
       module_source
     )
   )
