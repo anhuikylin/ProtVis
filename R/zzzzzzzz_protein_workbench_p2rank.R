@@ -708,8 +708,11 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         collapse = "\n"
       )
       rv_pocket$result <- NULL
-      rv_pocket$message <- "Built-in 1HEL structure loaded. Running P2Rank..."
-      shinyjs::click(session$ns("run_pocket"))
+      rv_pocket$message <- "Built-in 1HEL structure loaded. Starting P2Rank..."
+      session$onFlushed(
+        function() shinyjs::click(session$ns("run_pocket")),
+        once = TRUE
+      )
     })
 
     output$download_pocket_demo <- shiny::downloadHandler(
