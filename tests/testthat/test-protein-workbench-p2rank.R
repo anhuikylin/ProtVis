@@ -145,3 +145,30 @@ test_that("Built-in 1HEL structure is previewed before P2Rank starts", {
   expect_match(demo_setup, "rv_pocket$result <- NULL", fixed = TRUE)
   expect_match(demo_setup, "Built-in 1HEL structure loaded.", fixed = TRUE)
 })
+
+test_that("1HEL preview flushes before the P2Rank run is triggered", {
+  source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "zzzzzzzz_protein_workbench_p2rank.R")),
+    collapse = "\\n"
+  )
+
+  preview_message <- regexpr(
+    "Built-in 1HEL structure loaded.",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  flush_callback <- regexpr(
+    "session$onFlushed(",
+    source,
+    fixed = TRUE
+  )[[1L]]
+  run_click <- regexpr(
+    'shinyjs::click(session$ns("run_pocket"))',
+    source,
+    fixed = TRUE
+  )[[1L]]
+
+  expect_gt(preview_message, 0L)
+  expect_gt(flush_callback, preview_message)
+  expect_gt(run_click, flush_callback)
+})
