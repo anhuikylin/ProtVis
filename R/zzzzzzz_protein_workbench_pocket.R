@@ -69,6 +69,91 @@
   )
 }
 
+.protvis_pw_docker_image_status <- function(image = "fpocket/fpocket:latest") {
+  docker <- .protvis_pw_docker_status()
+  image <- base::trimws(base::as.character(image %||% "fpocket/fpocket:latest"))
+  if (!base::nzchar(image)) image <- "fpocket/fpocket:latest"
+
+  if (!isTRUE(docker$available) || !isTRUE(docker$running)) {
+    return(base::list(
+      image = image,
+      present = FALSE,
+      docker = docker,
+      message = docker$message
+    ))
+  }
+
+  out <- base::tryCatch(
+    base::system2(
+      docker$executable,
+      args = c("image", "inspect", image, "--format", "{{.Id}}"),
+      stdout = TRUE,
+      stderr = TRUE,
+      timeout = 12
+    ),
+    error = function(e) structure(base::conditionMessage(e), status = 1L)
+  )
+  status <- base::attr(out, "status") %||% 0L
+  present <- identical(base::as.integer(status), 0L) &&
+    base::length(out) > 0L &&
+    base::nzchar(base::trimws(base::as.character(out[[1L]])))
+
+  base::list(
+    image = image,
+    present = present,
+    docker = docker,
+    message = if (present) {
+      base::paste0("Docker image ready · ", image)
+    } else {
+      base::paste0("Docker engine is ready, but image ", image, " is not available locally.")
+    }
+  )
+}
+
+.protvis_pw_docker_pull_image <- function(image = "fpocket/fpocket:latest") {
+  docker <- .protvis_pw_docker_status()
+  if (!isTRUE(docker$available) || !isTRUE(docker$running)) {
+    base::stop(docker$message, call. = FALSE)
+  }
+
+  image <- base::trimws(base::as.character(image %||% "fpocket/fpocket:latest"))
+  if (!base::nzchar(image)) image <- "fpocket/fpocket:latest"
+
+  out <- base::tryCatch(
+    base::system2(
+      docker$executable,
+      args = c("pull", image),
+      stdout = TRUE,
+      stderr = TRUE,
+      timeout = 300
+    ),
+    error = function(e) structure(base::conditionMessage(e), status = 1L)
+  )
+  status <- base::attr(out, "status") %||% 0L
+  text <- base::paste(out, collapse = " | ")
+
+  if (!identical(base::as.integer(status), 0L)) {
+    network_hint <- if (base::grepl(
+      "registry-1\\.docker\\.io|proxy|TLS|HTTPS|dial tcp|timeout|connection failed|failed to resolve",
+      text,
+      ignore.case = TRUE
+    )) {
+      paste0(
+        " Docker is running, but the image could not be downloaded from the registry. ",
+        "Check Docker Desktop proxy/network settings or use an image already available from a reachable registry."
+      )
+    } else {
+      ""
+    }
+    base::stop(
+      base::paste0("Could not pull Docker image ", image, ".", network_hint, " ", text),
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
 .protvis_pw_fpocket_backend <- function(path = "") {
   native <- .protvis_pw_fpocket_executable(path)
   if (base::nzchar(native)) {
@@ -217,10 +302,12 @@
   base::unique(out)
 }
 
-.protvis_pw_run_fpocket <- function(pdb_path, fpocket_path = "") {
+.protvis_pw_run_fpocket <- function(pdb_path, fpocket_path = "", docker_image = "fpocket/fpocket:latest") {
   if (!base::file.exists(pdb_path)) base::stop("PDB structure file was not found.", call. = FALSE)
 
   backend <- .protvis_pw_fpocket_backend(fpocket_path)
+  docker_image <- base::trimws(base::as.character(docker_image %||% "fpocket/fpocket:latest"))
+  if (!base::nzchar(docker_image)) docker_image <- "fpocket/fpocket:latest"
   if (identical(backend$type, "docker_stopped")) {
     base::stop(
       paste0(
@@ -255,13 +342,18 @@
       stderr = TRUE
     )
   } else {
+    image_status <- .protvis_pw_docker_image_status(docker_image)
+    if (!isTRUE(image_status$present)) {
+      .protvis_pw_docker_pull_image(docker_image)
+    }
+
     mount_dir <- base::normalizePath(work_dir, winslash = "/", mustWork = TRUE)
     output <- base::system2(
       backend$executable,
       args = c(
         "run", "--rm",
         "-v", base::shQuote(base::paste0(mount_dir, ":/workdir")),
-        "fpocket/fpocket",
+        docker_image,
         "fpocket", "-f", "/workdir/protvis_structure.pdb"
       ),
       stdout = TRUE,
@@ -275,7 +367,7 @@
 
   if (!identical(base::as.integer(status), 0L) || !base::dir.exists(out_dir) || !base::nzchar(info_file)) {
     extra <- if (identical(backend$type, "docker")) {
-      " Docker must be running; on first use the fpocket/fpocket image may need to be pulled."
+      base::paste0(" Docker backend: ", docker_image, ".")
     } else {
       ""
     }
@@ -308,7 +400,10 @@
 
   base::list(
     backend = backend$type,
-    backend_label = backend$label,
+    backend_label = if (identical(backend$type, "docker")) {
+      base::paste0(backend$label, " · ", docker_image)
+    } else backend$label,
+    docker_image = if (identical(backend$type, "docker")) docker_image else "",
     executable = backend$executable,
     work_dir = work_dir,
     out_dir = out_dir,
@@ -403,9 +498,22 @@
               placeholder = "Auto-detect native fpocket; otherwise use Docker"
             ),
             shiny::div(
-              "Backend priority: native fpocket → Docker official image. Docker Desktop is the recommended fallback on Windows.",
-              style = "font-size:11px;color:#657789;margin-bottom:10px;"
+              "Backend priority: native fpocket → local Docker image → Docker pull. Docker Desktop is the recommended fallback on Windows.",
+              style = "font-size:11px;color:#657789;margin-bottom:6px;"
             ),
+            shiny::textInput(
+              ns("fpocket_docker_image"),
+              "Docker image",
+              value = "fpocket/fpocket:latest",
+              placeholder = "fpocket/fpocket:latest"
+            ),
+            shiny::actionButton(
+              ns("pull_fpocket_image"),
+              "PULL / CHECK FPOCKET IMAGE",
+              icon = bsicons::bs_icon("cloud-download"),
+              class = "btn-outline-primary"
+            ),
+            shiny::uiOutput(ns("docker_image_status")),
             shiny::actionButton(
               ns("run_pocket"),
               "RUN POCKET PREDICTION",
@@ -530,6 +638,57 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       contentType = "chemical/x-pdb"
     )
 
+    output$docker_image_status <- shiny::renderUI({
+      backend <- .protvis_pw_fpocket_backend(input$fpocket_path %||% "")
+      if (!identical(backend$type, "docker")) return(NULL)
+
+      status <- .protvis_pw_docker_image_status(
+        input$fpocket_docker_image %||% "fpocket/fpocket:latest"
+      )
+      shiny::div(
+        status$message,
+        style = base::paste0(
+          "font-size:11px;margin:6px 0 10px;padding:7px 9px;border-radius:8px;",
+          if (isTRUE(status$present)) {
+            "background:#edf9f3;color:#286749;"
+          } else {
+            "background:#fff7e6;color:#8a6116;"
+          }
+        )
+      )
+    })
+
+    shiny::observeEvent(input$pull_fpocket_image, {
+      base::tryCatch({
+        image <- input$fpocket_docker_image %||% "fpocket/fpocket:latest"
+        status <- .protvis_pw_docker_image_status(image)
+        if (isTRUE(status$present)) {
+          shiny::showNotification(
+            base::paste("Docker image is already available locally:", image),
+            type = "message",
+            duration = 4
+          )
+          return()
+        }
+
+        shiny::withProgress(message = "Pulling fpocket Docker image", value = 0.2, {
+          .protvis_pw_docker_pull_image(image)
+          shiny::setProgress(1, detail = "Image ready")
+        })
+        shiny::showNotification(
+          base::paste("Docker image ready:", image),
+          type = "message",
+          duration = 4
+        )
+      }, error = function(e) {
+        shiny::showNotification(
+          base::conditionMessage(e),
+          type = "error",
+          duration = 12
+        )
+      })
+    })
+
     shiny::observeEvent(input$run_pocket, {
       base::tryCatch({
         source <- input$pocket_structure_source %||% "alphafold"
@@ -562,7 +721,8 @@ protein_workbench_server <- function(id, shared_state = NULL) {
           shiny::setProgress(0.42, detail = "Running fpocket")
           result <- .protvis_pw_run_fpocket(
             rv_pocket$pdb_path,
-            fpocket_path = input$fpocket_path %||% ""
+            fpocket_path = input$fpocket_path %||% "",
+            docker_image = input$fpocket_docker_image %||% "fpocket/fpocket:latest"
           )
           rv_pocket$result <- result
 
@@ -603,7 +763,8 @@ protein_workbench_server <- function(id, shared_state = NULL) {
             structure_source = source,
             fpocket_backend = rv_pocket$result$backend,
             fpocket_backend_label = rv_pocket$result$backend_label,
-            fpocket_executable = rv_pocket$result$executable
+            fpocket_executable = rv_pocket$result$executable,
+            docker_image = rv_pocket$result$docker_image
           ),
           tables = base::list(binding_pockets = clean_table),
           files = base::list(
