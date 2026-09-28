@@ -146,7 +146,7 @@
     elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
     if (!is.finite(elapsed) || elapsed >= timeout) return(current)
 
-    page <- tryCatch(rvest::read_html(current$response), error = function(e) NULL)
+    page <- current
     href <- character()
     if (!is.null(page)) {
       links <- tryCatch(rvest::html_elements(page, "a[href]"), error = function(e) list())
