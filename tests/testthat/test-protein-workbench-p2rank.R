@@ -91,3 +91,23 @@ test_that("P2Rank backend supports AlphaFold profile and standard outputs", {
   expect_match(source, "pocket_backend = rv_pocket$result$backend", fixed = TRUE)
   expect_match(source, ".protvis_pw_pocket_view", fixed = TRUE)
 })
+
+
+test_that("P2Rank path cleaning handles quoted Windows paths", {
+  cleaned <- ProtVis:::.protvis_pw_p2rank_clean_path(
+    '"E:\\ount\\p2rank\\p2rank_2.5.1"'
+  )
+  expect_equal(cleaned, "E:/ount/p2rank/p2rank_2.5.1")
+})
+
+test_that("P2Rank diagnostics report folder and prank.bat presence", {
+  root <- tempfile("p2rank_diag_")
+  dir.create(root)
+  bat <- file.path(root, "prank.bat")
+  writeLines("@echo off", bat)
+
+  diag <- ProtVis:::.protvis_pw_p2rank_path_diagnostics(root)
+  expect_true(diag$directory_exists)
+  expect_true(diag$candidate_exists[["prank_bat"]])
+  expect_true(diag$found)
+})
