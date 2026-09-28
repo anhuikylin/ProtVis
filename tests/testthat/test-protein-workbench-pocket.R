@@ -109,3 +109,18 @@ test_that("Protein Workbench pocket demo reuses bundled ProtVisDatabase structur
   expect_match(source, 'shinyjs::click(session$ns("run_pocket"))', fixed = TRUE)
   expect_match(source, 'ProtVis_binding_pocket_demo_1HEL.pdb', fixed = TRUE)
 })
+
+
+test_that("Protein Workbench fpocket backend supports Docker fallback", {
+  source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "zzzzzzz_protein_workbench_pocket.R")),
+    collapse = "\n"
+  )
+
+  expect_match(source, ".protvis_pw_docker_executable", fixed = TRUE)
+  expect_match(source, "official fpocket/fpocket image", fixed = TRUE)
+  expect_match(source, '"fpocket/fpocket"', fixed = TRUE)
+  expect_match(source, '"run", "--rm"', fixed = TRUE)
+  expect_match(source, "Docker Desktop is the recommended fallback on Windows.", fixed = TRUE)
+  expect_match(source, "fpocket_backend = rv_pocket$result$backend", fixed = TRUE)
+})
