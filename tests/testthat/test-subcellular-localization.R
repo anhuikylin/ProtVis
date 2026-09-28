@@ -53,3 +53,23 @@ test_that("application uses the new localization module", {
   expect_match(module, 'BUSCA')
   expect_match(module, 'Completed with warnings')
 })
+
+test_that("effective Toolkits UI uses the same localization module as the server", {
+  active_ui <- paste(
+    readLines(testthat::test_path("..", "..", "R", "zzzz_protein_workbench_app_ui.R")),
+    collapse = "\n"
+  )
+  server <- paste(
+    readLines(testthat::test_path("..", "..", "R", "app_server.R")),
+    collapse = "\n"
+  )
+  expect_true(grepl(
+    'subcellular_localization_ui("subcellular_localization")',
+    active_ui, fixed = TRUE
+  ))
+  expect_true(grepl(
+    'subcellular_localization_server("subcellular_localization"',
+    server, fixed = TRUE
+  ))
+  expect_false(grepl('plant_mploc_ui("plant_mploc")', active_ui, fixed = TRUE))
+})
