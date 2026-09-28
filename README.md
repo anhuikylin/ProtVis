@@ -5,7 +5,7 @@
 [![](https://img.shields.io/badge/R-Shiny-orange.svg)](https://github.com/anhuikylin/ProtVis)
 [![](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/anhuikylin/ProtVis/blob/dev/LICENSE)
 
-<img src="https://raw.githubusercontent.com/anhuikylin/ProtVis/dev/app/www/ProtVis_ico.png" alt="ProtVis Logo" align="right" width="170"/>
+<img src="https://raw.githubusercontent.com/anhuikylin/ProtVis/dev/app/www/ProtVis_ico.png" alt="ProtVis Logo" align="right" width="300"/>
 
 **ProtVis: interactive visualization and downstream interpretation for proteomics and metaproteomics data**
 
