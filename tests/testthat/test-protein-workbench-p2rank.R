@@ -20,6 +20,20 @@ test_that("Protein Workbench binding pockets default to P2Rank", {
   }
 })
 
+test_that("P2Rank folder default uses the first existing configured path", {
+  root <- tempfile("p2rank_default_")
+  dir.create(root)
+
+  expect_equal(
+    ProtVis:::.protvis_pw_default_p2rank_path(root),
+    normalizePath(root, winslash = "/", mustWork = TRUE)
+  )
+  expect_identical(
+    ProtVis:::.protvis_pw_default_p2rank_path(file.path(root, "missing")),
+    ""
+  )
+})
+
 test_that("P2Rank executable detection accepts an extracted folder", {
   root <- tempfile("p2rank_")
   dir.create(root)
