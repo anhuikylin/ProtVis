@@ -1,0 +1,93 @@
+test_that("Protein Workbench binding pockets default to P2Rank", {
+  html <- as.character(ProtVis::protein_workbench_ui("pw_p2rank_test"))
+
+  expect_match(html, "P2Rank (recommended)", fixed = TRUE)
+  expect_match(html, "fpocket (advanced / optional)", fixed = TRUE)
+  expect_match(html, "P2Rank folder or executable", fixed = TRUE)
+  expect_match(html, "Download P2Rank", fixed = TRUE)
+  expect_match(html, "Java 17+ required", fixed = TRUE)
+  expect_match(html, "RUN POCKET PREDICTION", fixed = TRUE)
+
+  for (id in c(
+    "pocket_backend",
+    "p2rank_path",
+    "p2rank_profile",
+    "p2rank_threads",
+    "p2rank_status",
+    "download_pocket_results"
+  )) {
+    expect_match(html, id, fixed = TRUE)
+  }
+})
+
+test_that("P2Rank executable detection accepts an extracted folder", {
+  root <- tempfile("p2rank_")
+  dir.create(root)
+  exe <- file.path(root, if (.Platform$OS.type == "windows") "prank.bat" else "prank")
+  writeLines("echo test", exe)
+
+  detected <- ProtVis:::.protvis_pw_p2rank_executable(root)
+  expect_true(nzchar(detected))
+  expect_equal(
+    normalizePath(detected, winslash = "/", mustWork = TRUE),
+    normalizePath(exe, winslash = "/", mustWork = TRUE)
+  )
+})
+
+test_that("P2Rank prediction CSV is normalized for ProtVis", {
+  pdb <- tempfile(fileext = ".pdb")
+  writeLines(c(
+    "ATOM      1  N   GLY A  10      11.104  13.207  10.111  1.00 20.00           N",
+    "ATOM      2  CA  GLY A  10      12.000  13.500  10.500  1.00 20.00           C",
+    "ATOM      3  N   SER A  11      13.104  14.207  11.111  1.00 20.00           N",
+    "ATOM      4  CA  SER A  11      14.000  14.500  11.500  1.00 20.00           C",
+    "END"
+  ), pdb)
+
+  out <- tempfile("p2out_")
+  dir.create(out)
+
+  pred <- data.frame(
+    name = "pocket1",
+    rank = 1L,
+    score = 8.5,
+    probability = 0.79,
+    sas_points = 17L,
+    surf_atoms = 10L,
+    center_x = 1,
+    center_y = 2,
+    center_z = 3,
+    residue_ids = "A_10 A_11",
+    stringsAsFactors = FALSE
+  )
+
+  norm <- ProtVis:::.protvis_pw_p2rank_normalize(pred, pdb, out)
+  expect_equal(nrow(norm), 1L)
+  expect_equal(norm$pocket[[1L]], 1L)
+  expect_equal(norm$probability[[1L]], 0.79)
+  expect_equal(norm$residue_count[[1L]], 2L)
+  expect_true(file.exists(norm$pocket_file[[1L]]))
+})
+
+test_that("P2Rank residue IDs preserve chain and residue number", {
+  ids <- ProtVis:::.protvis_pw_p2rank_residue_ids("A_103 A_180 B_42")
+
+  expect_equal(nrow(ids), 3L)
+  expect_equal(ids$chain, c("A", "A", "B"))
+  expect_equal(ids$resi, c(103L, 180L, 42L))
+})
+
+test_that("P2Rank backend supports AlphaFold profile and standard outputs", {
+  source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "zzzzzzzz_protein_workbench_p2rank.R")),
+    collapse = "\n"
+  )
+
+  expect_match(source, '"predict"', fixed = TRUE)
+  expect_match(source, '"-c", "alphafold"', fixed = TRUE)
+  expect_match(source, "_predictions\\\\.csv$", fixed = TRUE)
+  expect_match(source, "_residues\\\\.csv$", fixed = TRUE)
+  expect_match(source, "-export_pocket_descriptors", fixed = TRUE)
+  expect_match(source, "pocket_backend = rv_pocket$result$backend", fixed = TRUE)
+  expect_match(source, ".protvis_pw_pocket_view", fixed = TRUE)
+})
