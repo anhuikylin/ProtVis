@@ -136,9 +136,9 @@ test_that("Protein Workbench MaizeGDB annotation output uses the module session 
 test_that("DeepLoc website FASTA export uses the active protein sequence", {
   sequence <- paste(rep("ACDEFGHIKLMNPQRSTVWY", 5), collapse = "")
   fasta <- ProtVis:::.protvis_pw_deeploc_fasta(sequence, "P12345 sample")
-  expect_true(startsWith(fasta, ">P12345_sample\\n"))
+  expect_true(startsWith(fasta, ">P12345_sample\n"))
   expect_equal(
-    paste(strsplit(fasta, "\\n", fixed = TRUE)[[1]][-1], collapse = ""),
+    paste(strsplit(fasta, "\n", fixed = TRUE)[[1]][-1], collapse = ""),
     sequence
   )
   expect_error(
