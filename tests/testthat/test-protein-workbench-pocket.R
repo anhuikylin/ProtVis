@@ -124,3 +124,17 @@ test_that("Protein Workbench fpocket backend supports Docker fallback", {
   expect_match(source, "Docker Desktop is the recommended fallback on Windows.", fixed = TRUE)
   expect_match(source, "fpocket_backend = rv_pocket$result$backend", fixed = TRUE)
 })
+
+
+test_that("Protein Workbench distinguishes Docker CLI from running daemon", {
+  source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "zzzzzzz_protein_workbench_pocket.R")),
+    collapse = "\n"
+  )
+
+  expect_match(source, ".protvis_pw_docker_status", fixed = TRUE)
+  expect_match(source, '"info", "--format", "{{.ServerVersion}}"', fixed = TRUE)
+  expect_match(source, 'type = "docker_stopped"', fixed = TRUE)
+  expect_match(source, "Docker Desktop is installed but its engine is not running.", fixed = TRUE)
+  expect_match(source, "Start Docker Desktop and wait until it is fully ready", fixed = TRUE)
+})
