@@ -138,3 +138,20 @@ test_that("Protein Workbench distinguishes Docker CLI from running daemon", {
   expect_match(source, "Docker Desktop is installed but its engine is not running.", fixed = TRUE)
   expect_match(source, "Start Docker Desktop and wait until it is fully ready", fixed = TRUE)
 })
+
+
+test_that("Protein Workbench diagnoses missing Docker image and registry failures", {
+  source <- paste(
+    readLines(testthat::test_path("..", "..", "R", "zzzzzzz_protein_workbench_pocket.R")),
+    collapse = "\n"
+  )
+
+  expect_match(source, ".protvis_pw_docker_image_status", fixed = TRUE)
+  expect_match(source, ".protvis_pw_docker_pull_image", fixed = TRUE)
+  expect_match(source, '"image", "inspect"', fixed = TRUE)
+  expect_match(source, '"pull", image', fixed = TRUE)
+  expect_match(source, "registry-1\\\\.docker\\\\.io", fixed = TRUE)
+  expect_match(source, "Docker is running, but the image could not be downloaded from the registry.", fixed = TRUE)
+  expect_match(source, "fpocket_docker_image", fixed = TRUE)
+  expect_match(source, "PULL / CHECK FPOCKET IMAGE", fixed = TRUE)
+})
