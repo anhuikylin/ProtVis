@@ -132,3 +132,29 @@ test_that("Protein Workbench MaizeGDB annotation output uses the module session 
     )
   )
 })
+
+test_that("DeepLoc website FASTA export uses the active protein sequence", {
+  sequence <- paste(rep("ACDEFGHIKLMNPQRSTVWY", 5), collapse = "")
+  fasta <- ProtVis:::.protvis_pw_deeploc_fasta(sequence, "P12345 sample")
+  expect_true(startsWith(fasta, ">P12345_sample\\n"))
+  expect_equal(
+    paste(strsplit(fasta, "\\n", fixed = TRUE)[[1]][-1], collapse = ""),
+    sequence
+  )
+  expect_error(
+    ProtVis:::.protvis_pw_deeploc_fasta("ACD"),
+    "at least 10"
+  )
+})
+
+test_that("DeepLoc website predictions require recognized localization labels", {
+  result <- ProtVis:::.protvis_pw_deeploc_result(
+    "Chloroplast; Cytoplasm", "Soluble", "Transit peptide"
+  )
+  expect_equal(result$predicted_location, c("Chloroplast", "Cytoplasm"))
+  expect_equal(result$predicted_membrane_type, rep("Soluble", 2))
+  expect_error(
+    ProtVis:::.protvis_pw_deeploc_result("Unexpected prediction"),
+    "DeepLoc"
+  )
+})
