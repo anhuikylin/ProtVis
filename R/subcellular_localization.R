@@ -558,11 +558,11 @@ predict_subcellular_localization <- function(
   if (!nrow(tab)) stop("Sorting importance CSV is empty.", call. = FALSE)
   keys <- gsub("[^a-z0-9]", "", tolower(names(tab)))
   pos <- match(TRUE, keys %in% c("position", "pos", "residueindex", "index", "seqpos"))
-  val <- match(TRUE, keys %in% c("importance", "score", "attention", "sortingsignalimportance"))
-  if (is.na(pos) || is.na(val)) {
-    stop("Sorting importance CSV needs position and importance columns.", call. = FALSE)
+  val <- match(TRUE, keys %in% c("importance", "score", "attention", "sortingsignalimportance", "alpha"))
+  if (is.na(val) || (is.na(pos) && !("aa" %in% keys))) {
+    stop("Sorting importance CSV needs position and importance columns, or the DeepLoc AA,Alpha format.", call. = FALSE)
   }
-  positions <- suppressWarnings(as.integer(tab[[pos]]))
+  positions <- if (is.na(pos)) seq_len(nrow(tab)) else suppressWarnings(as.integer(tab[[pos]]))
   scores <- suppressWarnings(as.numeric(tab[[val]]))
   if (anyNA(positions) || any(positions < 1L) || anyDuplicated(positions) ||
       any(!is.finite(scores)) || any(scores < 0 | scores > 1)) {
@@ -570,7 +570,9 @@ predict_subcellular_localization <- function(
   }
   if (any(positions > 100000L)) stop("Sorting importance position exceeds the supported range.", call. = FALSE)
   data.frame(position = positions,
-             residue = if ("residue" %in% keys) as.character(tab[[match("residue", keys)]]) else NA_character_,
+             residue = if (any(keys %in% c("residue", "aa", "aminoacid"))) {
+               as.character(tab[[match(TRUE, keys %in% c("residue", "aa", "aminoacid"))]])
+             } else NA_character_,
              importance = scores, stringsAsFactors = FALSE)
 }
 
