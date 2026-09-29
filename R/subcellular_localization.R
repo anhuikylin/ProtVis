@@ -496,26 +496,164 @@ predict_subcellular_localization <- function(
   )
 }
 
-.subcellular_import_deeploc <- function(location) {
-  labels <- c(
-    "Nucleus", "Cytoplasm", "Extracellular", "Mitochondrion",
-    "Cell membrane", "Endoplasmic reticulum", "Chloroplast",
-    "Golgi apparatus", "Lysosome/Vacuole", "Peroxisome"
-  )
-  parts <- trimws(unlist(strsplit(gsub("\n", ";", location %||% "", fixed = TRUE), "[,;]+")))
+.subcellular_deeploc_locations <- c(
+  "Cytoplasm", "Nucleus", "Extracellular", "Cell membrane",
+  "Mitochondrion", "Chloroplast", "Endoplasmic reticulum",
+  "Lysosome/Vacuole", "Golgi apparatus", "Peroxisome"
+)
+.subcellular_deeploc_membranes <- c("Peripheral", "Transmembrane", "Lipid anchor", "Soluble")
+
+.subcellular_deeploc_labels <- function(value, choices, field, required = FALSE) {
+  value <- paste(value %||% "", collapse = ";")
+  parts <- trimws(unlist(strsplit(gsub("\n", ";", value, fixed = TRUE), "[;,]+")))
   parts <- parts[nzchar(parts)]
-  matched <- labels[match(tolower(parts), tolower(labels))]
-  if (!length(parts) || anyNA(matched)) {
-    stop(
-      "Enter the predicted localization labels exactly as shown by DeepLoc 2.1, separated by semicolons.",
-      call. = FALSE
-    )
+  if (!length(parts)) {
+    if (required) stop(paste("Enter DeepLoc", field, "labels."), call. = FALSE)
+    return(character())
   }
-  .subcellular_provider_result(
-    "DeepLoc 2.1", "success", unique(matched),
+  matched <- choices[match(tolower(parts), tolower(choices))]
+  if (anyNA(matched)) {
+    stop(paste("Unknown DeepLoc", field, "label:", paste(parts[is.na(matched)], collapse = "; ")), call. = FALSE)
+  }
+  unique(matched)
+}
+
+.subcellular_deeploc_probabilities <- function(value) {
+  value <- trimws(value %||% "")
+  if (!nzchar(value)) return(data.frame(type = character(), label = character(), probability = numeric()))
+  lines <- strsplit(value, "\n", fixed = TRUE)[[1L]]
+  lines <- trimws(lines)
+  lines <- lines[nzchar(lines)]
+  rows <- lapply(lines, function(line) {
+    parts <- trimws(strsplit(line, "[,\t;]+")[[1L]])
+    if (length(parts) != 2L) stop("Probability rows must be label,probability.", call. = FALSE)
+    labels <- c(.subcellular_deeploc_locations, .subcellular_deeploc_membranes)
+    idx <- match(tolower(parts[[1L]]), tolower(labels))
+    if (is.na(idx)) stop(paste("Unknown probability label:", parts[[1L]]), call. = FALSE)
+    score <- suppressWarnings(as.numeric(parts[[2L]]))
+    if (!is.finite(score) || score < 0 || score > 1) {
+      stop(paste("Probability must be from 0 to 1 for", parts[[1L]]), call. = FALSE)
+    }
+    data.frame(type = if (idx <= length(.subcellular_deeploc_locations)) "Localization" else "Membrane association",
+               label = labels[[idx]], probability = score)
+  })
+  out <- do.call(rbind, rows)
+  if (anyDuplicated(out$label)) stop("Each DeepLoc probability label must appear once.", call. = FALSE)
+  expected <- c(.subcellular_deeploc_locations, .subcellular_deeploc_membranes)
+  if (!setequal(out$label, expected)) {
+    stop("DeepLoc probability table needs all 10 localization and 4 membrane scores.", call. = FALSE)
+  }
+  rownames(out) <- NULL
+  out
+}
+
+.subcellular_deeploc_importance <- function(file) {
+  if (is.null(file)) return(NULL)
+  tab <- utils::read.csv(file$datapath, check.names = FALSE, stringsAsFactors = FALSE)
+  if (!nrow(tab)) stop("Sorting importance CSV is empty.", call. = FALSE)
+  keys <- tolower(gsub("[^a-z0-9]", "", names(tab)))
+  pos <- match(TRUE, keys %in% c("position", "pos", "residueindex", "index", "seqpos"))
+  val <- match(TRUE, keys %in% c("importance", "score", "attention", "sortingsignalimportance"))
+  if (is.na(pos) || is.na(val)) {
+    stop("Sorting importance CSV needs position and importance columns.", call. = FALSE)
+  }
+  positions <- suppressWarnings(as.integer(tab[[pos]]))
+  scores <- suppressWarnings(as.numeric(tab[[val]]))
+  if (anyNA(positions) || any(positions < 1L) || anyDuplicated(positions) ||
+      any(!is.finite(scores)) || any(scores < 0 | scores > 1)) {
+    stop("Sorting importance must have unique positive positions and scores from 0 to 1.", call. = FALSE)
+  }
+  if (any(positions > 100000L)) stop("Sorting importance position exceeds the supported range.", call. = FALSE)
+  data.frame(position = positions,
+             residue = if ("residue" %in% keys) as.character(tab[[match("residue", keys)]]) else NA_character_,
+             importance = scores, stringsAsFactors = FALSE)
+}
+
+.subcellular_import_deeploc <- function(location, membrane = "", signals = "",
+                                        probabilities = "", importance = NULL,
+                                        sequence = NULL) {
+  locations <- .subcellular_deeploc_labels(location, .subcellular_deeploc_locations, "localization", TRUE)
+  membranes <- .subcellular_deeploc_labels(membrane, .subcellular_deeploc_membranes, "membrane")
+  signals <- trimws(unlist(strsplit(gsub("\n", ";", signals %||% "", fixed = TRUE), "[;,]+")))
+  signals <- unique(signals[nzchar(signals)])
+  scores <- .subcellular_deeploc_probabilities(probabilities)
+  if (nrow(scores) && !all(locations %in% scores$label)) {
+    stop("Provide a probability for every predicted localization, or leave probabilities empty.", call. = FALSE)
+  }
+  if (!is.null(importance) && !is.null(sequence)) {
+    if (any(importance$position > nchar(sequence))) {
+      stop("Sorting importance contains a position beyond the protein sequence.", call. = FALSE)
+    }
+    valid_residues <- !is.na(importance$residue) & nzchar(importance$residue)
+    if (any(valid_residues) &&
+        any(toupper(importance$residue[valid_residues]) !=
+            substring(sequence, importance$position[valid_residues],
+                      importance$position[valid_residues]))) {
+      stop("Sorting importance residues do not match the current protein sequence.", call. = FALSE)
+    }
+  }
+  provider <- .subcellular_provider_result(
+    "DeepLoc 2.1", "success", locations,
     details = "Entered from the DeepLoc 2.1 web result by the user",
-    result_url = "https://services.healthtech.dtu.dk/services/DeepLoc-2.1/"
+    result_url = "https://services.healthtech.dtu.dk/services/DeepLoc-2.1/",
+    score_table = scores
   )
+  provider$membrane_types <- membranes
+  provider$signals <- signals
+  provider$sorting_importance <- importance
+  provider
+}
+
+.subcellular_deeploc_summary <- function(file, protein_id) {
+  if (is.null(file)) return(NULL)
+  tab <- utils::read.csv(file$datapath, check.names = FALSE, stringsAsFactors = FALSE)
+  if (!nrow(tab)) stop("DeepLoc summary CSV is empty.", call. = FALSE)
+  keys <- tolower(gsub("[^a-z0-9]", "", names(tab)))
+  id_col <- match(TRUE, keys %in% c("proteinid", "protein", "id", "name", "sequenceid", "entry"))
+  if (nrow(tab) > 1L) {
+    if (is.na(id_col)) stop("Summary has multiple proteins but no protein ID column.", call. = FALSE)
+    hit <- which(as.character(tab[[id_col]]) == protein_id)
+    if (length(hit) != 1L) stop("Select a single DeepLoc summary row matching the current protein ID.", call. = FALSE)
+    tab <- tab[hit, , drop = FALSE]
+  } else if (!is.na(id_col) && nzchar(as.character(tab[[id_col]][[1L]])) &&
+             !identical(as.character(tab[[id_col]][[1L]]), protein_id)) {
+    stop("DeepLoc summary protein ID does not match the current protein ID.", call. = FALSE)
+  }
+  col_value <- function(aliases) {
+    idx <- match(TRUE, keys %in% aliases)
+    if (is.na(idx)) "" else as.character(tab[[idx]][[1L]])
+  }
+  locations <- col_value(c("predictedlocalizations", "localizations", "localization",
+                           "predictedlocation", "prediction"))
+  membranes <- col_value(c("predictedmembraneassociation", "predictedmembranetypes",
+                           "membraneassociation", "membranetypes", "membranelabels"))
+  signals <- col_value(c("predictedsignals", "sortingsignals", "signals", "signal"))
+  labels <- c(.subcellular_deeploc_locations, .subcellular_deeploc_membranes)
+  scores <- character()
+  for (label in labels) {
+    target <- tolower(gsub("[^a-z0-9]", "", label))
+    idx <- match(TRUE, keys %in% c(target, paste0(target, "probability"),
+                                   paste0("probability", target), paste0(target, "score")))
+    if (!is.na(idx) && !is.na(tab[[idx]][[1L]]) && nzchar(as.character(tab[[idx]][[1L]]))) {
+      scores <- c(scores, paste(label, tab[[idx]][[1L]], sep = ","))
+    }
+  }
+  if (!nzchar(locations)) {
+    stop("No predicted localizations column found in DeepLoc summary. Enter labels manually.", call. = FALSE)
+  }
+  list(location = locations, membrane = membranes, signals = signals,
+       probabilities = paste(scores, collapse = "\n"))
+}
+
+.subcellular_deeploc_example <- function() {
+  paste(c(
+    "Cytoplasm,0.2085", "Nucleus,0.1770", "Extracellular,0.5127",
+    "Cell membrane,0.1617", "Mitochondrion,0.0995", "Chloroplast,0.0019",
+    "Endoplasmic reticulum,0.7058", "Lysosome/Vacuole,0.4825",
+    "Golgi apparatus,0.4283", "Peroxisome,0.0013",
+    "Peripheral,0.4020", "Transmembrane,0.0870",
+    "Lipid anchor,0.1280", "Soluble,0.8140"
+  ), collapse = "\n")
 }
 
 .subcellular_deeploc_fasta <- function(sequence, id) {
@@ -682,9 +820,31 @@ subcellular_localization_ui <- function(id) {
               bsicons::bs_icon("box-arrow-up-right"), " Open DeepLoc 2.1"
             )
           ),
+          shiny::fileInput(ns("deeploc_summary"), "DeepLoc CSV Summary (optional)",
+                           accept = c(".csv", "text/csv")),
+          shiny::p("A selected Summary CSV supplies labels and probabilities in place of the text fields. For multiple proteins, set the current protein ID to the matching CSV row.",
+                   style = "font-size:12px;color:#667085;"),
           shiny::textAreaInput(
             ns("deeploc_location"), "Predicted localizations (semicolon separated)",
-            rows = 2, placeholder = "For example: Chloroplast; Cytoplasm"
+            rows = 2, placeholder = "For example: Endoplasmic reticulum"
+          ),
+          shiny::textInput(ns("deeploc_membrane"), "Predicted membrane association",
+                           placeholder = "For example: Soluble"),
+          shiny::textInput(ns("deeploc_signals"), "Predicted sorting signals",
+                           placeholder = "For example: Signal peptide"),
+          shiny::textAreaInput(
+            ns("deeploc_probabilities"), "All 10 localization and 4 membrane probabilities (label,probability per line)",
+            rows = 6, placeholder = "Endoplasmic reticulum,0.7058\nSoluble,0.8140"
+          ),
+          shiny::fileInput(ns("deeploc_importance"), "Sorting signal importance CSV (optional)",
+                           accept = c(".csv", "text/csv")),
+          shiny::downloadButton(ns("deeploc_example"), "DOWNLOAD EXAMPLE CSV",
+                                class = "btn-outline-secondary"),
+          shiny::tags$details(
+            shiny::tags$summary("Example data from the screenshot"),
+            shiny::p("Rabbit CASQ1 example: localization Endoplasmic reticulum; membrane Soluble; signal Signal peptide. These values belong to that protein only."),
+            shiny::tags$pre(.subcellular_deeploc_example()),
+            shiny::p("Sorting importance CSV columns: position,residue,importance. Use DeepLoc's CSV export when available; the screenshot alone does not provide numeric residue scores.")
           ),
           shiny::actionButton(
             ns("import_deeploc"), "ADD DEEPLOC RESULT",
@@ -700,6 +860,13 @@ subcellular_localization_ui <- function(id) {
             bslib::nav_panel("Prediction", shiny::uiOutput(ns("prediction_panel"))),
             bslib::nav_panel("Evidence", DT::DTOutput(ns("evidence_table"))),
             bslib::nav_panel("Result table", DT::DTOutput(ns("result_table"))),
+            bslib::nav_panel(
+              "DeepLoc details",
+              shiny::uiOutput(ns("deeploc_details")),
+              DT::DTOutput(ns("deeploc_scores")),
+              shiny::plotOutput(ns("deeploc_importance_plot"), height = "240px"),
+              DT::DTOutput(ns("deeploc_importance_table"))
+            ),
             bslib::nav_panel(
               "Raw responses",
               shiny::div(
@@ -721,7 +888,11 @@ subcellular_localization_ui <- function(id) {
           )
         ),
         bslib::card_footer(
-          shiny::downloadButton(ns("download"), "DOWNLOAD RESULT", class = "btn-outline-primary")
+          shiny::downloadButton(ns("download"), "DOWNLOAD EVIDENCE", class = "btn-outline-primary"),
+          shiny::downloadButton(ns("download_deeploc_scores"), "DOWNLOAD DEEPLOC PROBABILITIES",
+                                class = "btn-outline-primary"),
+          shiny::downloadButton(ns("download_deeploc_importance"), "DOWNLOAD SORTING IMPORTANCE",
+                                class = "btn-outline-primary")
         )
       )
     )
@@ -740,6 +911,26 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
     status <- shiny::reactiveVal("Ready")
     error_message <- shiny::reactiveVal(NULL)
     running <- shiny::reactiveVal(FALSE)
+
+    output$deeploc_example <- shiny::downloadHandler(
+      filename = function() "deeploc_2_1_CASQ1_example.csv",
+      content = function(file) {
+        probabilities <- .subcellular_deeploc_probabilities(.subcellular_deeploc_example())
+        row <- as.list(setNames(rep("", length(c(.subcellular_deeploc_locations,
+                                                 .subcellular_deeploc_membranes))),
+                                c(.subcellular_deeploc_locations, .subcellular_deeploc_membranes)))
+        for (i in seq_len(nrow(probabilities))) {
+          row[[probabilities$label[[i]]]] <- probabilities$probability[[i]]
+        }
+        utils::write.csv(data.frame(
+          "Protein ID" = "sp_P07221_CASQ1_RABIT",
+          "Predicted localizations" = "Endoplasmic reticulum",
+          "Predicted membrane association" = "Soluble",
+          "Predicted signals" = "Signal peptide",
+          row, check.names = FALSE
+        ), file, row.names = FALSE)
+      }
+    )
 
     output$deeploc_fasta <- shiny::downloadHandler(
       filename = function() {
@@ -767,7 +958,15 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
       tryCatch({
         sequence <- .plant_mploc_clean_sequence(input$sequence)
         .subcellular_deeploc_fasta(sequence, input$protein_id)
-        imported <- .subcellular_import_deeploc(input$deeploc_location)
+        summary <- .subcellular_deeploc_summary(input$deeploc_summary, input$protein_id)
+        imported <- .subcellular_import_deeploc(
+          if (is.null(summary)) input$deeploc_location else summary$location,
+          if (is.null(summary)) input$deeploc_membrane else summary$membrane,
+          if (is.null(summary)) input$deeploc_signals else summary$signals,
+          if (is.null(summary)) input$deeploc_probabilities else summary$probabilities,
+          .subcellular_deeploc_importance(input$deeploc_importance),
+          sequence = sequence
+        )
         value <- result()
         if (is.null(value) || !identical(value$sequence, sequence) ||
             !identical(value$protein_id, input$protein_id)) {
@@ -791,7 +990,9 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
             website = imported$result_url,
             entry = "user-entered result"
           ),
-          tables = list(evidence = evidence, consensus_votes = value$consensus$votes),
+          tables = list(evidence = evidence, consensus_votes = value$consensus$votes,
+                        deeploc_probabilities = imported$score_table,
+                        deeploc_sorting_importance = imported$sorting_importance),
           statistics = list(sequence = sequence)
         )
         result(value)
@@ -1036,6 +1237,51 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
       DT::datatable(x, rownames = FALSE, options = list(dom = "t", pageLength = 12))
     })
 
+    deeploc_result <- shiny::reactive({
+      value <- result()
+      shiny::req(value)
+      value$providers[["DeepLoc 2.1"]]
+    })
+
+    output$deeploc_details <- shiny::renderUI({
+      x <- deeploc_result()
+      if (is.null(x)) return(shiny::p("Add a DeepLoc 2.1 result to view its full output."))
+      shiny::tagList(
+        shiny::p(shiny::strong("Predicted localizations: "), paste(x$prediction, collapse = "; ")),
+        shiny::p(shiny::strong("Membrane association: "),
+                 if (length(x$membrane_types)) paste(x$membrane_types, collapse = "; ") else "Not supplied"),
+        shiny::p(shiny::strong("Sorting signals: "),
+                 if (length(x$signals)) paste(x$signals, collapse = "; ") else "Not supplied"),
+        shiny::p("Probabilities are the model's per-label scores. Consensus votes use predicted labels, not probability values.")
+      )
+    })
+
+    output$deeploc_scores <- DT::renderDT({
+      x <- deeploc_result()
+      shiny::req(x)
+      tab <- x$score_table
+      if (is.null(tab)) tab <- .subcellular_deeploc_probabilities("")
+      DT::datatable(tab, rownames = FALSE, options = list(dom = "t", pageLength = 14))
+    })
+
+    output$deeploc_importance_plot <- shiny::renderPlot({
+      x <- deeploc_result()
+      shiny::req(x, x$sorting_importance)
+      d <- x$sorting_importance[order(x$sorting_importance$position), , drop = FALSE]
+      graphics::plot(d$position, d$importance, type = "l", ylim = c(0, 1),
+                     xlab = "Residue position", ylab = "Sorting signal importance",
+                     col = "#168fd0", lwd = 1.5)
+    })
+
+    output$deeploc_importance_table <- DT::renderDT({
+      x <- deeploc_result()
+      shiny::req(x)
+      d <- x$sorting_importance
+      if (is.null(d)) d <- data.frame(position = integer(), residue = character(),
+                                      importance = numeric())
+      DT::datatable(d, rownames = FALSE, options = list(pageLength = 10, scrollX = TRUE))
+    })
+
     output$raw_result <- shiny::renderText({
       value <- result()
       shiny::req(value)
@@ -1061,6 +1307,23 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
         value <- result()
         shiny::req(value)
         utils::write.csv(.subcellular_evidence_table(value), file, row.names = FALSE)
+      }
+    )
+
+    output$download_deeploc_scores <- shiny::downloadHandler(
+      filename = function() "deeploc_probabilities.csv",
+      content = function(file) {
+        x <- deeploc_result()
+        shiny::req(x, x$score_table)
+        utils::write.csv(x$score_table, file, row.names = FALSE)
+      }
+    )
+    output$download_deeploc_importance <- shiny::downloadHandler(
+      filename = function() "deeploc_sorting_importance.csv",
+      content = function(file) {
+        x <- deeploc_result()
+        shiny::req(x, x$sorting_importance)
+        utils::write.csv(x$sorting_importance, file, row.names = FALSE)
       }
     )
 
