@@ -1001,7 +1001,7 @@ subcellular_localization_ui <- function(id) {
                      shiny::actionButton(ns("refresh_deeploc"), "REFRESH DEEPLOC JOB",
                                          icon = bsicons::bs_icon("arrow-clockwise"),
                                          class = "btn-outline-primary")),
-          shiny::p("Submit the current protein sequence. Queued jobs can be refreshed without submitting again.",
+          shiny::p("Submit the current protein sequence. Queued jobs are checked automatically every 15 seconds; you can also refresh them manually.",
                    style = "font-size:12px;color:#667085;"),
           shiny::tags$details(
             shiny::tags$summary("Import a result from an existing DeepLoc job"),
@@ -1167,7 +1167,7 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
       status(if (identical(imported$status, "queued")) "Queued" else label)
       shiny::showNotification(
         if (identical(imported$status, "queued")) {
-          "DeepLoc job submitted. Refresh after the server finishes."
+          "DeepLoc job submitted. Checking for results automatically."
         } else "DeepLoc 2.1 result added.",
         type = "message"
       )
@@ -1206,6 +1206,28 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
         status("Failed")
         shiny::showNotification(paste("DeepLoc 2.1:", conditionMessage(e)),
                                 type = "error", duration = 10)
+      })
+    }, ignoreInit = TRUE)
+
+    poll_deeploc <- shiny::reactiveTimer(15000, session = session)
+    shiny::observeEvent(poll_deeploc(), {
+      value <- shiny::isolate(result())
+      old <- if (!is.null(value)) value$providers[["DeepLoc 2.1"]] else NULL
+      if (is.null(old) || !identical(old$status, "queued") || isTRUE(shiny::isolate(running()))) {
+        return(invisible(NULL))
+      }
+      job_id <- .subcellular_deeploc_job_id(old$result_url %||% "")
+      if (!nzchar(job_id)) return(invisible(NULL))
+      running(TRUE)
+      on.exit(running(FALSE), add = TRUE)
+      tryCatch({
+        imported <- .subcellular_deeploc_fetch_job(job_id, value$protein_id, input$timeout)
+        if (identical(imported$status, "success")) {
+          save_deeploc(imported, value$sequence, "Predicted")
+        }
+      }, error = function(e) {
+        # A transient poll failure does not discard the submitted job.
+        message("DeepLoc job ", job_id, " poll failed: ", conditionMessage(e))
       })
     }, ignoreInit = TRUE)
 
@@ -1416,14 +1438,26 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
       }
 
       if (!length(value$consensus$prediction)) {
+        queued <- Filter(function(x) identical(x$status, "queued"), value$providers)
+        if (length(queued)) {
+          deeploc <- queued[["DeepLoc 2.1"]]
+          return(shiny::div(
+            class = "alert alert-info",
+            shiny::strong("DeepLoc is processing this sequence."),
+            shiny::p("The submitted job is checked automatically every 15 seconds. Results will appear here when ready."),
+            if (!is.null(deeploc)) shiny::tags$a(
+              "Open DeepLoc job status", href = deeploc$result_url,
+              target = "_blank", rel = "noopener noreferrer"
+            ),
+            shiny::p("You can also click REFRESH DEEPLOC JOB above to check now.")
+          ))
+        }
         failures <- vapply(value$providers, function(x) {
           paste0(x$source, ": ", x$error %||% "No usable result")
         }, character(1))
         return(shiny::div(
           class = "alert alert-warning",
-          shiny::strong(if (any(vapply(value$providers, function(x) identical(x$status, "queued"), logical(1)))) {
-            "DeepLoc is queued. Refresh the submitted job later."
-          } else "No automatic source returned a usable prediction."),
+          shiny::strong("No automatic source returned a usable prediction."),
           shiny::tags$ul(lapply(failures, shiny::tags$li)),
           "Use the DeepLoc 2.1 website result panel above to add a verified prediction."
         ))
