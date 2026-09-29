@@ -596,11 +596,12 @@ predict_subcellular_localization <- function(
     }
   }
   provider <- .subcellular_provider_result(
-    "DeepLoc 2.1", "success", locations,
+    "DeepLoc 2.1", "success", ifelse(locations == "Plastid", "Chloroplast", locations),
     details = "Entered from the DeepLoc 2.1 web result by the user",
     result_url = "https://services.healthtech.dtu.dk/services/DeepLoc-2.1/",
     score_table = scores
   )
+  provider$deeploc_locations <- locations
   provider$membrane_types <- membranes
   provider$signals <- signals
   provider$sorting_importance <- importance
@@ -1254,7 +1255,8 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
       x <- deeploc_result()
       if (is.null(x)) return(shiny::p("Add a DeepLoc 2.1 result to view its full output."))
       shiny::tagList(
-        shiny::p(shiny::strong("Predicted localizations: "), paste(x$prediction, collapse = "; ")),
+        shiny::p(shiny::strong("Predicted localizations: "),
+                 paste(x$deeploc_locations %||% x$prediction, collapse = "; ")),
         shiny::p(shiny::strong("Membrane association: "),
                  if (length(x$membrane_types)) paste(x$membrane_types, collapse = "; ") else "Not supplied"),
         shiny::p(shiny::strong("Sorting signals: "),
