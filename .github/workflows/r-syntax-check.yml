@@ -66,6 +66,7 @@ jobs:
             "Endoplasmic reticulum", "Soluble", "Signal peptide",
             .subcellular_deeploc_example()
           )
+          cat("DeepLoc prediction debug: "); dput(example$prediction)
           stopifnot(
             identical(example$prediction, "Endoplasmic reticulum"),
             identical(example$membrane_types, "Soluble"),
