@@ -95,3 +95,29 @@ test_that("DeepLoc FASTA export validates sequence length and protein ID", {
   expect_true(startsWith(fasta, ">protein_1\n"))
   expect_error(.subcellular_deeploc_fasta("ACD", "short"), "at least 10")
 })
+
+test_that("web refresh target and BUSCA result table match live page formats", {
+  expect_equal(
+    .subcellular_parse_refresh("5; URL=/results/job.html"),
+    "/results/job.html"
+  )
+  expect_equal(.subcellular_parse_refresh("5"), "")
+  expect_equal(.subcellular_parse_refresh("0; url=javascript:alert(1)"), "")
+
+  page <- rvest::read_html(paste0(
+    '<table id="resultdata"><thead><tr><th></th>',
+    '<th>Protein Accession/ID</th><th>GO-id</th><th>GO-term</th>',
+    '</tr></thead><tbody><tr><td></td><td>test_protein</td>',
+    '<td>GO:0005615</td><td>C:extracellular space</td>',
+    '</tr></tbody></table>'
+  ))
+  expect_equal(.subcellular_parse_busca_page(page), "Extracellular")
+  expect_equal(
+    .subcellular_parse_busca_json(list(data = list(
+      list("test_protein", "GO:0005615", "C:extracellular space", 1)
+    ))),
+    "Extracellular"
+  )
+  expect_length(.subcellular_parse_busca_page(rvest::read_html("<p>Queued</p>")), 0)
+})
+
