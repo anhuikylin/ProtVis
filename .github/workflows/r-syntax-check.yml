@@ -86,6 +86,22 @@ jobs:
             list(datapath = sample_csv), "example"
           )
           stopifnot(identical(imported$location, "Endoplasmic reticulum"))
+          live_example <- .subcellular_deeploc_summary(
+            list(datapath = "inst/extdata/deeploc_2_1_example_summary.csv"),
+            "sp_P07221_CASQ1_RABIT"
+          )
+          predicted <- .subcellular_import_deeploc(
+            live_example$location, live_example$membrane,
+            live_example$signals, live_example$probabilities
+          )
+          stopifnot(
+            identical(predicted$prediction,
+                      c("Extracellular", "Endoplasmic reticulum")),
+            nrow(predicted$score_table) == 14L,
+            identical(.subcellular_deeploc_job_id(
+              "jobid=6ABB678C002764C16CB5A81F&wait=20"
+            ), "6ABB678C002764C16CB5A81F")
+          )
           cat("Localization web and DeepLoc parsers validated.\\n")
 
       - name: Validate archived GSEA reproduction geometry
