@@ -61,7 +61,32 @@ jobs:
                                     "C:extracellular space", 1)))
             ), "Extracellular")
           )
-          cat("Localization web result parsers validated.\\n")
+          `%||%` <- function(x, y) if (is.null(x)) y else x
+          example <- .subcellular_import_deeploc(
+            "Endoplasmic reticulum", "Soluble", "Signal peptide",
+            .subcellular_deeploc_example()
+          )
+          stopifnot(
+            identical(example$prediction, "Endoplasmic reticulum"),
+            identical(example$membrane_types, "Soluble"),
+            identical(example$signals, "Signal peptide"),
+            nrow(example$score_table) == 14L,
+            abs(example$score_table$probability[
+              example$score_table$label == "Endoplasmic reticulum"
+            ] - 0.7058) < 1e-10
+          )
+          sample_csv <- tempfile(fileext = ".csv")
+          utils::write.csv(data.frame(
+            "Protein ID" = "example",
+            "Predicted localizations" = "Endoplasmic reticulum",
+            "Predicted membrane association" = "Soluble",
+            check.names = FALSE
+          ), sample_csv, row.names = FALSE)
+          imported <- .subcellular_deeploc_summary(
+            list(datapath = sample_csv), "example"
+          )
+          stopifnot(identical(imported$location, "Endoplasmic reticulum"))
+          cat("Localization web and DeepLoc parsers validated.\\n")
 
       - name: Validate archived GSEA reproduction geometry
         shell: Rscript {0}
