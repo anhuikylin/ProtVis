@@ -1,5 +1,6 @@
 test_that("subcellular localization normalizes common provider labels", {
   expect_equal(.subcellular_normalize_locations("plasma membrane"), "Cell membrane")
+  expect_equal(.subcellular_normalize_locations("Endoplasmic reticulum"), "Endoplasmic reticulum")
   expect_equal(.subcellular_normalize_locations("chloroplastic protein"), "Chloroplast")
   expect_equal(.subcellular_normalize_locations(c("nuclear", "cytoplasmic")),
                c("Nucleus", "Cytoplasm"))
