@@ -1098,7 +1098,9 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
             providers = input$providers,
             timeout = input$timeout
           ),
-          tables = list(evidence = evidence, consensus_votes = value$consensus$votes)
+          tables = list(evidence = evidence, consensus_votes = value$consensus$votes,
+                        deeploc_probabilities = manual$score_table,
+                        deeploc_sorting_importance = manual$sorting_importance)
         )
       }, error = function(e) {
         error_message(conditionMessage(e))
