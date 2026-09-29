@@ -498,7 +498,7 @@ predict_subcellular_localization <- function(
 
 .subcellular_deeploc_locations <- c(
   "Cytoplasm", "Nucleus", "Extracellular", "Cell membrane",
-  "Mitochondrion", "Chloroplast", "Endoplasmic reticulum",
+  "Mitochondrion", "Plastid", "Endoplasmic reticulum",
   "Lysosome/Vacuole", "Golgi apparatus", "Peroxisome"
 )
 .subcellular_deeploc_membranes <- c("Peripheral", "Transmembrane", "Lipid anchor", "Soluble")
@@ -528,7 +528,8 @@ predict_subcellular_localization <- function(
     parts <- trimws(strsplit(line, "[,\t;]+")[[1L]])
     if (length(parts) != 2L) stop("Probability rows must be label,probability.", call. = FALSE)
     labels <- c(.subcellular_deeploc_locations, .subcellular_deeploc_membranes)
-    idx <- match(tolower(parts[[1L]]), tolower(labels))
+    requested <- if (tolower(parts[[1L]]) == "chloroplast") "Plastid" else parts[[1L]]
+    idx <- match(tolower(requested), tolower(labels))
     if (is.na(idx)) stop(paste("Unknown probability label:", parts[[1L]]), call. = FALSE)
     score <- suppressWarnings(as.numeric(parts[[2L]]))
     if (!is.finite(score) || score < 0 || score > 1) {
@@ -572,12 +573,14 @@ predict_subcellular_localization <- function(
 .subcellular_import_deeploc <- function(location, membrane = "", signals = "",
                                         probabilities = "", importance = NULL,
                                         sequence = NULL) {
-  locations <- .subcellular_deeploc_labels(location, .subcellular_deeploc_locations, "localization", TRUE)
+  locations <- .subcellular_deeploc_labels(
+    location, c(.subcellular_deeploc_locations, "Chloroplast"), "localization", TRUE
+  )
   membranes <- .subcellular_deeploc_labels(membrane, .subcellular_deeploc_membranes, "membrane")
   signals <- trimws(unlist(strsplit(gsub("\n", ";", signals %||% "", fixed = TRUE), "[;,]+")))
   signals <- unique(signals[nzchar(signals)])
   scores <- .subcellular_deeploc_probabilities(probabilities)
-  if (nrow(scores) && !all(locations %in% scores$label)) {
+  if (nrow(scores) && !all(ifelse(locations == "Chloroplast", "Plastid", locations) %in% scores$label)) {
     stop("Provide a probability for every predicted localization, or leave probabilities empty.", call. = FALSE)
   }
   if (!is.null(importance) && !is.null(sequence)) {
@@ -632,8 +635,10 @@ predict_subcellular_localization <- function(
   scores <- character()
   for (label in labels) {
     target <- tolower(gsub("[^a-z0-9]", "", label))
-    idx <- match(TRUE, keys %in% c(target, paste0(target, "probability"),
-                                   paste0("probability", target), paste0(target, "score")))
+    aliases <- if (identical(label, "Plastid")) c("plastid", "chloroplast") else target
+    idx <- match(TRUE, keys %in% unlist(lapply(aliases, function(key) {
+      c(key, paste0(key, "probability"), paste0("probability", key), paste0(key, "score"))
+    })))
     if (!is.na(idx) && !is.na(tab[[idx]][[1L]]) && nzchar(as.character(tab[[idx]][[1L]]))) {
       scores <- c(scores, paste(label, tab[[idx]][[1L]], sep = ","))
     }
@@ -648,7 +653,7 @@ predict_subcellular_localization <- function(
 .subcellular_deeploc_example <- function() {
   paste(c(
     "Cytoplasm,0.2085", "Nucleus,0.1770", "Extracellular,0.5127",
-    "Cell membrane,0.1617", "Mitochondrion,0.0995", "Chloroplast,0.0019",
+    "Cell membrane,0.1617", "Mitochondrion,0.0995", "Plastid,0.0019",
     "Endoplasmic reticulum,0.7058", "Lysosome/Vacuole,0.4825",
     "Golgi apparatus,0.4283", "Peroxisome,0.0013",
     "Peripheral,0.4020", "Transmembrane,0.0870",
