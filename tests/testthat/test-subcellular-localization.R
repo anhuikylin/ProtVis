@@ -121,3 +121,38 @@ test_that("web refresh target and BUSCA result table match live page formats", {
   expect_length(.subcellular_parse_busca_page(rvest::read_html("<p>Queued</p>")), 0)
 })
 
+
+test_that("DeepLoc full screenshot example retains all scores and metadata", {
+  x <- .subcellular_import_deeploc(
+    "Endoplasmic reticulum", "Soluble", "Signal peptide",
+    .subcellular_deeploc_example()
+  )
+  expect_equal(x$prediction, "Endoplasmic reticulum")
+  expect_equal(x$membrane_types, "Soluble")
+  expect_equal(x$signals, "Signal peptide")
+  expect_equal(nrow(x$score_table), 14L)
+  expect_equal(x$score_table$probability[x$score_table$label == "Endoplasmic reticulum"], 0.7058)
+  expect_error(.subcellular_deeploc_probabilities("Soluble,1.2"), "Probability")
+})
+
+test_that("DeepLoc summary matches protein ID and importance validates residue positions", {
+  summary_file <- tempfile(fileext = ".csv")
+  utils::write.csv(data.frame("Protein ID" = c("A", "B"),
+    "Predicted localizations" = c("Nucleus", "Cytoplasm"),
+    "Predicted membrane association" = c("Soluble", "Peripheral"),
+    check.names = FALSE), summary_file, row.names = FALSE)
+  summary <- .subcellular_deeploc_summary(list(datapath = summary_file), "B")
+  expect_equal(summary$location, "Cytoplasm")
+  expect_error(.subcellular_deeploc_summary(list(datapath = summary_file), "C"), "matching")
+
+  importance_file <- tempfile(fileext = ".csv")
+  utils::write.csv(data.frame(position = c(1, 3), residue = c("A", "D"),
+                              importance = c(0.7, 0.1)), importance_file, row.names = FALSE)
+  importance <- .subcellular_deeploc_importance(list(datapath = importance_file))
+  expect_equal(nrow(importance), 2L)
+  expect_equal(.subcellular_import_deeploc("Nucleus", importance = importance,
+                                          sequence = "ACDEFGHIKLMN")$sorting_importance,
+               importance)
+  expect_error(.subcellular_import_deeploc("Nucleus", importance = importance,
+                                          sequence = "ACCEFGHIKLMN"), "do not match")
+})
