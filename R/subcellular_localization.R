@@ -746,10 +746,19 @@ predict_subcellular_localization <- function(
   fasta <- .subcellular_deeploc_fasta(sequence, protein_id)
   if (!model %in% c("Fast", "Slow")) stop("Invalid DeepLoc model.", call. = FALSE)
   landing <- "https://services.healthtech.dtu.dk/services/DeepLoc-2.1/"
-  httr::stop_for_status(httr::GET(landing, httr::timeout(20)))
+  landing_response <- httr::GET(landing, httr::timeout(20))
+  httr::stop_for_status(landing_response)
+  landing_page <- rvest::read_html(httr::content(landing_response, as = "text", encoding = "UTF-8"))
+  configfile <- rvest::html_attr(
+    rvest::html_element(landing_page, "form[name='agForm'] input[name='configfile']"),
+    "value"
+  )
+  if (is.na(configfile) || !grepl("^/var/www/services/services/DeepLoc-2\\.1/[^/]+\\.cf$", configfile)) {
+    stop("DeepLoc submission configuration could not be read from the official form.", call. = FALSE)
+  }
   response <- httr::POST(
     "https://services.healthtech.dtu.dk/cgi-bin/webface2.cgi",
-    body = list(configfile = "", fasta = fasta, encode = model, format = "long"),
+    body = list(configfile = configfile, fasta = fasta, encode = model, format = "long"),
     encode = "multipart",
     httr::add_headers(Referer = landing),
     httr::timeout(max(10, min(timeout, 90)))
