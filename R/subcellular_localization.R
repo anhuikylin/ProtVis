@@ -717,22 +717,50 @@ predict_subcellular_localization <- function(
   provider$result_url <- job_url
   provider$summary_url <- summary_url
   provider$raw_result <- substr(rvest::html_text2(rvest::read_html(page)), 1, 3000)
-  slug <- tolower(gsub("[^A-Za-z0-9]+", "_", protein_id))
-  slug <- gsub("^_|_$", "", slug)
-  prefix <- paste0("https://services.healthtech.dtu.dk/services/DeepLoc-2.1/tmp/",
-                   job_id, "/alpha_", slug)
-  if (nzchar(slug)) {
-    importance_url <- paste0(prefix, ".csv")
+  json_url <- paste0("https://services.healthtech.dtu.dk/services/DeepLoc-2.1/tmp/",
+                     job_id, "/results.json")
+  json_response <- tryCatch(httr::GET(json_url, httr::timeout(15)),
+                            error = function(e) NULL)
+  if (!is.null(json_response) && httr::status_code(json_response) == 200L) {
+    parsed <- tryCatch(jsonlite::fromJSON(
+      httr::content(json_response, as = "text", encoding = "UTF-8"),
+      simplifyVector = FALSE
+    ), error = function(e) NULL)
+    if (!is.null(parsed)) {
+      row <- parsed$sequences[[protein_id]]
+      attention <- row$Attention %||% list()
+      asset_url <- function(path, extension) {
+        if (is.null(path) || length(path) != 1L ||
+            !grepl(paste0("^/services/DeepLoc-2\\.1/tmp/", job_id,
+                          "/alpha_[A-Za-z0-9_.-]+\\.", extension, "$"), path)) {
+          return(NULL)
+        }
+        paste0("https://services.healthtech.dtu.dk", path)
+      }
+      if (length(attention) >= 3L) {
+        provider$sorting_png_url <- asset_url(attention[[1L]], "png")
+        provider$sorting_csv_url <- asset_url(attention[[3L]], "csv")
+      }
+      labels <- c(unlist(parsed$Localization), unlist(parsed$Membrane_types))
+      thresholds <- suppressWarnings(as.numeric(
+        c(unlist(parsed$Threshold), unlist(parsed$Threshold_memtype))
+      ))
+      if (length(labels) == length(thresholds) && all(is.finite(thresholds))) {
+        provider$score_table$threshold <- thresholds[
+          match(provider$score_table$label, labels)
+        ]
+      }
+    }
+  }
+  if (!is.null(provider$sorting_csv_url)) {
     importance_response <- tryCatch(
-      httr::GET(importance_url, httr::timeout(15)),
+      httr::GET(provider$sorting_csv_url, httr::timeout(15)),
       error = function(e) NULL
     )
     if (!is.null(importance_response) && httr::status_code(importance_response) == 200L) {
       importance_file <- tempfile(fileext = ".csv")
       on.exit(unlink(importance_file), add = TRUE)
       writeBin(httr::content(importance_response, as = "raw"), importance_file)
-      provider$sorting_csv_url <- importance_url
-      provider$sorting_png_url <- paste0(prefix, ".png")
       provider$sorting_importance <- tryCatch(
         .subcellular_deeploc_importance(list(datapath = importance_file)),
         error = function(e) NULL
