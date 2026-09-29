@@ -505,7 +505,7 @@ predict_subcellular_localization <- function(
 
 .subcellular_deeploc_labels <- function(value, choices, field, required = FALSE) {
   value <- paste(value %||% "", collapse = ";")
-  parts <- trimws(unlist(strsplit(gsub("\n", ";", value, fixed = TRUE), "[;,]+")))
+  parts <- trimws(unlist(strsplit(gsub("\n", ";", value, fixed = TRUE), "[;,|]+")))
   parts <- parts[nzchar(parts)]
   if (!length(parts)) {
     if (required) stop(paste("Enter DeepLoc", field, "labels."), call. = FALSE)
@@ -577,7 +577,7 @@ predict_subcellular_localization <- function(
     location, c(.subcellular_deeploc_locations, "Chloroplast"), "localization", TRUE
   )
   membranes <- .subcellular_deeploc_labels(membrane, .subcellular_deeploc_membranes, "membrane")
-  signals <- trimws(unlist(strsplit(gsub("\n", ";", signals %||% "", fixed = TRUE), "[;,]+")))
+  signals <- trimws(unlist(strsplit(gsub("\n", ";", signals %||% "", fixed = TRUE), "[;,|]+")))
   signals <- unique(signals[nzchar(signals)])
   scores <- .subcellular_deeploc_probabilities(probabilities)
   if (nrow(scores) && !all(ifelse(locations == "Chloroplast", "Plastid", locations) %in% scores$label)) {
@@ -650,6 +650,121 @@ predict_subcellular_localization <- function(
   list(location = locations, membrane = membranes, signals = signals,
        probabilities = paste(scores, collapse = "\n"))
 }
+
+.subcellular_deeploc_read_fasta <- function(file) {
+  lines <- trimws(readLines(file$datapath, warn = FALSE))
+  lines <- lines[nzchar(lines)]
+  if (!length(lines)) stop("FASTA file is empty.", call. = FALSE)
+  headers <- which(startsWith(lines, ">"))
+  if (length(headers) > 1L || (length(headers) == 1L && headers[[1L]] != 1L)) {
+    stop("Upload one protein sequence per ProtVis analysis.", call. = FALSE)
+  }
+  id <- if (length(headers)) {
+    strsplit(sub("^>", "", lines[[1L]]), "[[:space:]]+")[[1L]][[1L]]
+  } else {
+    tools::file_path_sans_ext(file$name %||% "query_protein")
+  }
+  id <- gsub("[^A-Za-z0-9_.-]+", "_", id)
+  seq_lines <- if (length(headers)) lines[-1L] else lines
+  sequence <- .plant_mploc_clean_sequence(paste(seq_lines, collapse = ""))
+  .subcellular_deeploc_fasta(sequence, id)
+  list(id = id, sequence = sequence)
+}
+
+.subcellular_deeploc_job_id <- function(text) {
+  hit <- regmatches(text %||% "", regexpr("jobid=[A-Fa-f0-9]{24}", text %||% "",
+                                      perl = TRUE))
+  if (!length(hit) || !nzchar(hit)) return("")
+  sub("^jobid=", "", hit)
+}
+
+.subcellular_deeploc_job_url <- function(job_id) {
+  if (!grepl("^[A-Fa-f0-9]{24}$", job_id)) stop("Invalid DeepLoc job ID.", call. = FALSE)
+  paste0("https://services.healthtech.dtu.dk/cgi-bin/webface2.cgi?jobid=",
+         job_id, "&wait=20")
+}
+
+.subcellular_deeploc_fetch_job <- function(job_id, protein_id, timeout = 60) {
+  job_url <- .subcellular_deeploc_job_url(job_id)
+  response <- httr::GET(job_url, httr::timeout(max(10, min(timeout, 90))))
+  httr::stop_for_status(response)
+  page <- httr::content(response, as = "text", encoding = "UTF-8")
+  if (!grepl("Download prediction results", page, fixed = TRUE)) {
+    return(.subcellular_provider_result(
+      "DeepLoc 2.1", "queued", result_url = job_url,
+      details = "DeepLoc job is queued or running. Refresh this job later.",
+      raw_result = substr(rvest::html_text2(rvest::read_html(page)), 1, 3000)
+    ))
+  }
+  summary_url <- paste0(
+    "https://services.healthtech.dtu.dk/services/DeepLoc-2.1/tmp/",
+    job_id, "/results_", job_id, ".csv"
+  )
+  csv <- httr::GET(summary_url, httr::timeout(max(10, min(timeout, 90))))
+  httr::stop_for_status(csv)
+  path <- tempfile(fileext = ".csv")
+  on.exit(unlink(path), add = TRUE)
+  writeBin(httr::content(csv, as = "raw"), path)
+  fields <- .subcellular_deeploc_summary(list(datapath = path), protein_id)
+  provider <- .subcellular_import_deeploc(fields$location, fields$membrane,
+                                           fields$signals, fields$probabilities)
+  provider$result_url <- job_url
+  provider$summary_url <- summary_url
+  provider$raw_result <- substr(rvest::html_text2(rvest::read_html(page)), 1, 3000)
+  slug <- tolower(gsub("[^A-Za-z0-9]+", "_", protein_id))
+  slug <- gsub("^_|_$", "", slug)
+  prefix <- paste0("https://services.healthtech.dtu.dk/services/DeepLoc-2.1/tmp/",
+                   job_id, "/alpha_", slug)
+  if (nzchar(slug)) {
+    importance_url <- paste0(prefix, ".csv")
+    importance_response <- tryCatch(
+      httr::GET(importance_url, httr::timeout(15)),
+      error = function(e) NULL
+    )
+    if (!is.null(importance_response) && httr::status_code(importance_response) == 200L) {
+      importance_file <- tempfile(fileext = ".csv")
+      on.exit(unlink(importance_file), add = TRUE)
+      writeBin(httr::content(importance_response, as = "raw"), importance_file)
+      provider$sorting_csv_url <- importance_url
+      provider$sorting_png_url <- paste0(prefix, ".png")
+      provider$sorting_importance <- tryCatch(
+        .subcellular_deeploc_importance(list(datapath = importance_file)),
+        error = function(e) NULL
+      )
+    }
+  }
+  provider$details <- "Predicted from the submitted sequence by DeepLoc 2.1"
+  provider
+}
+
+.subcellular_deeploc_submit <- function(sequence, protein_id, model = "Fast",
+                                        timeout = 60) {
+  fasta <- .subcellular_deeploc_fasta(sequence, protein_id)
+  if (!model %in% c("Fast", "Slow")) stop("Invalid DeepLoc model.", call. = FALSE)
+  response <- httr::POST(
+    "https://services.healthtech.dtu.dk/cgi-bin/webface2.cgi",
+    body = list(configfile = "", fasta = fasta, encode = model, format = "long"),
+    encode = "multipart", httr::timeout(max(10, min(timeout, 90)))
+  )
+  httr::stop_for_status(response)
+  page <- httr::content(response, as = "text", encoding = "UTF-8")
+  job_id <- .subcellular_deeploc_job_id(paste(response$url, page))
+  if (!nzchar(job_id)) {
+    stop(paste("DeepLoc did not return a job ID:", substr(rvest::html_text2(
+      rvest::read_html(page)), 1, 500)), call. = FALSE)
+  }
+  .subcellular_deeploc_fetch_job(job_id, protein_id, timeout)
+}
+
+.subcellular_deeploc_demo_sequence <- paste0(
+  "MNAADRMGARVALLLLLVLGSPQSGVHGEEGLDFPEYDGVDRVINVNAKNYKNVFKKYEV",
+  "LALLYHEPPEDDKASQRQFEMEELILELAAQVLEDKGVGFGLVDSEKDAAVAKKLGLTEE",
+  "DSIYVFKEDEVIEYDGEFSADTLVEFLLDVLEDPVELIEGERELQAFENIEDEIKLIGYF",
+  "KNKDSEHYKAFKEAAEEFHPYIPFFATFDSKVAKKLTLKLNEIDFYEAFMEEPVTIPDKP",
+  "NSEEEIVNFVEEHRRSTLRKLKPESMYETWEDDMDGIHIVAFAEEADPDGYEFLEILKSV",
+  "AQDNTDNPDLSIIWIDPDDFPLLVPYWEKTFDIDLSAPQIGVVNVTDADSVWMEMDDEED",
+  "LPSAEELEDWLEDVLEGEINTEDDDDEDDDDDDDD"
+)
 
 .subcellular_deeploc_example <- function() {
   paste(c(
@@ -724,6 +839,8 @@ subcellular_localization_ui <- function(id) {
         bslib::accordion_panel(
           "Protein input",
           shiny::textInput(ns("protein_id"), "Protein ID", value = "ZmProtein_demo"),
+          shiny::fileInput(ns("fasta_upload"), "Upload protein FASTA",
+                           accept = c(".fasta", ".fa", ".faa", ".txt")),
           shiny::textAreaInput(
             ns("sequence"), "Protein sequence",
             value = .plant_mploc_demo_sequence, rows = 12,
@@ -826,6 +943,21 @@ subcellular_localization_ui <- function(id) {
               bsicons::bs_icon("box-arrow-up-right"), " Open DeepLoc 2.1"
             )
           ),
+          shiny::actionButton(ns("load_deeploc_demo"), "LOAD DEEPLOC EXAMPLE SEQUENCE",
+                              icon = bsicons::bs_icon("stars"), class = "btn-outline-secondary"),
+          shiny::selectInput(ns("deeploc_model"), "DeepLoc model",
+                             choices = c("High-throughput (Fast)" = "Fast",
+                                         "High-quality (Slow)" = "Slow")),
+          shiny::div(style = "display:flex;gap:8px;flex-wrap:wrap;",
+                     shiny::actionButton(ns("run_deeploc"), "PREDICT WITH DEEPLOC",
+                                         icon = bsicons::bs_icon("play-fill"), class = "btn-primary"),
+                     shiny::actionButton(ns("refresh_deeploc"), "REFRESH DEEPLOC JOB",
+                                         icon = bsicons::bs_icon("arrow-clockwise"),
+                                         class = "btn-outline-primary")),
+          shiny::p("Submit the current protein sequence. Queued jobs can be refreshed without submitting again.",
+                   style = "font-size:12px;color:#667085;"),
+          shiny::tags$details(
+            shiny::tags$summary("Import a result from an existing DeepLoc job"),
           shiny::fileInput(ns("deeploc_summary"), "DeepLoc CSV Summary (optional)",
                            accept = c(".csv", "text/csv")),
           shiny::p("A selected Summary CSV supplies labels and probabilities in place of the text fields. For multiple proteins, set the current protein ID to the matching CSV row.",
@@ -847,14 +979,14 @@ subcellular_localization_ui <- function(id) {
           shiny::downloadButton(ns("deeploc_example"), "DOWNLOAD EXAMPLE CSV",
                                 class = "btn-outline-secondary"),
           shiny::tags$details(
-            shiny::tags$summary("Example data from the screenshot"),
-            shiny::p("Rabbit CASQ1 example: localization Endoplasmic reticulum; membrane Soluble; signal Signal peptide. These values belong to that protein only."),
-            shiny::tags$pre(.subcellular_deeploc_example()),
+            shiny::tags$summary("Official Fast-model example results"),
+            shiny::p("The bundled CSV contains the three public protein sequences from DeepLoc's example. CASQ1 is predicted Extracellular and Endoplasmic reticulum, with Soluble membrane association and Signal peptide. Scores depend on the selected model."),
             shiny::p("Sorting importance CSV columns: position,residue,importance. Use DeepLoc's CSV export when available; the screenshot alone does not provide numeric residue scores.")
           ),
           shiny::actionButton(
             ns("import_deeploc"), "ADD DEEPLOC RESULT",
             icon = bsicons::bs_icon("check-circle"), class = "btn-primary"
+          )
           )
         )
       ),
@@ -919,22 +1051,16 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
     running <- shiny::reactiveVal(FALSE)
 
     output$deeploc_example <- shiny::downloadHandler(
-      filename = function() "deeploc_2_1_CASQ1_example.csv",
+      filename = function() "deeploc_2_1_official_example_summary.csv",
       content = function(file) {
-        probabilities <- .subcellular_deeploc_probabilities(.subcellular_deeploc_example())
-        row <- as.list(setNames(rep("", length(c(.subcellular_deeploc_locations,
-                                                 .subcellular_deeploc_membranes))),
-                                c(.subcellular_deeploc_locations, .subcellular_deeploc_membranes)))
-        for (i in seq_len(nrow(probabilities))) {
-          row[[probabilities$label[[i]]]] <- probabilities$probability[[i]]
+        source <- system.file("extdata", "deeploc_2_1_example_summary.csv",
+                              package = "ProtVis")
+        if (!nzchar(source)) {
+          source <- file.path("inst", "extdata", "deeploc_2_1_example_summary.csv")
         }
-        utils::write.csv(data.frame(
-          "Protein ID" = "sp_P07221_CASQ1_RABIT",
-          "Predicted localizations" = "Endoplasmic reticulum",
-          "Predicted membrane association" = "Soluble",
-          "Predicted signals" = "Signal peptide",
-          row, check.names = FALSE
-        ), file, row.names = FALSE)
+        if (!file.copy(source, file, overwrite = TRUE)) {
+          stop("DeepLoc example CSV is missing.", call. = FALSE)
+        }
       }
     )
 
@@ -960,6 +1086,102 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
       status("Ready")
     }, ignoreInit = TRUE)
 
+    save_deeploc <- function(imported, sequence, label) {
+      value <- result()
+      if (is.null(value) || !identical(value$sequence, sequence) ||
+          !identical(value$protein_id, input$protein_id)) {
+        value <- list(
+          protein_id = input$protein_id, sequence = sequence,
+          length = nchar(sequence), providers = list(),
+          submitted_at = Sys.time()
+        )
+      }
+      value$providers[["DeepLoc 2.1"]] <- imported
+      value$consensus <- .subcellular_consensus(value$providers)
+      class(value) <- "ProtVis_subcellular_localization"
+      evidence <- .subcellular_evidence_table(value)
+      .protvis_record_shared_run(
+        shared_state,
+        module = "subcellular_localization",
+        method = "DeepLoc 2.1",
+        category = "subcellular_localization",
+        parameters = list(
+          protein_id = value$protein_id,
+          website = imported$result_url,
+          entry = label
+        ),
+        tables = list(evidence = evidence, consensus_votes = value$consensus$votes,
+                      deeploc_probabilities = imported$score_table,
+                      deeploc_sorting_importance = imported$sorting_importance),
+        statistics = list(sequence = sequence)
+      )
+      result(value)
+      error_message(NULL)
+      status(if (identical(imported$status, "queued")) "Queued" else label)
+      shiny::showNotification(
+        if (identical(imported$status, "queued")) {
+          "DeepLoc job submitted. Refresh after the server finishes."
+        } else "DeepLoc 2.1 result added.",
+        type = "message"
+      )
+    }
+
+    shiny::observeEvent(input$fasta_upload, {
+      tryCatch({
+        fasta <- .subcellular_deeploc_read_fasta(input$fasta_upload)
+        shiny::updateTextInput(session, "protein_id", value = fasta$id)
+        shiny::updateTextAreaInput(session, "sequence", value = fasta$sequence)
+        result(NULL); status("Ready")
+      }, error = function(e) {
+        shiny::showNotification(conditionMessage(e), type = "error", duration = 8)
+      })
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$load_deeploc_demo, {
+      shiny::updateTextInput(session, "protein_id", value = "sp_P07221_CASQ1_RABIT")
+      shiny::updateTextAreaInput(session, "sequence", value = .subcellular_deeploc_demo_sequence)
+      result(NULL); status("Ready")
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$run_deeploc, {
+      if (isTRUE(running())) return(invisible(NULL))
+      running(TRUE)
+      on.exit(running(FALSE), add = TRUE)
+      tryCatch({
+        sequence <- .plant_mploc_clean_sequence(input$sequence)
+        status("Submitting")
+        imported <- shiny::withProgress(message = "Running DeepLoc 2.1...", {
+          .subcellular_deeploc_submit(sequence, input$protein_id,
+                                       input$deeploc_model, input$timeout)
+        })
+        save_deeploc(imported, sequence, "Predicted")
+      }, error = function(e) {
+        status("Failed")
+        shiny::showNotification(paste("DeepLoc 2.1:", conditionMessage(e)),
+                                type = "error", duration = 10)
+      })
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$refresh_deeploc, {
+      if (isTRUE(running())) return(invisible(NULL))
+      value <- result()
+      old <- if (!is.null(value)) value$providers[["DeepLoc 2.1"]] else NULL
+      job_id <- .subcellular_deeploc_job_id(old$result_url %||% "")
+      if (!nzchar(job_id)) {
+        shiny::showNotification("Submit a DeepLoc sequence first.", type = "warning")
+        return(invisible(NULL))
+      }
+      running(TRUE)
+      on.exit(running(FALSE), add = TRUE)
+      tryCatch({
+        imported <- .subcellular_deeploc_fetch_job(job_id, value$protein_id, input$timeout)
+        save_deeploc(imported, value$sequence, "Predicted")
+      }, error = function(e) {
+        shiny::showNotification(paste("DeepLoc 2.1:", conditionMessage(e)),
+                                type = "error", duration = 10)
+      })
+    }, ignoreInit = TRUE)
+
     shiny::observeEvent(input$import_deeploc, {
       tryCatch({
         sequence <- .plant_mploc_clean_sequence(input$sequence)
@@ -973,38 +1195,7 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
           .subcellular_deeploc_importance(input$deeploc_importance),
           sequence = sequence
         )
-        value <- result()
-        if (is.null(value) || !identical(value$sequence, sequence) ||
-            !identical(value$protein_id, input$protein_id)) {
-          value <- list(
-            protein_id = input$protein_id, sequence = sequence,
-            length = nchar(sequence), providers = list(),
-            submitted_at = Sys.time()
-          )
-        }
-        value$providers[["DeepLoc 2.1"]] <- imported
-        value$consensus <- .subcellular_consensus(value$providers)
-        class(value) <- "ProtVis_subcellular_localization"
-        evidence <- .subcellular_evidence_table(value)
-        .protvis_record_shared_run(
-          shared_state,
-          module = "subcellular_localization",
-          method = "DeepLoc 2.1 web result",
-          category = "subcellular_localization",
-          parameters = list(
-            protein_id = value$protein_id,
-            website = imported$result_url,
-            entry = "user-entered result"
-          ),
-          tables = list(evidence = evidence, consensus_votes = value$consensus$votes,
-                        deeploc_probabilities = imported$score_table,
-                        deeploc_sorting_importance = imported$sorting_importance),
-          statistics = list(sequence = sequence)
-        )
-        result(value)
-        error_message(NULL)
-        status("Imported")
-        shiny::showNotification("DeepLoc 2.1 result added.", type = "message")
+        save_deeploc(imported, sequence, "Imported")
       }, error = function(e) {
         shiny::showNotification(
           paste("DeepLoc 2.1:", conditionMessage(e)),
@@ -1116,6 +1307,9 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
         s,
         "Completed" = "#157347",
         "Imported" = "#157347",
+        "Predicted" = "#157347",
+        "Queued" = "#9a6700",
+        "Submitting" = "#075985",
         "Completed with warnings" = "#b7791f",
         "Unavailable" = "#b7791f",
         "Failed" = "#b42318",
@@ -1180,7 +1374,9 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
         }, character(1))
         return(shiny::div(
           class = "alert alert-warning",
-          shiny::strong("No automatic source returned a usable prediction."),
+          shiny::strong(if (any(vapply(value$providers, function(x) identical(x$status, "queued"), logical(1)))) {
+            "DeepLoc is queued. Refresh the submitted job later."
+          } else "No automatic source returned a usable prediction."),
           shiny::tags$ul(lapply(failures, shiny::tags$li)),
           "Use the DeepLoc 2.1 website result panel above to add a verified prediction."
         ))
@@ -1253,7 +1449,11 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
 
     output$deeploc_details <- shiny::renderUI({
       x <- deeploc_result()
-      if (is.null(x)) return(shiny::p("Add a DeepLoc 2.1 result to view its full output."))
+      if (is.null(x)) return(shiny::p("Submit a sequence to DeepLoc 2.1 to view its output."))
+      if (identical(x$status, "queued")) {
+        return(shiny::p(shiny::a("DeepLoc job queued — open status page", href = x$result_url,
+                                 target = "_blank", rel = "noopener noreferrer")))
+      }
       shiny::tagList(
         shiny::p(shiny::strong("Predicted localizations: "),
                  paste(x$deeploc_locations %||% x$prediction, collapse = "; ")),
@@ -1261,13 +1461,21 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
                  if (length(x$membrane_types)) paste(x$membrane_types, collapse = "; ") else "Not supplied"),
         shiny::p(shiny::strong("Sorting signals: "),
                  if (length(x$signals)) paste(x$signals, collapse = "; ") else "Not supplied"),
-        shiny::p("Probabilities are the model's per-label scores. Consensus votes use predicted labels, not probability values.")
+        shiny::p("Probabilities are the model's per-label scores. Consensus votes use predicted labels, not probability values."),
+        if (!is.null(x$sorting_png_url)) shiny::tags$img(
+          src = x$sorting_png_url, style = "max-width:100%;height:auto;",
+          alt = "DeepLoc sorting signal importance"
+        ),
+        if (!is.null(x$sorting_csv_url)) shiny::tags$a(
+          href = x$sorting_csv_url, target = "_blank",
+          "Download original sorting importance CSV"
+        )
       )
     })
 
     output$deeploc_scores <- DT::renderDT({
       x <- deeploc_result()
-      shiny::req(x)
+      shiny::req(x, identical(x$status, "success"))
       tab <- x$score_table
       if (is.null(tab)) tab <- .subcellular_deeploc_probabilities("")
       DT::datatable(tab, rownames = FALSE, options = list(dom = "t", pageLength = 14))
@@ -1275,7 +1483,7 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
 
     output$deeploc_importance_plot <- shiny::renderPlot({
       x <- deeploc_result()
-      shiny::req(x, x$sorting_importance)
+      shiny::req(x, identical(x$status, "success"), x$sorting_importance)
       d <- x$sorting_importance[order(x$sorting_importance$position), , drop = FALSE]
       graphics::plot(d$position, d$importance, type = "l", ylim = c(0, 1),
                      xlab = "Residue position", ylab = "Sorting signal importance",
@@ -1284,7 +1492,7 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
 
     output$deeploc_importance_table <- DT::renderDT({
       x <- deeploc_result()
-      shiny::req(x)
+      shiny::req(x, identical(x$status, "success"))
       d <- x$sorting_importance
       if (is.null(d)) d <- data.frame(position = integer(), residue = character(),
                                       importance = numeric())
