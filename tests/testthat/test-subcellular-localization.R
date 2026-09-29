@@ -199,3 +199,17 @@ test_that("official DeepLoc example summary has full predictions for each sequen
     "https://services.healthtech.dtu.dk/cgi-bin/webface2.cgi?jobid=6ABB678C002764C16CB5A81F&wait=20"
   ), "6ABB678C002764C16CB5A81F")
 })
+
+test_that("official DeepLoc attention CSV infers residue positions", {
+  path <- tempfile(fileext = ".csv")
+  utils::write.csv(data.frame(AA = c("M", "N", "A"),
+                              Alpha = c(0.00448785, 0.004924497, 0.0057411827)),
+                   path, row.names = FALSE)
+  d <- .subcellular_deeploc_importance(list(datapath = path))
+  expect_equal(d$position, 1:3)
+  expect_equal(d$residue, c("M", "N", "A"))
+  expect_equal(d$importance[[1L]], 0.00448785)
+  expect_equal(.subcellular_import_deeploc("Endoplasmic reticulum",
+                                            importance = d,
+                                            sequence = "MNAADRMGARVALLLLLVLG")$sorting_importance, d)
+})
