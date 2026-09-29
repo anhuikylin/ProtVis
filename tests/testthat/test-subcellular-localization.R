@@ -164,3 +164,37 @@ test_that("DeepLoc summary matches protein ID and importance validates residue p
   expect_error(.subcellular_import_deeploc("Nucleus", importance = importance,
                                           sequence = "ACCEFGHIKLMN"), "do not match")
 })
+
+test_that("FASTA upload selects one protein and rejects multiple records", {
+  f <- tempfile(fileext = ".fasta")
+  writeLines(c(">sp|P07221|CASQ1_RABIT example", "MNAADRMGARVALLLLLVLGSPQSGVHGEEGLD"), f)
+  x <- .subcellular_deeploc_read_fasta(list(datapath = f, name = "example.fasta"))
+  expect_equal(x$id, "sp_P07221_CASQ1_RABIT")
+  expect_true(startsWith(x$sequence, "MNAADR"))
+  writeLines(c(">one", "ACDEFGHIKLMN", ">two", "ACDEFGHIKLMN"), f)
+  expect_error(.subcellular_deeploc_read_fasta(list(datapath = f, name = "two.fasta")),
+               "one protein")
+})
+
+test_that("official DeepLoc example summary has full predictions for each sequence", {
+  path <- testthat::test_path("..", "..", "inst", "extdata",
+                              "deeploc_2_1_example_summary.csv")
+  x <- .subcellular_deeploc_summary(
+    list(datapath = path), "sp_P07221_CASQ1_RABIT"
+  )
+  expect_equal(x$location, "Extracellular|Endoplasmic reticulum")
+  imported <- .subcellular_import_deeploc(x$location, x$membrane, x$signals,
+                                           x$probabilities)
+  expect_equal(imported$prediction, c("Extracellular", "Endoplasmic reticulum"))
+  expect_equal(imported$membrane_types, "Soluble")
+  expect_equal(imported$signals, "Signal peptide")
+  expect_equal(nrow(imported$score_table), 14L)
+  expect_equal(imported$score_table$probability[
+    imported$score_table$label == "Extracellular"
+  ], 0.707099974155426)
+  expect_error(.subcellular_deeploc_summary(list(datapath = path), "wrong_id"),
+               "matching")
+  expect_equal(.subcellular_deeploc_job_id(
+    "https://services.healthtech.dtu.dk/cgi-bin/webface2.cgi?jobid=6ABB678C002764C16CB5A81F&wait=20"
+  ), "6ABB678C002764C16CB5A81F")
+})
