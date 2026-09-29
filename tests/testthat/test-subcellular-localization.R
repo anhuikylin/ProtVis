@@ -131,6 +131,11 @@ test_that("DeepLoc full screenshot example retains all scores and metadata", {
   expect_equal(x$membrane_types, "Soluble")
   expect_equal(x$signals, "Signal peptide")
   expect_equal(nrow(x$score_table), 14L)
+  expect_equal(x$score_table$probability[x$score_table$label == "Plastid"], 0.0019)
+  expect_equal(.subcellular_deeploc_probabilities(
+    sub("Plastid,0.0019", "Chloroplast,0.0019", .subcellular_deeploc_example(),
+        fixed = TRUE)
+  )$label[[6L]], "Plastid")
   expect_equal(x$score_table$probability[x$score_table$label == "Endoplasmic reticulum"], 0.7058)
   expect_error(.subcellular_deeploc_probabilities("Soluble,1.2"), "Probability")
 })
