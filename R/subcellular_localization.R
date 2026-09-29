@@ -745,10 +745,14 @@ predict_subcellular_localization <- function(
                                         timeout = 60) {
   fasta <- .subcellular_deeploc_fasta(sequence, protein_id)
   if (!model %in% c("Fast", "Slow")) stop("Invalid DeepLoc model.", call. = FALSE)
+  landing <- "https://services.healthtech.dtu.dk/services/DeepLoc-2.1/"
+  httr::stop_for_status(httr::GET(landing, httr::timeout(20)))
   response <- httr::POST(
     "https://services.healthtech.dtu.dk/cgi-bin/webface2.cgi",
     body = list(configfile = "", fasta = fasta, encode = model, format = "long"),
-    encode = "multipart", httr::timeout(max(10, min(timeout, 90)))
+    encode = "multipart",
+    httr::add_headers(Referer = landing),
+    httr::timeout(max(10, min(timeout, 90)))
   )
   httr::stop_for_status(response)
   page <- httr::content(response, as = "text", encoding = "UTF-8")
