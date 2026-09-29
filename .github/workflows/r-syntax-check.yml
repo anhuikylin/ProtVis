@@ -66,7 +66,8 @@ jobs:
             "Endoplasmic reticulum", "Soluble", "Signal peptide",
             .subcellular_deeploc_example()
           )
-          cat("DeepLoc prediction debug: "); dput(example$prediction)
+          stopifnot(identical(.subcellular_normalize_locations("Endoplasmic reticulum"),
+                              "Endoplasmic reticulum"))
           stopifnot(
             identical(example$prediction, "Endoplasmic reticulum"),
             identical(example$membrane_types, "Soluble"),
@@ -103,6 +104,15 @@ jobs:
               "jobid=6ABB678C002764C16CB5A81F&wait=20"
             ), "6ABB678C002764C16CB5A81F")
           )
+          attention_file <- tempfile(fileext = ".csv")
+          utils::write.csv(data.frame(AA = c("M", "N"),
+                                      Alpha = c(0.00448785, 0.004924497)),
+                           attention_file, row.names = FALSE)
+          attention <- .subcellular_deeploc_importance(
+            list(datapath = attention_file)
+          )
+          stopifnot(identical(attention$position, 1:2),
+                    identical(attention$residue, c("M", "N")))
           cat("Localization web and DeepLoc parsers validated.\\n")
 
       - name: Validate archived GSEA reproduction geometry
