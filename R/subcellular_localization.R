@@ -111,7 +111,8 @@
     paste(nms[[i]] %||% "", fields[[i]]$value %||% "", fields[[i]]$name %||% "")
   }, character(1))
   preferred <- which(grepl("start|submit|predict|run", labels, ignore.case = TRUE))
-  nms[[idx[if (length(preferred)) preferred[[1L]] else 1L]]]
+  name <- nms[[idx[if (length(preferred)) preferred[[1L]] else 1L]]]
+  if (is.null(name) || !nzchar(name)) NULL else name
 }
 
 .subcellular_select_plant_value <- function(field) {
@@ -132,46 +133,65 @@
   tryCatch(rvest::html_text2(body), error = function(e) "")
 }
 
+.subcellular_parse_refresh <- function(refresh) {
+  if (is.null(refresh) || !length(refresh) || is.na(refresh[[1L]])) return("")
+  refresh <- as.character(refresh[[1L]])
+  if (!nzchar(refresh) || !grepl("url[[:space:]]*=", refresh, ignore.case = TRUE)) {
+    return("")
+  }
+  target <- sub(".*url[[:space:]]*=[[:space:]]*", "", refresh, ignore.case = TRUE)
+  target <- gsub("^[\"']|[\"']$", "", trimws(target))
+  if (!nzchar(target) || grepl("^(javascript|data):", target, ignore.case = TRUE)) "" else target
+}
+
+.subcellular_refresh_target <- function(session) {
+  headers <- tryCatch(httr::headers(session$response), error = function(e) list())
+  header <- headers[which(tolower(names(headers)) == "refresh")]
+  refresh <- if (length(header)) header[[1L]] else ""
+  if (is.null(refresh) || !length(refresh) || is.na(refresh[[1L]]) ||
+      !nzchar(as.character(refresh[[1L]]))) {
+    meta <- tryCatch(
+      rvest::html_element(session, "meta[http-equiv='refresh']"),
+      error = function(e) NULL
+    )
+    if (!is.null(meta) && length(meta)) {
+      refresh <- rvest::html_attr(meta, "content") %||% ""
+    }
+  }
+  .subcellular_parse_refresh(refresh)
+}
+
 .subcellular_follow_result <- function(session, timeout = 90, provider = "") {
   started <- Sys.time()
   current <- session
   repeat {
     txt <- .subcellular_session_text(current)
-    # Stop polling once the page looks like a completed prediction.
-    if (grepl(
-      "final results|prediction|predicted|locali[sz]ation|subcellular|result",
-      txt, ignore.case = TRUE
-    ) && !grepl("processing|please wait|queued|running", txt, ignore.case = TRUE)) {
+    if (identical(provider, "WoLF PSORT")) {
+      if (!is.null(.subcellular_parse_wolfpsort(txt)$scores)) return(current)
+    } else if (identical(provider, "BUSCA")) {
+      if (grepl("/showresult/", current$url, fixed = TRUE) &&
+          !grepl("queued|pending|running|refresh every minute", txt, ignore.case = TRUE)) {
+        return(current)
+      }
+    } else if (grepl("final results|predicted localization", txt, ignore.case = TRUE) &&
+               !grepl("processing|please wait|queued|running", txt, ignore.case = TRUE)) {
       return(current)
     }
     elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
     if (!is.finite(elapsed) || elapsed >= timeout) return(current)
 
-    page <- current
-    href <- character()
-    if (!is.null(page)) {
-      links <- tryCatch(rvest::html_elements(page, "a[href]"), error = function(e) list())
-      if (length(links)) {
-        labels <- tryCatch(rvest::html_text2(links), error = function(e) rep("", length(links)))
-        hrefs <- tryCatch(rvest::html_attr(links, "href"), error = function(e) rep(NA_character_, length(links)))
-        keep <- grepl("result|job|prediction|status", paste(labels, hrefs), ignore.case = TRUE)
-        href <- hrefs[keep & !is.na(hrefs)]
-      }
-      meta <- tryCatch(rvest::html_element(page, "meta[http-equiv='refresh']"), error = function(e) NULL)
-      if (!is.null(meta) && length(meta)) {
-        refresh <- rvest::html_attr(meta, "content")
-        u <- sub(".*[Uu][Rr][Ll]\\s*=\\s*", "", refresh)
-        if (nzchar(u) && !identical(u, refresh)) href <- c(href, u)
-      }
+    target <- .subcellular_refresh_target(current)
+    if (nzchar(target) && grepl("^https?://", target, ignore.case = TRUE)) {
+      host <- sub("^https?://([^/]+).*$", "\\1", target, ignore.case = TRUE)
+      allowed <- c("wolfpsort.hgc.jp", "busca.biocomp.unibo.it")
+      if (!tolower(host) %in% allowed) target <- ""
     }
-    if (length(href)) {
-      nxt <- tryCatch(rvest::session_jump_to(current, href[[1L]]), error = function(e) NULL)
-      if (!is.null(nxt)) current <- nxt
-    } else {
-      Sys.sleep(2)
-      nxt <- tryCatch(rvest::session_jump_to(current, current$url), error = function(e) NULL)
-      if (!is.null(nxt)) current <- nxt
+    if (!nzchar(target)) {
+      Sys.sleep(if (identical(provider, "BUSCA")) 10 else 2)
+      target <- current$url
     }
+    next_page <- tryCatch(rvest::session_jump_to(current, target), error = function(e) NULL)
+    if (!is.null(next_page)) current <- next_page
   }
 }
 
@@ -261,6 +281,12 @@
 #' @export
 predict_wolfpsort <- function(sequence, id = "query_protein", timeout = 90) {
   sequence <- .plant_mploc_clean_sequence(sequence)
+  if (nchar(sequence) < 30L) {
+    return(.subcellular_provider_result(
+      "WoLF PSORT", "unavailable",
+      error = "WoLF PSORT requires at least 30 amino acids."
+    ))
+  }
   fasta <- .plant_mploc_fasta(sequence, id)
   tryCatch({
     ses <- .subcellular_submit_generic(
@@ -270,7 +296,10 @@ predict_wolfpsort <- function(sequence, id = "query_protein", timeout = 90) {
     txt <- .subcellular_session_text(ses)
     parsed <- .subcellular_parse_wolfpsort(txt)
     if (!length(parsed$prediction)) {
-      stop("WoLF PSORT returned a page, but no localization result could be parsed.")
+      return(.subcellular_provider_result(
+        "WoLF PSORT", "unavailable", raw_result = txt, result_url = ses$url,
+        error = "WoLF PSORT did not return a scored result before the timeout. Check the raw response and result URL."
+      ))
     }
     .subcellular_provider_result(
       "WoLF PSORT", "success", parsed$prediction,
@@ -284,13 +313,44 @@ predict_wolfpsort <- function(sequence, id = "query_protein", timeout = 90) {
 .subcellular_parse_busca <- function(text) {
   if (is.null(text) || !nzchar(text)) return(character())
   lines <- trimws(unlist(strsplit(text, "[\r\n]+")))
-  lines <- lines[nzchar(lines)]
-  focus <- lines[grepl(
-    "locali[sz]ation|predicted compartment|final prediction|subcellular",
-    lines, ignore.case = TRUE
-  )]
-  if (!length(focus)) focus <- lines
-  .subcellular_normalize_locations(focus)
+  terms <- lines[grepl("^C:[[:space:]]*|^cellular component:", lines, ignore.case = TRUE)]
+  .subcellular_normalize_locations(terms)
+}
+
+.subcellular_parse_busca_json <- function(value) {
+  leaves <- unlist(value, recursive = TRUE, use.names = FALSE)
+  terms <- as.character(leaves[!is.na(leaves)])
+  terms <- terms[grepl("^C:[[:space:]]*", terms, ignore.case = TRUE)]
+  .subcellular_normalize_locations(terms)
+}
+
+.subcellular_busca_json <- function(result_url, timeout = 30) {
+  if (!grepl("^https://busca\\.biocomp\\.unibo\\.it/[A-Za-z0-9-]+/showresult/?$", result_url)) {
+    stop("BUSCA did not return a recognized job URL.", call. = FALSE)
+  }
+  url <- sub("showresult/?$", "getjson/", result_url)
+  response <- httr::GET(url, httr::timeout(min(as.numeric(timeout), 30)))
+  httr::stop_for_status(response)
+  raw <- httr::content(response, as = "text", encoding = "UTF-8")
+  list(prediction = .subcellular_parse_busca_json(
+    jsonlite::fromJSON(raw, simplifyVector = FALSE)
+  ), raw = raw)
+}
+
+.subcellular_parse_busca_page <- function(page) {
+  headers <- tryCatch(
+    rvest::html_text2(rvest::html_elements(page, "#resultdata thead th")),
+    error = function(e) character()
+  )
+  term_column <- which(tolower(trimws(headers)) == "go-term")
+  rows <- tryCatch(rvest::html_elements(page, "#resultdata tbody tr"), error = function(e) list())
+  if (!length(term_column) || !length(rows)) return(character())
+  terms <- vapply(rows, function(row) {
+    cells <- rvest::html_elements(row, "td")
+    if (length(cells) < term_column[[1L]]) return("")
+    rvest::html_text2(cells[[term_column[[1L]]]])
+  }, character(1))
+  .subcellular_normalize_locations(terms)
 }
 
 #' Predict plant protein localization with BUSCA
@@ -309,12 +369,28 @@ predict_busca <- function(sequence, id = "query_protein", timeout = 120) {
       fasta, "BUSCA", timeout = timeout
     )
     txt <- .subcellular_session_text(ses)
-    pred <- .subcellular_parse_busca(txt)
+    complete <- grepl("/showresult/", ses$url, fixed = TRUE) &&
+      !grepl("queued|pending|running|refresh every minute", txt, ignore.case = TRUE)
+    pred <- if (complete) .subcellular_parse_busca_page(ses) else character()
+    raw <- txt
+    if (complete && !length(pred)) {
+      job <- tryCatch(.subcellular_busca_json(ses$url, timeout), error = function(e) NULL)
+      if (!is.null(job)) {
+        pred <- job$prediction
+        raw <- job$raw
+      }
+    }
     if (!length(pred)) {
-      stop("BUSCA returned a page, but no localization result could be parsed.")
+      queued <- grepl("queued|pending|running|refresh every minute", txt, ignore.case = TRUE)
+      return(.subcellular_provider_result(
+        "BUSCA", if (queued) "queued" else "unavailable",
+        raw_result = txt, result_url = ses$url,
+        error = if (queued) "BUSCA is still processing this job; use its result URL to check later."
+                else "BUSCA did not return a recognizable completed result."
+      ))
     }
     .subcellular_provider_result(
-      "BUSCA", "success", pred, raw_result = txt, result_url = ses$url
+      "BUSCA", "success", pred, raw_result = raw, result_url = ses$url
     )
   }, error = function(e) {
     .subcellular_provider_result("BUSCA", "unavailable", error = conditionMessage(e))
@@ -456,9 +532,10 @@ predict_subcellular_localization <- function(
   rows <- lapply(value$providers, function(x) {
     data.frame(
       source = x$source,
-      status = if (identical(x$status, "success")) "Available" else "Unavailable",
+      status = switch(x$status, success = "Available", queued = "Queued", "Unavailable"),
       prediction = if (length(x$prediction)) paste(x$prediction, collapse = "; ") else "—",
       detail = if (!is.null(x$error) && nzchar(x$error)) x$error else x$details %||% "",
+      result_url = x$result_url %||% NA_character_,
       stringsAsFactors = FALSE
     )
   })
@@ -475,6 +552,7 @@ predict_subcellular_localization <- function(
         "%d of %d selected providers returned usable results",
         value$consensus$successful, value$consensus$requested
       ),
+      result_url = NA_character_,
       stringsAsFactors = FALSE
     )
   )
@@ -519,11 +597,11 @@ subcellular_localization_ui <- function(id) {
           shiny::checkboxGroupInput(
             ns("providers"), NULL,
             choices = c("Plant-mPLoc", "WoLF PSORT", "BUSCA"),
-            selected = c("Plant-mPLoc", "WoLF PSORT", "BUSCA")
+            selected = "WoLF PSORT"
           ),
           shiny::div(
             style = "font-size:12px;color:#667085;",
-            "Auto / Consensus uses every selected source. A failed provider does not stop the analysis."
+            "WoLF PSORT is the default. Plant-mPLoc and BUSCA are optional web services; BUSCA jobs can remain queued beyond this session."
           )
         ),
         bslib::accordion_panel(
@@ -564,8 +642,8 @@ subcellular_localization_ui <- function(id) {
         )
       )
     ),
-    bslib::page_fillable(
-      fillable = TRUE,
+    shiny::div(
+      class = "p-3",
       bslib::layout_column_wrap(
         width = 1 / 3,
         bslib::card(
