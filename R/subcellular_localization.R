@@ -639,7 +639,7 @@ predict_subcellular_localization <- function(
   labels <- c(.subcellular_deeploc_locations, .subcellular_deeploc_membranes)
   scores <- character()
   for (label in labels) {
-    target <- tolower(gsub("[^a-z0-9]", "", label))
+    target <- gsub("[^a-z0-9]", "", tolower(label))
     aliases <- if (identical(label, "Plastid")) c("plastid", "chloroplast") else target
     idx <- match(TRUE, keys %in% unlist(lapply(aliases, function(key) {
       c(key, paste0(key, "probability"), paste0("probability", key), paste0(key, "score"))
