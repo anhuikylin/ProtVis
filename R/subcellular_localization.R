@@ -35,11 +35,15 @@
   out <- character()
   for (value in x) {
     low <- tolower(value)
-    matched <- names(.subcellular_location_aliases)[vapply(
+    exact <- names(.subcellular_location_aliases)[vapply(
+      .subcellular_location_aliases,
+      function(aliases) low %in% tolower(aliases), logical(1)
+    )]
+    matched <- if (length(exact)) exact else names(.subcellular_location_aliases)[vapply(
       .subcellular_location_aliases,
       function(aliases) any(vapply(aliases, function(a) {
         a <- tolower(a)
-        identical(low, a) || (nchar(a) >= 4L && grepl(a, low, fixed = TRUE))
+        nchar(a) >= 5L && grepl(a, low, fixed = TRUE)
       }, logical(1))),
       logical(1)
     )]
