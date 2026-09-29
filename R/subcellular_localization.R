@@ -556,7 +556,7 @@ predict_subcellular_localization <- function(
   if (is.null(file)) return(NULL)
   tab <- utils::read.csv(file$datapath, check.names = FALSE, stringsAsFactors = FALSE)
   if (!nrow(tab)) stop("Sorting importance CSV is empty.", call. = FALSE)
-  keys <- tolower(gsub("[^a-z0-9]", "", names(tab)))
+  keys <- gsub("[^a-z0-9]", "", tolower(names(tab)))
   pos <- match(TRUE, keys %in% c("position", "pos", "residueindex", "index", "seqpos"))
   val <- match(TRUE, keys %in% c("importance", "score", "attention", "sortingsignalimportance"))
   if (is.na(pos) || is.na(val)) {
@@ -616,7 +616,7 @@ predict_subcellular_localization <- function(
   if (is.null(file)) return(NULL)
   tab <- utils::read.csv(file$datapath, check.names = FALSE, stringsAsFactors = FALSE)
   if (!nrow(tab)) stop("DeepLoc summary CSV is empty.", call. = FALSE)
-  keys <- tolower(gsub("[^a-z0-9]", "", names(tab)))
+  keys <- gsub("[^a-z0-9]", "", tolower(names(tab)))
   id_col <- match(TRUE, keys %in% c("proteinid", "protein", "id", "name", "sequenceid", "entry"))
   if (nrow(tab) > 1L) {
     if (is.na(id_col)) stop("Summary has multiple proteins but no protein ID column.", call. = FALSE)
