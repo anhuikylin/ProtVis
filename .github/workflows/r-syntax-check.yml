@@ -44,6 +44,25 @@ jobs:
           if (length(failures)) stop(paste(failures, collapse = "\n"))
           cat("Parsed", length(files), "R files successfully.\n")
 
+      - name: Validate localization web result parsers
+        shell: Rscript {0}
+        run: |
+          source("R/subcellular_localization.R")
+          stopifnot(
+            identical(.subcellular_parse_refresh("5; URL=/results/job.html"),
+                      "/results/job.html"),
+            identical(.subcellular_parse_refresh("5"), ""),
+            identical(.subcellular_parse_refresh("0; url=javascript:alert(1)"), ""),
+            identical(.subcellular_parse_wolfpsort(
+              "test_protein extr: 13, vacu: 1"
+            )$prediction, "Extracellular"),
+            identical(.subcellular_parse_busca_json(
+              list(data = list(list("test_protein", "GO:0005615",
+                                    "C:extracellular space", 1)))
+            ), "Extracellular")
+          )
+          cat("Localization web result parsers validated.\\n")
+
       - name: Validate archived GSEA reproduction geometry
         shell: Rscript {0}
         run: |
