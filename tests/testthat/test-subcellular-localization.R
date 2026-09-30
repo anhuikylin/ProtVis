@@ -213,3 +213,17 @@ test_that("official DeepLoc attention CSV infers residue positions", {
                                             importance = d,
                                             sequence = "MNAADRMGARVALLLLLVLG")$sorting_importance, d)
 })
+
+test_that("DeepLoc failed job is not mistaken for a completed prediction", {
+  failed_page <- paste0(
+    "<html><h1>Failed run</h1><p>Unfortunately, your job failed.</p>",
+    "<div>Download prediction results: CSV Summary</div></html>"
+  )
+  expect_equal(.subcellular_deeploc_page_state(failed_page), "failed")
+  expect_equal(.subcellular_deeploc_page_state(
+    "<html><h1>Queued run</h1><p>Please wait</p></html>"
+  ), "queued")
+  expect_equal(.subcellular_deeploc_page_state(
+    "<html><h1>Finished run</h1><a>Download prediction results</a></html>"
+  ), "complete")
+})
