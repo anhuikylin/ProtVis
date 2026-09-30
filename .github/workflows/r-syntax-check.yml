@@ -115,6 +115,26 @@ jobs:
                     identical(attention$residue, c("M", "N")))
           cat("Localization web and DeepLoc parsers validated.\\n")
 
+      - name: Validate DeepLoc job state detection
+        shell: Rscript {0}
+        run: |
+          install.packages("rvest", repos = "https://cloud.r-project.org")
+          source("R/subcellular_localization.R")
+          failed <- paste0(
+            "<html><h1>Failed run</h1><p>Unfortunately, your job failed.</p>",
+            "<h5>Download prediction results: CSV Summary</h5></html>"
+          )
+          stopifnot(
+            identical(.subcellular_deeploc_page_state(failed), "failed"),
+            identical(.subcellular_deeploc_page_state(
+              "<html><h1>Job submitted</h1><p>queued</p></html>"
+            ), "queued"),
+            identical(.subcellular_deeploc_page_state(
+              "<html><h1>Results</h1><h5>Download prediction results</h5></html>"
+            ), "complete")
+          )
+          cat("DeepLoc job states validated.\n")
+
       - name: Validate archived GSEA reproduction geometry
         shell: Rscript {0}
         run: |
