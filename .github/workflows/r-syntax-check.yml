@@ -118,7 +118,6 @@ jobs:
       - name: Validate DeepLoc job state detection
         shell: Rscript {0}
         run: |
-          install.packages("rvest", repos = "https://cloud.r-project.org")
           source("R/subcellular_localization.R")
           failed <- paste0(
             "<html><h1>Failed run</h1><p>Unfortunately, your job failed.</p>",
