@@ -1,4 +1,5 @@
-# Helpers for locating the bundled Sage database-search executable.
+# Helpers for locating the Sage database-search executable supplied by
+# ProtVisDatabase.
 
 .protvis_sage_path <- function(path, label, must_work = TRUE) {
   if (is.null(path) || length(path) != 1L || is.na(path)) {
@@ -19,7 +20,9 @@
 .protvis_sage_bundled_candidates <- function() {
   sysname <- unname(Sys.info()[["sysname"]])
   machine <- tolower(unname(Sys.info()[["machine"]]))
-  root <- function(...) system.file("extdata", "sage", ..., package = "ProtVis")
+  root <- function(...) {
+    .protvis_data_file("search_engines", "sage", ...)
+  }
   if (identical(.Platform$OS.type, "windows")) {
     return(root("windows", "sage.exe"))
   }

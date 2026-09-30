@@ -10,29 +10,10 @@
 #' @export
 #'
 .protvis_raw_sample_template <- function() {
-  combinations <- expand.grid(
-    genotype = c("B73", "EA2024"),
-    replicate = 1:3,
-    KEEP.OUT.ATTRS = FALSE,
-    stringsAsFactors = FALSE
-  )
-  combinations <- combinations[order(combinations$genotype,
-                                      combinations$replicate), , drop = FALSE]
-  sample_id <- paste(combinations$genotype, paste0("C", combinations$replicate),
-                     sep = "_")
-  data.frame(
-    sample_id = sample_id,
-    mzml_file = paste0(sample_id, ".mzML"),
-    genotype = combinations$genotype,
-    treatment = "Control",
-    group = combinations$genotype,
-    condition = "Control",
-    replicate = combinations$replicate,
-    batch = "Batch1",
-    tissue = "leaf",
-    organism = "Zea mays",
-    accession = "PXD065315",
-    source_url = "https://www.ebi.ac.uk/pride/archive/projects/PXD065315",
+  utils::read.csv(
+    .protvis_data_file(
+      "raw_search", "PXD065315_sample_info_template.csv"
+    ),
     stringsAsFactors = FALSE,
     check.names = FALSE
   )

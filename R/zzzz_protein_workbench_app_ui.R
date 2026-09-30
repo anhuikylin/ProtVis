@@ -1,6 +1,6 @@
 # Additive UI integration for Protein Workbench.
 # This file is intentionally collated after app_ui.R so the base navigation
-# remains unchanged except for one additional Toolkits entry.
+# includes the Protein Workbench and current subcellular-localization Toolkits entries.
 
 app_ui <- function(request) {
   shiny::tagList(
@@ -117,12 +117,6 @@ app_ui <- function(request) {
         PTM_ui("PTM")
       ),
 
-      bslib::nav_panel(
-        "Release data",
-        icon = bsicons::bs_icon("folder2-open"),
-        release_data_ui("release_data1")
-      ),
-
       bslib::nav_menu(
         "Toolkits",
         icon = bsicons::bs_icon("tools"),
@@ -132,7 +126,7 @@ app_ui <- function(request) {
           protein_workbench_ui("protein_workbench")
         ),
         bslib::nav_panel("Protein Extract", icon = bsicons::bs_icon("file-earmark-medical"), protein_extract_ui("protein_extract")),
-        bslib::nav_panel("Plant-mPLoc", icon = bsicons::bs_icon("geo-alt"), plant_mploc_ui("plant_mploc")),
+        bslib::nav_panel("Subcellular localization", icon = bsicons::bs_icon("geo-alt"), subcellular_localization_ui("subcellular_localization")),
         bslib::nav_panel("Background Make", icon = bsicons::bs_icon("collection"), background_make_ui("background_make")),
         bslib::nav_panel("Protein Links", icon = bsicons::bs_icon("link-45deg"), protein_links_ui("prot_links")),
         bslib::nav_panel("Protein Structure", icon = bsicons::bs_icon("diagram-3"), protein_structure_ui("protein_structure")),
@@ -149,7 +143,12 @@ app_ui <- function(request) {
           stacked_column_chart_ui("stacked_column_chart")
         ),
         bslib::nav_panel("Correlation chord", icon = bsicons::bs_icon("circle"), correlation_chord_ui("correlation_chord")),
-        bslib::nav_panel("DEG Analyse", icon = bsicons::bs_icon("bar-chart-line"), DEG_ui("DEG"))
+        bslib::nav_panel("DEG Analyse", icon = bsicons::bs_icon("bar-chart-line"), DEG_ui("DEG")),
+        bslib::nav_panel(
+          "Release data",
+          icon = bsicons::bs_icon("folder2-open"),
+          release_data_ui("release_data1")
+        )
       ),
 
       help_ui()

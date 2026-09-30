@@ -12,6 +12,31 @@ app_sys <- function(...) {
   base::system.file(..., package = "ProtVis")
 }
 
+#' Locate an installed ProtVis data resource
+#'
+#' All example inputs, workflow references, templates, and annotation
+#' backgrounds and the locally bundled Sage runtime live in the companion
+#' ProtVisDatabase package.
+#'
+#' @param ... Path components below ProtVisDatabase/extdata.
+#' @param must_work Whether to error when the resource cannot be found.
+#' @noRd
+.protvis_data_file <- function(..., must_work = TRUE) {
+  path <- ProtVisDatabase::protvis_database_path(
+    "extdata", ...,
+    must_work = FALSE
+  )
+  if (isTRUE(must_work) && (!nzchar(path) || !file.exists(path))) {
+    requested <- file.path(...)
+    stop(
+      "ProtVis data resource is unavailable: ", requested,
+      ". Reinstall ProtVisDatabase to restore the local bundled data.",
+      call. = FALSE
+    )
+  }
+  path
+}
+
 #' Read App Config
 #'
 #' @param value Value to retrieve from the config file.
