@@ -691,9 +691,13 @@ predict_subcellular_localization <- function(
 }
 
 .subcellular_deeploc_page_state <- function(page) {
-  document <- rvest::read_html(page)
-  headings <- trimws(rvest::html_text2(rvest::html_elements(document, "h1")))
-  if (any(grepl("^Failed run$", headings, ignore.case = TRUE))) return("failed")
+  failed_heading <- grepl(
+    "(?is)<h1\\b[^>]*>\\s*Failed\\s+run\\s*</h1>",
+    page, perl = TRUE
+  )
+  if (failed_heading || grepl("Unfortunately, your job failed", page, fixed = TRUE)) {
+    return("failed")
+  }
   if (grepl("Download prediction results", page, fixed = TRUE)) return("complete")
   "queued"
 }
