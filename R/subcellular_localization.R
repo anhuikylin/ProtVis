@@ -690,15 +690,31 @@ predict_subcellular_localization <- function(
          job_id, "&wait=20")
 }
 
+.subcellular_deeploc_page_state <- function(page) {
+  document <- rvest::read_html(page)
+  headings <- trimws(rvest::html_text2(rvest::html_elements(document, "h1")))
+  if (any(grepl("^Failed run$", headings, ignore.case = TRUE))) return("failed")
+  if (grepl("Download prediction results", page, fixed = TRUE)) return("complete")
+  "queued"
+}
+
 .subcellular_deeploc_fetch_job <- function(job_id, protein_id, timeout = 60) {
   job_url <- .subcellular_deeploc_job_url(job_id)
   response <- httr::GET(job_url, httr::timeout(max(10, min(timeout, 90))))
   httr::stop_for_status(response)
   page <- httr::content(response, as = "text", encoding = "UTF-8")
-  if (!grepl("Download prediction results", page, fixed = TRUE)) {
+  page_state <- .subcellular_deeploc_page_state(page)
+  if (page_state == "failed") {
+    return(.subcellular_provider_result(
+      "DeepLoc 2.1", "failed", result_url = job_url,
+      error = "DeepLoc reported a failed run; no prediction was produced. Check the job page and submit again or try the other model.",
+      raw_result = substr(rvest::html_text2(rvest::read_html(page)), 1, 3000)
+    ))
+  }
+  if (page_state == "queued") {
     return(.subcellular_provider_result(
       "DeepLoc 2.1", "queued", result_url = job_url,
-      details = "DeepLoc job is queued or running. Refresh this job later.",
+      details = "DeepLoc job is queued or running. It will be checked automatically.",
       raw_result = substr(rvest::html_text2(rvest::read_html(page)), 1, 3000)
     ))
   }
@@ -838,7 +854,8 @@ predict_subcellular_localization <- function(
   rows <- lapply(value$providers, function(x) {
     data.frame(
       source = x$source,
-      status = switch(x$status, success = "Available", queued = "Queued", "Unavailable"),
+      status = switch(x$status, success = "Available", queued = "Queued",
+                      failed = "Failed", "Unavailable"),
       prediction = if (length(x$prediction)) paste(x$prediction, collapse = "; ") else "—",
       detail = if (!is.null(x$error) && nzchar(x$error)) x$error else x$details %||% "",
       result_url = x$result_url %||% NA_character_,
@@ -1164,12 +1181,13 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
       )
       result(value)
       error_message(NULL)
-      status(if (identical(imported$status, "queued")) "Queued" else label)
+      status(switch(imported$status, queued = "Queued", failed = "Failed", label))
       shiny::showNotification(
-        if (identical(imported$status, "queued")) {
-          "DeepLoc job submitted. Checking for results automatically."
-        } else "DeepLoc 2.1 result added.",
-        type = "message"
+        switch(imported$status,
+               queued = "DeepLoc job submitted. Checking for results automatically.",
+               failed = "DeepLoc reported a failed run. Open its job page for details.",
+               "DeepLoc 2.1 result added."),
+        type = if (identical(imported$status, "failed")) "error" else "message"
       )
     }
 
@@ -1222,7 +1240,7 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
       on.exit(running(FALSE), add = TRUE)
       tryCatch({
         imported <- .subcellular_deeploc_fetch_job(job_id, value$protein_id, input$timeout)
-        if (identical(imported$status, "success")) {
+        if (imported$status %in% c("success", "failed")) {
           save_deeploc(imported, value$sequence, "Predicted")
         }
       }, error = function(e) {
@@ -1455,11 +1473,18 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
         failures <- vapply(value$providers, function(x) {
           paste0(x$source, ": ", x$error %||% "No usable result")
         }, character(1))
+        deeploc <- value$providers[["DeepLoc 2.1"]]
         return(shiny::div(
           class = "alert alert-warning",
-          shiny::strong("No automatic source returned a usable prediction."),
+          shiny::strong(if (!is.null(deeploc) && identical(deeploc$status, "failed")) {
+            "DeepLoc reported a failed run."
+          } else "No automatic source returned a usable prediction."),
           shiny::tags$ul(lapply(failures, shiny::tags$li)),
-          "Use the DeepLoc 2.1 website result panel above to add a verified prediction."
+          if (!is.null(deeploc) && identical(deeploc$status, "failed")) {
+            shiny::tags$a("Open failed DeepLoc job", href = deeploc$result_url,
+                          target = "_blank", rel = "noopener noreferrer")
+          },
+          shiny::p("You can submit again with the other DeepLoc model or import a verified result above.")
         ))
       }
 
@@ -1531,9 +1556,13 @@ subcellular_localization_server <- function(id, shared_state = NULL) {
     output$deeploc_details <- shiny::renderUI({
       x <- deeploc_result()
       if (is.null(x)) return(shiny::p("Submit a sequence to DeepLoc 2.1 to view its output."))
-      if (identical(x$status, "queued")) {
-        return(shiny::p(shiny::a("DeepLoc job queued — open status page", href = x$result_url,
-                                 target = "_blank", rel = "noopener noreferrer")))
+      if (x$status %in% c("queued", "failed")) {
+        return(shiny::tagList(
+          shiny::p(if (identical(x$status, "failed")) x$error else
+                     "DeepLoc is processing this sequence."),
+          shiny::a("Open DeepLoc job page", href = x$result_url,
+                   target = "_blank", rel = "noopener noreferrer")
+        ))
       }
       shiny::tagList(
         shiny::p(shiny::strong("Predicted localizations: "),
