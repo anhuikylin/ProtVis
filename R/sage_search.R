@@ -50,7 +50,10 @@ protvis_sage_executable <- function(path = NULL) {
   path_candidate <- if (!is.null(path) && length(path) == 1L && !is.na(path)) {
     as.character(path)
   } else character()
-  candidates <- c(path_candidate, .protvis_sage_bundled_candidates(),
+  if (length(path_candidate) && file.exists(path_candidate)) {
+    return(.protvis_sage_path(.protvis_prepare_sage_executable(path_candidate), "Sage executable"))
+  }
+  candidates <- c(.protvis_sage_bundled_candidates(),
                   unname(Sys.which("sage")), unname(Sys.which("sage.exe")))
   candidates <- candidates[!is.na(candidates) & nzchar(candidates) &
                            file.exists(candidates)]

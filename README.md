@@ -93,6 +93,25 @@ Export + provenance
 
 ---
 
+## Analysis conventions
+
+Sage results are filtered after scoring using the requested q-value cutoff at
+spectrum, peptide, protein and LFQ levels. Raw outputs are retained. Protein
+quantification sums unique-peptide LFQ intensities; shared peptides remain in
+the LFQ table but are excluded from individual-protein sums. Sage 0.14.7 traces
+LFQ features only from peptide identifications passing its internal 1% gate.
+Sage telemetry is disabled by the integrated runner.
+
+Positive log2FC consistently means Group1 is higher than Group2. Differential
+analysis requires verified log2-scale input and rejects raw, ln/log10 and
+standardized values. For an imported log2 matrix without recorded scale, the
+programmatic differential step accepts `input_scale = "log2"`.
+
+See [validation results](dev/validation/analysis_repairs_20261007.md) for the
+executed checks and remaining raw-data validation limit.
+
+---
+
 ## Supported input sources
 
 | Source | Typical input |

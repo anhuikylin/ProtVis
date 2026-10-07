@@ -370,9 +370,10 @@ protvis_stage_labels <- function() {
     stop("group1 and group2 must be two different assigned groups.",
          call. = FALSE)
   }
+  .protvis_require_log2_scale(dataset, params$input_scale %||% "auto")
   matrix <- as.matrix(dataset$expression_data)
-  index1 <- which(groups == group1)
-  index2 <- which(groups == group2)
+  index1 <- match(dataset$sample_info$sample_id[groups == group1], colnames(matrix))
+  index2 <- match(dataset$sample_info$sample_id[groups == group2], colnames(matrix))
   p_value <- rep(NA_real_, nrow(matrix))
   mean1 <- rowMeans(matrix[, index1, drop = FALSE], na.rm = TRUE)
   mean2 <- rowMeans(matrix[, index2, drop = FALSE], na.rm = TRUE)
@@ -395,17 +396,18 @@ protvis_stage_labels <- function() {
     protein_id = rownames(matrix),
     mean_group1 = mean1,
     mean_group2 = mean2,
-    log2FC = mean2 - mean1,
+    log2FC = mean1 - mean2,
     p_value = p_value,
     adj_p_value = adj,
-    significant = is.finite(adj) & adj <= fdr & abs(mean2 - mean1) >= logfc,
+    significant = is.finite(adj) & adj <= fdr & abs(mean1 - mean2) >= logfc,
     stringsAsFactors = FALSE
   )
   result <- result[order(result$adj_p_value, na.last = TRUE), , drop = FALSE]
   rownames(result) <- NULL
   dataset$analysis_results$differential_analysis <- list(
     status = "success", group1 = group1, group2 = group2,
-    parameters = list(fdr = fdr, logfc = logfc), table = result
+    parameters = list(fdr = fdr, logfc = logfc,
+      contrast = "Group1 - Group2", input_scale = "log2"), table = result
   )
   dataset
 }
@@ -413,7 +415,8 @@ protvis_stage_labels <- function() {
 .protvis_term_mapping <- function(annotation) {
   if (is.null(annotation) || !is.list(annotation)) return(NULL)
   candidates <- c("terms", "term_mapping", "GO", "go", "pathway",
-                  "pathways", "KEGG", "kegg")
+                  "pathways", "KEGG", "kegg", "GO_annotation", "KEGG_annotation")
+  mappings <- list()
   for (name in candidates) {
     value <- annotation[[name]]
     if (is.data.frame(value) && nrow(value) > 0L) {
@@ -424,15 +427,16 @@ protvis_stage_labels <- function() {
                                        c("^term$", "go", "pathway", "kegg",
                                          "category", "annotation"))
       if (!is.null(id_col) && !is.null(term_col)) {
-        return(data.frame(
+        mappings[[name]] <- data.frame(
           protein_id = as.character(value[[id_col]]),
           term = as.character(value[[term_col]]),
           stringsAsFactors = FALSE
-        ))
+        )
       }
     }
   }
-  NULL
+  if (!length(mappings)) return(NULL)
+  unique(do.call(rbind, mappings))
 }
 
 .protvis_enrichment <- function(dataset, params) {
@@ -455,6 +459,7 @@ protvis_stage_labels <- function() {
                         rownames(dataset$expression_data))
   universe <- intersect(unique(mapping$protein_id),
                         rownames(dataset$expression_data))
+  selected <- intersect(selected, universe)
   mapping <- mapping[mapping$protein_id %in% universe, , drop = FALSE]
   if (length(selected) == 0L || length(universe) == 0L) {
     dataset$analysis_results$enrichment <- list(

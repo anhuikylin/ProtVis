@@ -1267,6 +1267,8 @@ DEP_analysis_server <- function(id, shared_state) {
 
         rv$sample_info <- step6$sample_info
         rv$normalized_matrix <- numeric_matrix(step6$expression_data)
+        rv$step4_dataset <- step4
+        rv$step6_dataset <- step6
         rv$pre_knn_matrix <- if (!is.null(step4)) {
           numeric_matrix(step4$expression_data)
         } else {
@@ -1498,6 +1500,16 @@ DEP_analysis_server <- function(id, shared_state) {
           "sample_info must contain sample_id and group columns.",
           type = "error"
         )
+        return(invisible(NULL))
+      }
+
+      scale_source <- if (identical(mode, "recommended")) rv$step4_dataset else rv$step6_dataset
+      scale_error <- tryCatch({
+        .protvis_require_log2_scale(scale_source)
+        NULL
+      }, error = function(e) conditionMessage(e))
+      if (!is.null(scale_error)) {
+        shiny::showNotification(scale_error, type = "error", duration = 10)
         return(invisible(NULL))
       }
 

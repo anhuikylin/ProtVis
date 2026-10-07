@@ -1,0 +1,6 @@
+"comparison","tested","quantitative_significant","detected_only","pipeline_tested","enrichment_terms","max_direction_error"
+"B73_Root_VE_vs_Y12_Root_VE",7575,87,1948,12115,0,8.88178419700125e-16
+"B73_Root_V1.V2_vs_Y12_Root_V1.V2",7578,150,1948,12115,463,1.11022302462516e-15
+"B73_Root_V4_vs_Y12_Root_V4",7554,263,1956,12115,463,8.88178419700125e-16
+"B73_Leaf_VE.V1.V2_vs_Y12_Leaf_VE.V1.V2",7567,221,1957,12115,463,1.11022302462516e-15
+"B73_Leaf_V4.V6.V8_vs_Y12_Leaf_V4.V6.V8",7546,107,1964,12115,0,1.11022302462516e-15
