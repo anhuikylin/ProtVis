@@ -719,7 +719,11 @@
   psm_row <- bundle$psm[catalog_row$psm_index, , drop = FALSE]
   sequence <- catalog_row$sequence[[1L]]
   modifications <- .protvis_ptm_modifications(psm_row, sequence)
-  theoretical <- .protvis_ptm_theoretical(sequence, modifications)
+  theoretical <- if (identical(bundle$benchmark$fragmentation, "ETD")) {
+    .protvis_ptm_etd_theoretical(sequence, modifications)
+  } else {
+    .protvis_ptm_theoretical(sequence, modifications)
+  }
   spectrum_match <- .protvis_ptm_find_spectrum(bundle, psm_row, catalog_row)
   spectrum <- bundle$spectra[spectrum_match$index]
   peak_matrix <- Spectra::peaksData(spectrum)[[1L]]
@@ -827,7 +831,7 @@
     Item = c("Dataset", "Protein", "Peptide", "Modified peptide", "Spectrum",
              "Spectrum mapping", "Data source", "Observed precursor m/z",
              "Calculated precursor m/z", "Charge", "Fragment tolerance",
-             "Matched fragment ions", "Matched b/y coverage ions"),
+             "Matched fragment ions", "Matched backbone coverage ions"),
     Value = c(target$project, protein, sequence, target$modified_sequence,
               spectrum_title, spectrum_match$method, bundle$source,
               ifelse(is.finite(observed_mz), sprintf("%.6f", observed_mz), "Not reported"),
@@ -868,6 +872,17 @@
       stringsAsFactors = FALSE
     )
     summary <- base::rbind(summary, provenance)
+  }
+  if (benchmark_match && identical(benchmark$ptm_type, "glycosylation")) {
+    provenance <- benchmark$provenance
+    summary <- rbind(summary, data.frame(
+      Item = c("Organism", "Source-assigned site", "Fragmentation", "Identification score / expectation", "Source table", "Reference", "Scope"),
+      Value = c(benchmark$organism, "Asn117 (peptide Asn1), HexNAc +203.079373 Da",
+        "ETD; c / z radical, charges 1–3; cleavage before Pro excluded",
+        paste(provenance$score, provenance$expectation, sep = " / "),
+        provenance$source_table, provenance$paper_url,
+        "Mass-based annotation of source identification; no intact glycan or new FDR inference"),
+      stringsAsFactors = FALSE))
   }
   list(target = target, source = bundle$source, psm_table = psm_table,
        spectrum_match_column = spectrum_match$column, peaks = peaks,
@@ -1023,7 +1038,7 @@
     xlab = "m/z", ylab = "Relative intensity (%)", main = ""
   )
   colors <- ifelse(matched$neutral, "#228B22",
-                   ifelse(matched$series == "b", b_color, y_color))
+                   ifelse(matched$series %in% c("b", "c"), b_color, y_color))
   segments(matched$observed_mz, 0, matched$observed_mz, matched$intensity,
            col = colors, lwd = 1.5)
   labels <- matched[matched$intensity >= 1, , drop = FALSE]
@@ -1031,7 +1046,8 @@
                          ifelse(labels$series == "b", b_color, y_color))
   text(labels$observed_mz, pmin(labels$intensity + 3, 101), labels = labels$label,
        col = label_colors, cex = 0.72, font = 2)
-  legend("topright", legend = c("b ions", "y ions", "neutral loss"),
+  legend("topright", legend = c(if (identical(result$theoretical$fragmentation, "ETD")) "c ions" else "b ions",
+                                          if (identical(result$theoretical$fragmentation, "ETD")) "z radical ions" else "y ions", "neutral loss"),
          col = c(b_color, y_color, "#228B22"), lwd = 2, bty = "n", cex = 0.8)
   mtext(
     paste0("Vac14 ", result$target$modified_sequence, "; ",
@@ -1089,8 +1105,8 @@
       shiny::numericInput(ns("vac14_tolerance"), "Fragment tolerance (Da)",
                           value = 0.5, min = 0.01, max = 2, step = 0.01),
       shiny::fluidRow(
-        shiny::column(6, colourpicker::colourInput(ns("vac14_b_color"), "b ions", "#C0392B")),
-        shiny::column(6, colourpicker::colourInput(ns("vac14_y_color"), "y ions", "#2E63C4"))
+        shiny::column(6, colourpicker::colourInput(ns("vac14_b_color"), "b / c ions", "#C0392B")),
+        shiny::column(6, colourpicker::colourInput(ns("vac14_y_color"), "y / z ions", "#2E63C4"))
       ),
       shiny::actionButton(
         ns("vac14_run"), "RUN VAC14 VALIDATION",
@@ -1343,6 +1359,12 @@
   b_number <- as.integer(table$B)
   y_number <- as.integer(table$Y)
   mappings <- list(
+    `C Ions` = paste0("c", b_number),
+    `C+2H` = paste0("c", b_number, "++"),
+    `C+3H` = paste0("c", b_number, "+++"),
+    `Z Ions` = paste0("z", y_number),
+    `Z+2H` = paste0("z", y_number, "++"),
+    `Z+3H` = paste0("z", y_number, "+++"),
     `B Ions` = paste0("b", b_number),
     `B+2H` = paste0("b", b_number, "++"),
     `B-NH3` = paste0("b", b_number, "-NH3"),
@@ -1393,7 +1415,7 @@
   ifelse(
     matched$neutral,
     neutral_color,
-    ifelse(matched$series == "b", b_color, y_color)
+    ifelse(matched$series %in% c("b", "c"), b_color, y_color)
   )
 }
 
@@ -1459,7 +1481,8 @@
   label_colors <- .protvis_vac14_match_colors(labels, b_color, y_color, "#228B22")
   text(labels$observed_mz, pmin(labels$intensity + 3, 101), labels = labels$label,
        col = label_colors, cex = 0.72, font = 2)
-  legend("topright", legend = c("b ions", "y ions", "neutral loss"),
+  legend("topright", legend = c(if (identical(result$theoretical$fragmentation, "ETD")) "c ions" else "b ions",
+                                          if (identical(result$theoretical$fragmentation, "ETD")) "z radical ions" else "y ions", "neutral loss"),
          col = c(b_color, y_color, "#228B22"), lwd = 2, bty = "n", cex = 0.8)
   mtext(
     paste0(result$target$spectrum_label %||% result$target$modified_sequence, "; ",
@@ -1508,7 +1531,8 @@
         "PTM type",
         choices = c(
           "Phosphorylation" = "phosphorylation",
-          "Lysine acetylation (Kac)" = "acetylation"
+          "Lysine acetylation (Kac)" = "acetylation",
+          "Plant N-glycosylation (HexNAc / ETD)" = "glycosylation"
         ),
         selected = "phosphorylation"
       ),
@@ -1544,8 +1568,8 @@
       shiny::numericInput(ns("vac14_tolerance"), "Fragment tolerance (Da)",
                           value = 0.5, min = 0.01, max = 2, step = 0.01),
       shiny::fluidRow(
-        shiny::column(6, colourpicker::colourInput(ns("vac14_b_color"), "b ions", "#C0392B")),
-        shiny::column(6, colourpicker::colourInput(ns("vac14_y_color"), "y ions", "#2E63C4"))
+        shiny::column(6, colourpicker::colourInput(ns("vac14_b_color"), "b / c ions", "#C0392B")),
+        shiny::column(6, colourpicker::colourInput(ns("vac14_y_color"), "y / z ions", "#2E63C4"))
       ),
       shiny::actionButton(
         ns("vac14_run"), "VISUALIZE",
@@ -1602,6 +1626,13 @@
   output$vac14_benchmark_note <- shiny::renderUI({
     ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
 
+    if (identical(ptm_type, "glycosylation")) {
+      return(shiny::p("Arabidopsis N-glycosylation: ",
+        shiny::strong("N[HexNAc]VTHAPRPGGFSSSVVSGLSQGSGEYFTR"),
+        " · Asn117 / ETD c and z radical ions. Source-assigned HexNAc remnant; no intact glycan inference.",
+        class = "pw-note"))
+    }
+
     if (identical(ptm_type, "acetylation")) {
       return(shiny::p(
         "Maize Kac benchmark: ",
@@ -1621,6 +1652,14 @@
 
   output$vac14_benchmark_info <- shiny::renderUI({
     ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
+
+    if (identical(ptm_type, "glycosylation")) {
+      return(shiny::div(class = "alert alert-info py-2 small",
+        shiny::strong("Arabidopsis thaliana · MSV000079345"),
+        " · Experimental ETD scan 3863 · ",
+        shiny::tags$a(href = "https://msviewer.ucsf.edu/prospector/cgi-bin/mssearch.cgi?search_name=msviewer&search_key=6mvcoan57m",
+          target = "_blank", rel = "noopener noreferrer", "Author MSViewer")))
+    }
 
     if (identical(ptm_type, "acetylation")) {
       target <- base::tryCatch(
@@ -1684,7 +1723,7 @@
       value = if (identical(
         input$vac14_ptm_type %||% "phosphorylation",
         "acetylation"
-      )) 0.05 else 0.5
+      )) 0.05 else if (identical(input$vac14_ptm_type, "glycosylation")) 0.6 else 0.5
     )
   }, ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_source, clear_loaded_data(), ignoreInit = TRUE)
@@ -1725,7 +1764,7 @@
       }
       value <- if (isTRUE(show_progress)) {
         shiny::withProgress(message = "Visualizing selected peptide", value = 0, {
-          shiny::incProgress(0.25, detail = "Calculating modified b/y ions")
+          shiny::incProgress(0.25, detail = "Calculating modified backbone ions")
           answer <- calculate()
           shiny::incProgress(0.65, detail = "Matching experimental peaks")
           answer
@@ -1756,7 +1795,12 @@
         )) {
           "PeptideAtlas_consensus_fragment_matching"
         } else {
-          "mzIdentML_MGF_fragment_matching"
+          if (identical(value$target$ptm_type, "glycosylation") &&
+              identical(loaded$benchmark$fragmentation, "ETD")) {
+            "MSViewer_MGF_ETD_fragment_matching"
+          } else {
+            "mzIdentML_MGF_fragment_matching"
+          }
         },
         category = "ptm",
         parameters = list(
@@ -1794,7 +1838,7 @@
           "Displayed ", value$target$modified_sequence, ": ",
           nrow(value$matched), " fragment ions matched; ",
           sum(value$key_ions$matched), "/", nrow(value$key_ions),
-          " primary b/y ions covered."
+          " primary backbone ions covered."
         )
       ))
       invisible(TRUE)
@@ -1864,6 +1908,9 @@
         )) {
           shiny::incProgress(0.35, detail = "Loading maize Kac consensus spectrum")
           answer <- .protvis_maize_kac_bundle()
+        } else if (identical(input$vac14_ptm_type, "glycosylation")) {
+          shiny::incProgress(0.35, detail = "Loading Arabidopsis experimental ETD spectrum")
+          answer <- .protvis_arabidopsis_glyco_bundle()
         } else {
           selected <- .protvis_vac14_download_files()
           shiny::incProgress(0.35, detail = "Reading PXD001057 PSMs and spectra")
