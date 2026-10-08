@@ -30,9 +30,16 @@
 .protvis_plant_ptm_bundle <- function(target) {
   .protvis_ptm_require_spectrum_packages()
   psm <- data.frame(sequence = target$sequence, spectrumID = "index=0",
-                    chargeState = target$precursor_charge, passThreshold = TRUE,
+                    chargeState = target$precursor_charge,
+                    passThreshold = if (identical(target$ptm_type, "methylation")) TRUE else NA,
                     experimentalMassToCharge = target$precursor_mz,
-                    calculatedMassToCharge = target$precursor_mz,
+                    calculatedMassToCharge = {
+                      theory <- .protvis_ptm_theoretical(target$sequence,
+                        data.frame(location = target$position, mass = target$mass,
+                                   name = target$modification %||% "HexNAc"))
+                      (theory$mh + (target$precursor_charge - 1) * 1.007276466621) /
+                        target$precursor_charge
+                    },
                     spectrum.title = target$spectrum_title,
                     stringsAsFactors = FALSE, check.names = FALSE)
   psm$DatabaseAccess <- I(list(target$protein))
