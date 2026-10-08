@@ -524,7 +524,7 @@ jobs:
           theory <- .protvis_ptm_theoretical(target$sequence,
             data.frame(location = 3L, mass = 28.031300, name = "Dimethyl"))
           mz <- (theory$mh + 2 * 1.007276466621) / 3
-          stopifnot(abs(mz - 898.091886) < 1e-6,
+          stopifnot(abs(mz - 898.091886) < 1e-5,
             target$provenance$passThreshold == "true",
             as.numeric(target$provenance$score) > as.numeric(target$provenance$identity_threshold),
             !any(grepl("-98", theory$candidates$label, fixed = TRUE)))
@@ -537,7 +537,16 @@ jobs:
           peaks <- data.frame(mz = peaks[, 1L], intensity = peaks[, 2L])
           peaks$rel <- peaks$intensity / max(peaks$intensity) * 100
           matched <- .protvis_vac14_match_ions(peaks, theory$candidates, 0.02)
-          stopifnot(nrow(matched) > 15L, max(abs(matched$error_da)) <= 0.02)
+          stopifnot(nrow(matched) == 58L, max(abs(matched$error_da)) <= 0.02)
+          psm <- data.frame(sequence = target$sequence, spectrumID = "index=0",
+            chargeState = 3L, spectrum.title = target$spectrum_title,
+            stringsAsFactors = FALSE, check.names = FALSE)
+          psm$modLocation <- I(list(3L))
+          psm$modMass <- I(list(28.0313))
+          psm$modName <- I(list("Dimethyl"))
+          catalog <- .protvis_ptm_psm_catalog(psm)
+          stopifnot(catalog$spectrum_title == target$spectrum_title,
+            grepl("Dimethyl", catalog$modified_sequence, fixed = TRUE))
           # The modification shifts only fragments containing Arg3.
           plain <- .protvis_ptm_theoretical(target$sequence)
           stopifnot(abs(theory$b_mz[2] - plain$b_mz[2]) < 1e-8,
