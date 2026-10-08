@@ -463,7 +463,7 @@
   if (is.list(value) && length(value) == 1L) value <- value[[1L]]
   value <- unlist(value, recursive = TRUE, use.names = FALSE)
   value <- as.character(value)
-  if (length(value) == 1L && grepl(";", value, fixed = TRUE)) {
+  if (column != "spectrum.title" && length(value) == 1L && grepl(";", value, fixed = TRUE)) {
     value <- unlist(strsplit(value, ";", fixed = TRUE), use.names = FALSE)
   }
   trimws(value[!is.na(value) & nzchar(trimws(value))])
@@ -1826,7 +1826,12 @@
               identical(loaded$benchmark$fragmentation, "ETD")) {
             "MSViewer_MGF_ETD_fragment_matching"
           } else {
-            "mzIdentML_MGF_fragment_matching"
+            if (identical(value$target$ptm_type, "methylation") &&
+                isTRUE(value$target$is_builtin_benchmark)) {
+              "PRIDE_MGF_source_PSM_fragment_matching"
+            } else {
+              "mzIdentML_MGF_fragment_matching"
+            }
           }
         },
         category = "ptm",
