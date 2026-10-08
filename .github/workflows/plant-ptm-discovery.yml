@@ -17,9 +17,17 @@ jobs:
           import urllib.request, gzip, xml.etree.ElementTree as E, json, pathlib, sqlite3, concurrent.futures
           out=pathlib.Path("ptm-discovery"); out.mkdir()
           def fetch(url,path):
-              req=urllib.request.Request(url,headers={"User-Agent":"ProtVis data validation"})
-              with urllib.request.urlopen(req,timeout=90) as r: path.write_bytes(r.read())
-              return path
+              errors=[]
+              for scheme in ["https","http","ftp"]:
+                  try:
+                      candidate=scheme+url[url.index(":"):]
+                      req=urllib.request.Request(candidate,headers={"User-Agent":"ProtVis data validation"})
+                      with urllib.request.urlopen(req,timeout=30) as r: data=r.read()
+                      if data.startswith(b"<html") or len(data)<100: raise ValueError("Not a data file")
+                      path.write_bytes(data)
+                      return path
+                  except Exception as e: errors.append(str(e))
+              raise RuntimeError("; ".join(errors))
           def methyl():
               base="https://ftp.pride.ebi.ac.uk/pride/data/archive/2024/01/PXD043460/"
               names=["F019538","F019540","F019543","F019545","F019548","F019552","F019602","F019603","F019604","F019605","F019606","F019607"]
@@ -32,7 +40,7 @@ jobs:
                           if e.tag.endswith("}Peptide"):
                               seq=next((c.text for c in e if c.tag.endswith("}PeptideSequence")),"")
                               mods=[dict(c.attrib,terms=[a.attrib for a in c]) for c in e if c.tag.endswith("}Modification")]
-                              if any(abs(float(m.get("monoisotopicMassDelta","0"))-28.0313)<0.01 or any("methyl" in a.get("name","").lower() for a in m["terms"]) for m in mods):
+                              if any(any(abs(float(m.get("monoisotopicMassDelta","0"))-v)<0.01 for v in [14.01565,28.0313,42.04695]) and m.get("residues") in ["K","R"] for m in mods):
                                   peptides[e.attrib["id"]]={"sequence":seq,"mods":mods}
                       hits=[]
                       for r in root.iter():
