@@ -507,10 +507,39 @@ jobs:
           peaks <- data.frame(mz = peaks[, 1L], intensity = peaks[, 2L])
           peaks$rel <- peaks$intensity / max(peaks$intensity) * 100
           matched <- .protvis_vac14_match_ions(peaks, theory$candidates, 0.6)
-          stopifnot(nrow(matched) > 10L, max(abs(matched$error_da)) <= 0.6)
+          stopifnot(nrow(matched) == 68L, max(abs(matched$error_da)) <= 0.6)
           colors <- .protvis_vac14_match_colors(matched)
           stopifnot(all(colors[matched$series == "c"] == "#C0392B"))
           png(tempfile(fileext = ".png"), width = 1000, height = 700)
           .protvis_vac14_draw_table(theory$fragment_table, matched)
           dev.off()
           cat("Arabidopsis experimental ETD benchmark:", nrow(matched), "unique peaks matched.\n")
+
+      - name: Validate experimental Arabidopsis AGO1 methylation benchmark
+        shell: Rscript {0}
+        run: |
+          source("R/ptm_vac14.R")
+          source("R/ptm_plant_benchmarks.R")
+          target <- .protvis_arabidopsis_methyl_target()
+          theory <- .protvis_ptm_theoretical(target$sequence,
+            data.frame(location = 3L, mass = 28.031300, name = "Dimethyl"))
+          mz <- (theory$mh + 2 * 1.007276466621) / 3
+          stopifnot(abs(mz - 898.091886) < 1e-6,
+            target$provenance$passThreshold == "true",
+            as.numeric(target$provenance$score) > as.numeric(target$provenance$identity_threshold),
+            !any(grepl("-98", theory$candidates$label, fixed = TRUE)))
+          lines <- readLines(target$mgf, warn = FALSE)
+          stopifnot(any(lines == paste0("TITLE=", target$spectrum_title)),
+            any(lines == "SCANS=18622"), any(lines == "CHARGE=3+"))
+          rows <- lines[grepl("^[0-9]", lines)]
+          peaks <- do.call(rbind, lapply(strsplit(rows, "[[:space:]]+"), as.numeric))
+          stopifnot(nrow(peaks) == 308L)
+          peaks <- data.frame(mz = peaks[, 1L], intensity = peaks[, 2L])
+          peaks$rel <- peaks$intensity / max(peaks$intensity) * 100
+          matched <- .protvis_vac14_match_ions(peaks, theory$candidates, 0.02)
+          stopifnot(nrow(matched) > 15L, max(abs(matched$error_da)) <= 0.02)
+          # The modification shifts only fragments containing Arg3.
+          plain <- .protvis_ptm_theoretical(target$sequence)
+          stopifnot(abs(theory$b_mz[2] - plain$b_mz[2]) < 1e-8,
+            abs(theory$b_mz[3] - plain$b_mz[3] - 28.0313) < 1e-8)
+          cat("Arabidopsis AGO1 methylation benchmark:", nrow(matched), "unique peaks matched.\n")
