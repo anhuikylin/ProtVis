@@ -486,3 +486,31 @@ jobs:
           )
 
           cat("Schema v4 core smoke tests passed.\n")
+
+      - name: Validate experimental Arabidopsis glycosylation benchmark
+        shell: Rscript {0}
+        run: |
+          source("R/ptm_vac14.R")
+          source("R/ptm_plant_benchmarks.R")
+          target <- .protvis_arabidopsis_glyco_target()
+          theory <- .protvis_ptm_etd_theoretical(target$sequence,
+            data.frame(location = 1L, mass = 203.079372533, name = "HexNAc"))
+          mz <- (theory$mh + 3 * 1.007276466621) / 4
+          stopifnot(abs((mz - target$precursor_mz) / mz * 1e6) < 10,
+            all(theory$candidates$series %in% c("c", "z")),
+            !any(theory$candidates$label %in% c("c5", "c7", "z22", "z24")),
+            any(theory$candidates$label == "c1+++"))
+          lines <- readLines(target$mgf, warn = FALSE)
+          rows <- lines[grepl("^[0-9]", lines)]
+          peaks <- do.call(rbind, lapply(strsplit(rows, "[[:space:]]+"), as.numeric))
+          stopifnot(nrow(peaks) == 411L)
+          peaks <- data.frame(mz = peaks[, 1L], intensity = peaks[, 2L])
+          peaks$rel <- peaks$intensity / max(peaks$intensity) * 100
+          matched <- .protvis_vac14_match_ions(peaks, theory$candidates, 0.6)
+          stopifnot(nrow(matched) > 10L, max(abs(matched$error_da)) <= 0.6)
+          colors <- .protvis_vac14_match_colors(matched)
+          stopifnot(all(colors[matched$series == "c"] == "#C0392B"))
+          png(tempfile(fileext = ".png"), width = 1000, height = 700)
+          .protvis_vac14_draw_table(theory$fragment_table, matched)
+          dev.off()
+          cat("Arabidopsis experimental ETD benchmark:", nrow(matched), "unique peaks matched.\n")
