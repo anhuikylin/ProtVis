@@ -5,7 +5,7 @@
     root <- file.path("inst", "extdata", "ptm", "arabidopsis_glyco")
   }
   meta <- utils::read.delim(file.path(root, "metadata.tsv"),
-                          stringsAsFactors = FALSE, check.names = FALSE)
+                          stringsAsFactors = FALSE, check.names = FALSE, quote = "")
   values <- stats::setNames(as.list(meta$value), meta$field)
   list(benchmark_id = values$benchmark_id, ptm_type = "glycosylation",
        organism = values$organism, project = values$project,
@@ -20,8 +20,15 @@
 }
 
 .protvis_arabidopsis_glyco_bundle <- function() {
+  .protvis_plant_ptm_bundle(.protvis_arabidopsis_glyco_target())
+}
+
+.protvis_arabidopsis_methyl_bundle <- function() {
+  .protvis_plant_ptm_bundle(.protvis_arabidopsis_methyl_target())
+}
+
+.protvis_plant_ptm_bundle <- function(target) {
   .protvis_ptm_require_spectrum_packages()
-  target <- .protvis_arabidopsis_glyco_target()
   psm <- data.frame(sequence = target$sequence, spectrumID = "index=0",
                     chargeState = target$precursor_charge, passThreshold = TRUE,
                     experimentalMassToCharge = target$precursor_mz,
@@ -31,12 +38,15 @@
   psm$DatabaseAccess <- I(list(target$protein))
   psm$modLocation <- I(list(target$position))
   psm$modMass <- I(list(target$mass))
-  psm$modName <- I(list("HexNAc"))
+  psm$modName <- I(list(target$modification %||% "HexNAc"))
+  if (identical(target$ptm_type, "methylation")) {
+    psm$Mascot.score <- as.numeric(target$provenance$score)
+  }
   spectra <- Spectra::Spectra(target$mgf, source = MsBackendMgf::MsBackendMgf())
-  if (length(spectra) != 1L) stop("Expected one Arabidopsis glycosylation spectrum.")
+  if (length(spectra) != 1L) stop("Expected one experimental plant PTM spectrum.")
   list(psm = psm, catalog = .protvis_ptm_psm_catalog(psm), spectra = spectra,
        metadata = as.data.frame(Spectra::spectraData(spectra), optional = TRUE),
-       source = "Author MSViewer experimental ETD scan 3863; source-assigned HexNAc at Asn117",
+       source = target$source %||% "Author MSViewer experimental ETD scan 3863; source-assigned HexNAc at Asn117",
        benchmark = target)
 }
 
@@ -79,4 +89,22 @@
   theory$fragment_table[numeric] <- lapply(theory$fragment_table[numeric], round, 1L)
   theory$fragmentation <- "ETD"
   theory
+}
+
+.protvis_arabidopsis_methyl_target <- function() {
+  root <- system.file("extdata", "ptm", "arabidopsis_methyl", package = "ProtVis")
+  if (!nzchar(root)) root <- file.path("inst", "extdata", "ptm", "arabidopsis_methyl")
+  meta <- utils::read.delim(file.path(root, "metadata.tsv"), stringsAsFactors = FALSE, quote = "")
+  values <- stats::setNames(as.list(meta$value), meta$field)
+  list(benchmark_id = values$benchmark_id, ptm_type = "methylation",
+       organism = values$organism, project = values$project,
+       protein = values$protein, sequence = values$sequence,
+       modified_sequence = "GGR[Dimethyl]GYGQPPQQQQQYGGPQEYQGR",
+       modification = "Dimethyl", fragmentation = "HCD",
+       position = as.integer(values$modified_position), mass = as.numeric(values$mass_shift_da),
+       precursor_mz = as.numeric(values$precursor_mz),
+       precursor_charge = as.integer(values$precursor_charge),
+       spectrum_title = values$spectrum_title, provenance = values,
+       source = "PRIDE PXD043460 experimental HCD scan 18622; rank 1, passThreshold=true",
+       mgf = file.path(root, "arabidopsis_AGO1_R62_Dimethyl.mgf"))
 }
