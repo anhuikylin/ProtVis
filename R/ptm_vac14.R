@@ -884,6 +884,17 @@
         "Mass-based annotation of source identification; no intact glycan or new FDR inference"),
       stringsAsFactors = FALSE))
   }
+  if (benchmark_match && identical(benchmark$ptm_type, "methylation")) {
+    provenance <- benchmark$provenance
+    summary <- rbind(summary, data.frame(
+      Item = c("Organism", "Source-assigned site", "Source spectrum", "Mascot score / identity threshold", "Mascot expectation", "Source PSM status", "Reference DOI", "Scope"),
+      Value = c(benchmark$organism, "AGO1 Arg62 (peptide Arg3), Dimethyl +28.031300 Da",
+        paste(provenance$source_mgf, provenance$source_spectrum_id, "scan", provenance$source_scan),
+        paste(provenance$score, provenance$identity_threshold, sep = " / "),
+        provenance$expectation, "rank 1; passThreshold=true; non-decoy",
+        provenance$paper_doi, "Source-assigned biological dimethylation; mass alone does not distinguish symmetric / asymmetric forms"),
+      stringsAsFactors = FALSE))
+  }
   list(target = target, source = bundle$source, psm_table = psm_table,
        spectrum_match_column = spectrum_match$column, peaks = peaks,
        matched = matched, theoretical = theoretical, key_ions = coverage,
@@ -1532,7 +1543,8 @@
         choices = c(
           "Phosphorylation" = "phosphorylation",
           "Lysine acetylation (Kac)" = "acetylation",
-          "Plant N-glycosylation (HexNAc / ETD)" = "glycosylation"
+          "Plant N-glycosylation (HexNAc / ETD)" = "glycosylation",
+          "Plant arginine dimethylation" = "methylation"
         ),
         selected = "phosphorylation"
       ),
@@ -1626,6 +1638,13 @@
   output$vac14_benchmark_note <- shiny::renderUI({
     ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
 
+    if (identical(ptm_type, "methylation")) {
+      return(shiny::p("Arabidopsis AGO1 methylation: ",
+        shiny::strong("GGR[Dimethyl]GYGQPPQQQQQYGGPQEYQGR"),
+        " · Arg62 · HCD. Mass annotation does not distinguish symmetric / asymmetric dimethylation.",
+        class = "pw-note"))
+    }
+
     if (identical(ptm_type, "glycosylation")) {
       return(shiny::p("Arabidopsis N-glycosylation: ",
         shiny::strong("N[HexNAc]VTHAPRPGGFSSSVVSGLSQGSGEYFTR"),
@@ -1652,6 +1671,14 @@
 
   output$vac14_benchmark_info <- shiny::renderUI({
     ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
+
+    if (identical(ptm_type, "methylation")) {
+      return(shiny::div(class = "alert alert-info py-2 small",
+        shiny::strong("Arabidopsis thaliana · AGO1 · PXD043460"),
+        " · Experimental HCD scan 18622 · Mascot 97.12 (identity threshold 35) · ",
+        shiny::tags$a(href = "https://www.ebi.ac.uk/pride/archive/projects/PXD043460",
+          target = "_blank", rel = "noopener noreferrer", "PRIDE")))
+    }
 
     if (identical(ptm_type, "glycosylation")) {
       return(shiny::div(class = "alert alert-info py-2 small",
@@ -1723,7 +1750,7 @@
       value = if (identical(
         input$vac14_ptm_type %||% "phosphorylation",
         "acetylation"
-      )) 0.05 else if (identical(input$vac14_ptm_type, "glycosylation")) 0.6 else 0.5
+      )) 0.05 else if (identical(input$vac14_ptm_type, "methylation")) 0.02 else if (identical(input$vac14_ptm_type, "glycosylation")) 0.6 else 0.5
     )
   }, ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_source, clear_loaded_data(), ignoreInit = TRUE)
@@ -1911,6 +1938,9 @@
         } else if (identical(input$vac14_ptm_type, "glycosylation")) {
           shiny::incProgress(0.35, detail = "Loading Arabidopsis experimental ETD spectrum")
           answer <- .protvis_arabidopsis_glyco_bundle()
+        } else if (identical(input$vac14_ptm_type, "methylation")) {
+          shiny::incProgress(0.35, detail = "Loading Arabidopsis AGO1 methylation spectrum")
+          answer <- .protvis_arabidopsis_methyl_bundle()
         } else {
           selected <- .protvis_vac14_download_files()
           shiny::incProgress(0.35, detail = "Reading PXD001057 PSMs and spectra")
