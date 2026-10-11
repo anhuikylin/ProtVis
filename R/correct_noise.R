@@ -147,6 +147,47 @@ correct_values <- function(raw_mat) {
   result
 }
 
+.protvis_noise_change_report <- function(before, after, parameters) {
+  samples <- setdiff(names(before), "ID")
+  numeric_matrix <- function(x) {
+    m <- as.matrix(x[, samples, drop = FALSE])
+    suppressWarnings(storage.mode(m) <- "double")
+    m
+  }
+  old <- numeric_matrix(before)
+  new <- numeric_matrix(after)
+  detected <- function(m) is.finite(m) & m > 0
+  old_valid <- detected(old)
+  new_valid <- detected(new)
+  summary <- data.frame(
+    Metric = c("Protein rows", "Unique protein IDs", "Samples", "Detected values",
+               "Missing / non-positive values", "Missing / non-positive (%)"),
+    Before = c(nrow(before), length(unique(before$ID)), length(samples),
+               sum(old_valid), sum(!old_valid), 100 * mean(!old_valid)),
+    After = c(nrow(after), length(unique(after$ID)), length(samples),
+              sum(new_valid), sum(!new_valid), 100 * mean(!new_valid)))
+  summary$Change <- summary$After - summary$Before
+  # Cell transitions are evaluated only for retained, uniquely matched IDs.
+  # Removed rows are reported separately, so they are not counted as masking.
+  transitions <- NULL
+  if (!anyDuplicated(before$ID) && !anyDuplicated(after$ID)) {
+    aligned <- old[match(after$ID, before$ID), , drop = FALSE]
+    valid <- detected(aligned)
+    transitions <- data.frame(
+      Sample = samples,
+      Detected_before = colSums(old_valid),
+      Detected_after = colSums(new_valid),
+      Filled = colSums(!valid & new_valid),
+      Masked = colSums(valid & !new_valid),
+      Changed_observed = colSums(valid & new_valid &
+                                  replace(aligned != new, is.na(aligned != new), FALSE)),
+      Removed_with_rows = colSums(old_valid[!before$ID %in% after$ID, , drop = FALSE]))
+  }
+  list(parameters = parameters, summary = summary, per_sample = transitions,
+       removed_ids = setdiff(unique(before$ID), unique(after$ID)),
+       note = "Detected means finite positive intensity. Cell transitions refer to retained proteins. Duplicate input IDs prevent unambiguous cell transition counts.")
+}
+
 #' UI for Noise Correction Module
 #' @param id Character string module ID for namespacing
 #' @return A Shiny UI layout with sidebar controls and main display area
@@ -280,6 +321,13 @@ correct_noise_ui <- function(id) {
           bslib::nav_panel(
             "Correct Noise",
             DT::DTOutput(ns("tbl_correct_noise"))
+          ),
+          bslib::nav_panel(
+            "Processing report",
+            shiny::uiOutput(ns("noise_report_details")),
+            DT::DTOutput(ns("noise_report_summary")),
+            shiny::tags$h5("Changes by sample"),
+            DT::DTOutput(ns("noise_report_samples"))
           )
         )
       )
@@ -308,7 +356,8 @@ correct_noise_server <- function(id, shared_state) {
     rv <- shiny::reactiveValues(
       load_success = FALSE,
       rename_requested = FALSE,
-      noise_requested = FALSE
+      noise_requested = FALSE,
+      noise_report = NULL
     )
 
     valid_workdir <- function() {
@@ -566,6 +615,7 @@ correct_noise_server <- function(id, shared_state) {
       on.exit(.protvis_end_run(shared_state, "correct_noise", session,
                                "correct_noise"), add = TRUE)
       rv$noise_requested <- TRUE
+      rv$noise_report <- NULL
       tryCatch({
           if (!isTRUE(rv$load_success)) {
             shiny::showNotification(
@@ -609,7 +659,7 @@ correct_noise_server <- function(id, shared_state) {
             stop("No proteins pass the replicate rule.", call. = FALSE)
           }
           shinyWidgets::updateProgressBar(session, id = "noise_progress", value = 100)
-          shared_state$correct_noise_result <- result
+          report <- .protvis_noise_change_report(dat, result, parameters)
           dataset <- if (inherits(shared_state$dataset, "ProtVis_dataset")) {
             shared_state$dataset
           } else {
@@ -631,7 +681,15 @@ correct_noise_server <- function(id, shared_state) {
             dataset, "noise_correction", status = "success",
             parameters = parameters
           )
+          report$created_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
+          dataset$analysis_results$noise_correction_reports <- c(
+            dataset$analysis_results$noise_correction_reports %||% list(),
+            list(report)
+          )
+          dataset$analysis_results$noise_correction_report <- report
           .protvis_ui_sync_state(dataset, shared_state)
+          shared_state$correct_noise_result <- result
+          rv$noise_report <- report
           # Keep Step2 as the single, data-source-independent checkpoint for
           # the hand-off from input/search to Correct Noise.  Step3 remains
           # as a compatibility export for older downstream modules.
@@ -673,6 +731,40 @@ correct_noise_server <- function(id, shared_state) {
           options = list(scrollX = TRUE, pageLength = 10)
         )
       }
+    })
+
+    current_noise_report <- shiny::reactive({
+      if (!is.null(rv$noise_report)) return(rv$noise_report)
+      dataset <- shared_state$dataset
+      if (inherits(dataset, "ProtVis_dataset")) {
+        return(dataset$analysis_results$noise_correction_report)
+      }
+      NULL
+    })
+    output$noise_report_details <- shiny::renderUI({
+      report <- current_noise_report()
+      if (is.null(report)) return(shiny::tags$p("Run Correct Noise to generate a before/after report."))
+      method <- if (identical(report$parameters$method, "replicate_filter")) {
+        if (isTRUE(report$parameters$impute_mean)) "Replicate filtering + group mean imputation" else "Replicate filtering only"
+      } else "Existing replicate correction"
+      shiny::tagList(shiny::tags$p(paste("Method:", method)),
+                     shiny::tags$p(paste("Removed protein IDs:", length(report$removed_ids))),
+                     shiny::tags$small(report$note))
+    })
+    output$noise_report_summary <- DT::renderDT({
+      report <- current_noise_report()
+      shiny::req(report)
+      DT::datatable(report$summary, rownames = FALSE,
+                    options = list(dom = "t", scrollX = TRUE)) %>%
+        DT::formatRound(c("Before", "After", "Change"), digits = 2)
+    })
+    output$noise_report_samples <- DT::renderDT({
+      report <- current_noise_report()
+      shiny::req(report)
+      rows <- report$per_sample
+      if (is.null(rows)) rows <- data.frame(Message = "Cell transitions unavailable because input IDs are duplicated.")
+      DT::datatable(rows, rownames = FALSE,
+                    options = list(scrollX = TRUE, pageLength = 10))
     })
 
     output$tbl_correct_noise <- DT::renderDT({
