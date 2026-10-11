@@ -40,6 +40,53 @@ test_that("generic PTM calculation supports arbitrary modified peptides", {
   expect_true(all(c("b1", "y1") %in% theoretical$key_ions$label))
 })
 
+
+test_that("generic PTM calculation supports internal lysine acetylation", {
+  modifications <- data.frame(
+    location = 7L,
+    mass = 42.010565,
+    name = "Acetyl",
+    stringsAsFactors = FALSE
+  )
+  sequence <- "VGYNPDKIAFVPISGFEGDNMIER"
+  theoretical <- ProtVis:::.protvis_ptm_theoretical(sequence, modifications)
+  label <- ProtVis:::.protvis_modified_sequence_label(sequence, modifications)
+
+  proton <- 1.007276466621
+  precursor_3plus <- (theoretical$mh + 2 * proton) / 3
+
+  expect_identical(
+    label,
+    "VGYNPDK[Acetyl]IAFVPISGFEGDNMIER"
+  )
+  expect_equal(precursor_3plus, 904.1108942, tolerance = 1e-6)
+  expect_match(theoretical$fragment_table$AA[7], "K\\+42")
+  expect_false(any(grepl("-98$", theoretical$candidates$label)))
+  expect_true(all(c("b6", "b7", "y17", "y18") %in%
+                    theoretical$key_ions$label))
+})
+
+test_that("Kac benchmark remains separate from Vac14 publication annotations", {
+  vac14 <- ProtVis:::.protvis_vac14_target()
+  expect_identical(vac14$benchmark_id, "phosphorylation_pxd001057")
+  expect_identical(vac14$ptm_type, "phosphorylation")
+
+  modifications <- data.frame(
+    location = 7L,
+    mass = 42.010565,
+    name = "Acetyl",
+    stringsAsFactors = FALSE
+  )
+  theoretical <- ProtVis:::.protvis_ptm_theoretical(
+    "VGYNPDKIAFVPISGFEGDNMIER",
+    modifications
+  )
+
+  expect_false(any(grepl("-98", theoretical$candidates$label, fixed = TRUE)))
+  expect_true(any(theoretical$candidates$label == "b7"))
+  expect_true(any(theoretical$candidates$label == "y18"))
+})
+
 test_that("PSM catalog keeps separate spectra selectable", {
   psm <- data.frame(
     sequence = c("PEPTIDE", "PEPTIDE"),
@@ -132,8 +179,11 @@ test_that("PTM UI exposes selectable PSM visualization without removing the over
 
   expect_true(grepl("PTM data overview", source_text, fixed = TRUE))
   expect_true(grepl("PTM spectrum", source_text, fixed = TRUE))
-  expect_true(grepl("LOAD PSM LIST", vac14_text, fixed = TRUE))
-  expect_true(grepl("VISUALIZE SELECTED PEPTIDE", vac14_text, fixed = TRUE))
+  expect_true(grepl("LOAD PSMs", vac14_text, fixed = TRUE))
+  expect_true(grepl('"VISUALIZE"', vac14_text, fixed = TRUE))
+  expect_true(grepl("Lysine acetylation (Kac)", vac14_text, fixed = TRUE))
+  expect_true(grepl(".protvis_maize_kac_bundle", vac14_text, fixed = TRUE))
+  expect_true(grepl("VGYNPDK[Acetyl]IAFVPISGFEGDNMIER", vac14_text, fixed = TRUE))
   expect_true(grepl("vac14_psm_choice", vac14_text, fixed = TRUE))
   expect_true(grepl("protvis-unlock-run-button", vac14_text, fixed = TRUE))
   expect_true(grepl("visualize_selected_psm(show_progress = FALSE)", vac14_text, fixed = TRUE))

@@ -4,10 +4,9 @@
 #' @param options Named list of values passed to `shiny::shinyOptions`.
 #' @param enableBookmarking Can be "url", "server", or "disable".
 #' @param uiPattern A regular expression used to determine which requests should be handled by the UI.
-#' @param ... Arguments to pass to `golem_opts`. See `?golem::get_golem_options` for more details.
+#' @param ... Reserved for backward compatibility; currently ignored.
 #' @return An object that represents the app.
 #' @import shiny
-#' @importFrom golem with_golem_options
 #' @importFrom utils modifyList
 #' @name run_ProtVis
 #' @export
@@ -20,20 +19,27 @@ run_ProtVis <- function(
     ...
 ) {
 
+  # Validate the local companion-data installation before building UI.
+  ProtVisDatabase::protvis_database_path(
+    "extdata",
+    "manifest.tsv",
+    must_work = TRUE
+  )
+
   # Set a generous default for large proteomics/background workbooks.
   # modifyList ensures that user-defined options are preserved
   default_options <- list(shiny.maxRequestSize = 2 * 1024^3)
   combined_options <- utils::modifyList(default_options, options)
 
-  golem::with_golem_options(
-    app = shiny::shinyApp(
-      ui = app_ui,
-      server = app_server,
-      onStart = onStart,
-      options = combined_options,
-      enableBookmarking = enableBookmarking,
-      uiPattern = uiPattern
-    ),
-    golem_opts = list(...)
+  app <- shiny::shinyApp(
+    ui = app_ui,
+    server = app_server,
+    onStart = onStart,
+    options = combined_options,
+    enableBookmarking = enableBookmarking,
+    uiPattern = uiPattern
   )
+
+  invisible(list(...))
+  app
 }

@@ -77,7 +77,7 @@ app_server <- function(input, output, session) {
   # -------------------------------------------------------------------------
   protein_workbench_server("protein_workbench", shared_state = shared_state)
   protein_extract_server("protein_extract", shared_state = shared_state)
-  plant_mploc_server("plant_mploc", shared_state = shared_state)
+  subcellular_localization_server("subcellular_localization", shared_state = shared_state)
   background_make_server("background_make", shared_state = shared_state)
   protein_links_server("prot_links", shared_state = shared_state)
   Expression_profile_server("Expression_profile", shared_state = shared_state)

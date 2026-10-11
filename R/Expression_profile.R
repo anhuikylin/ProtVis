@@ -1,16 +1,5 @@
 .protvis_kmeans_builtin_path <- function() {
-  candidates <- c(
-    system.file("extdata", "kmeans.csv", package = "ProtVis"),
-    file.path(getwd(), "inst", "extdata", "kmeans.csv"),
-    file.path(getwd(), "..", "inst", "extdata", "kmeans.csv"),
-    file.path(getwd(), "..", "..", "inst", "extdata", "kmeans.csv")
-  )
-  candidates <- unique(candidates[nzchar(candidates) & file.exists(candidates)])
-  if (!length(candidates)) {
-    stop("The bundled Kmeans example (inst/extdata/kmeans.csv) is missing.",
-         call. = FALSE)
-  }
-  normalizePath(candidates[[1L]], winslash = "/", mustWork = TRUE)
+  .protvis_data_file("expression", "kmeans.csv")
 }
 
 .protvis_read_expression_profile <- function(path) {

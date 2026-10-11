@@ -54,6 +54,21 @@ test_that("Plant-mPLoc parser supports single and multiple locations", {
   )
 })
 
+test_that("Plant-mPLoc parser recognizes the plasma-membrane label", {
+  expect_equal(
+    .plant_mploc_extract_prediction("Predicted location: Plasma membrane"),
+    "Cell membrane"
+  )
+  expect_equal(
+    .plant_mploc_extract_prediction("Predicted subcellular locations: Plasma membrane; Nucleus"),
+    c("Cell membrane", "Nucleus")
+  )
+  expect_equal(
+    .plant_mploc_extract_prediction("Predicted locations: PM/PL/CY/M/PX"),
+    c("Cell membrane", "Cytoplasm", "Mitochondrion", "Peroxisome", "Plastid")
+  )
+})
+
 test_that("Plant-mPLoc prefers the prediction submit control", {
   form <- list(fields = list(
     reset = list(type = "submit", value = "Clear"),
@@ -65,8 +80,8 @@ test_that("Plant-mPLoc prefers the prediction submit control", {
 test_that("Plant-mPLoc is wired into the application", {
   ui <- paste(readLines(testthat::test_path("..", "..", "R", "app_ui.R")), collapse = "\n")
   server <- paste(readLines(testthat::test_path("..", "..", "R", "app_server.R")), collapse = "\n")
-  expect_match(ui, 'plant_mploc_ui\\("plant_mploc"\\)')
-  expect_match(server, 'plant_mploc_server\\("plant_mploc"\\)')
+  expect_match(ui, 'subcellular_localization_ui\\("subcellular_localization"\\)')
+  expect_match(server, 'subcellular_localization_server\\("subcellular_localization"\\)')
   module <- paste(readLines(testthat::test_path("..", "..", "R", "plant_mploc.R")), collapse = "\n")
   expect_match(module, 'ns\\("load_demo"\\)')
   expect_match(module, "updateTextAreaInput")

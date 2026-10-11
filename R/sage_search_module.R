@@ -70,50 +70,92 @@
   )
 }
 
+# Confidence filtering is applied after Sage scoring, including recovered runs.
+# Raw result files and unfiltered tables remain available for audit.
+.protvis_sage_filter_bundle <- function(bundle, fdr = 0.01) {
+  fdr <- as.numeric(fdr)
+  if (length(fdr) != 1L || !is.finite(fdr) || fdr <= 0 || fdr > 1) {
+    stop("Sage FDR must be greater than 0 and at most 1.", call. = FALSE)
+  }
+  psms <- bundle$psms_raw %||% bundle$psms
+  lfq <- bundle$lfq_raw %||% bundle$lfq_table
+  required <- c("peptide", "proteins", "label", "rank",
+                "spectrum_q", "peptide_q", "protein_q")
+  if (!is.data.frame(psms) || !all(required %in% names(psms))) {
+    stop("Sage PSM output is missing identification/q-value columns.", call. = FALSE)
+  }
+  keep <- psms$label == 1 & psms$rank == 1
+  for (column in c("spectrum_q", "peptide_q", "protein_q")) {
+    q <- suppressWarnings(as.numeric(psms[[column]]))
+    keep <- keep & is.finite(q) & q >= 0 & q <= fdr
+  }
+  accepted <- psms[which(keep), , drop = FALSE]
+  if (is.data.frame(lfq) && !nrow(lfq)) {
+    lfq <- data.frame(peptide = character(), proteins = character(), q_value = numeric())
+  }
+  if (!is.data.frame(lfq) || !all(c("peptide", "proteins", "q_value") %in% names(lfq))) {
+    stop("Sage LFQ output is missing peptide/proteins/q_value columns.", call. = FALSE)
+  }
+  canonical <- function(values) vapply(strsplit(as.character(values), ";", fixed = TRUE),
+    function(ids) paste(sort(unique(trimws(ids))), collapse = ";"), character(1))
+  key <- function(table) paste(table$peptide, canonical(table$proteins), sep = "\t")
+  q <- suppressWarnings(as.numeric(lfq$q_value))
+  lfq_keep <- is.finite(q) & q >= 0 & q <= fdr & key(lfq) %in% key(accepted)
+  bundle$psms_raw <- psms
+  bundle$lfq_raw <- lfq
+  bundle$psms <- accepted
+  bundle$lfq_table <- lfq[which(lfq_keep), , drop = FALSE]
+  bundle$filtering <- list(fdr = fdr, target_rank = 1L,
+    q_columns = c("spectrum_q", "peptide_q", "protein_q", "q_value"),
+    input_psms = nrow(psms), retained_psms = nrow(accepted),
+    engine_lfq_peptide_q_gate = 0.01,
+    input_lfq = nrow(lfq), retained_lfq = sum(lfq_keep, na.rm = TRUE),
+    quantification = "sum of unique-peptide LFQ intensities; shared peptides excluded",
+    shared_lfq_rows = sum(grepl(";", bundle$lfq_table$proteins, fixed = TRUE)))
+  bundle
+}
+
 .protvis_sage_lfq_protein_matrix <- function(lfq, sample_info, mzml_paths) {
   if (!is.data.frame(lfq) || !nrow(lfq)) {
-    stop("Sage LFQ output is empty. Enable LFQ to create the protein matrix.",
-         call. = FALSE)
+    stop("No Sage LFQ rows pass the confidence filters.", call. = FALSE)
   }
   protein_col <- names(lfq)[tolower(names(lfq)) %in% c("proteins", "protein")][1L]
-  if (is.na(protein_col) || !nzchar(protein_col)) {
-    stop("Sage LFQ output does not contain the required proteins column.",
-         call. = FALSE)
-  }
+  if (is.na(protein_col)) stop("Sage LFQ requires a proteins column.", call. = FALSE)
   file_names <- basename(mzml_paths)
-  intensity_cols <- intersect(file_names, names(lfq))
-  if (!length(intensity_cols)) {
-    intensity_cols <- names(lfq)[tolower(names(lfq)) %in% tolower(file_names)]
+  intensity_cols <- names(lfq)[tolower(names(lfq)) %in% tolower(file_names)]
+  if (length(intensity_cols) != length(file_names) || anyDuplicated(tolower(intensity_cols))) {
+    stop("Every mzML input must match exactly one Sage LFQ column.", call. = FALSE)
   }
-  if (!length(intensity_cols)) {
-    stop("Sage LFQ columns could not be matched to the mzML files.", call. = FALSE)
-  }
-  sample_info <- as.data.frame(sample_info, stringsAsFactors = FALSE,
-                               check.names = FALSE)
-  sample_ids <- as.character(sample_info$sample_id)
+  intensity_cols <- intensity_cols[match(tolower(file_names), tolower(intensity_cols))]
+  sample_info <- as.data.frame(sample_info, stringsAsFactors = FALSE, check.names = FALSE)
   file_col <- names(sample_info)[tolower(names(sample_info)) %in%
-                                  c("mzml_file", "mzml", "raw_file", "file", "filename")][1L]
-  mapped_ids <- if (!is.na(file_col) && nzchar(file_col)) {
-    sample_ids[match(tolower(intensity_cols), tolower(as.character(sample_info[[file_col]])))]
-  } else character()
-  mapped_ids[is.na(mapped_ids) | !nzchar(mapped_ids)] <-
-    tools::file_path_sans_ext(intensity_cols[is.na(mapped_ids) | !nzchar(mapped_ids)])
-  protein_lists <- strsplit(as.character(lfq[[protein_col]]), ";", fixed = TRUE)
-  protein_lists <- lapply(protein_lists, function(x) {
-    x <- trimws(x)
-    x[nzchar(x) & !grepl("^rev_", x, ignore.case = TRUE)]
-  })
-  proteins <- sort(unique(unlist(protein_lists, use.names = FALSE)))
-  proteins <- proteins[nzchar(proteins)]
-  if (!length(proteins)) stop("No target proteins were found in Sage LFQ output.",
-                              call. = FALSE)
-  result <- matrix(NA_real_, nrow = length(proteins), ncol = length(intensity_cols),
-                   dimnames = list(proteins, mapped_ids))
+    c("mzml_file", "mzml", "raw_file", "file", "filename")][1L]
+  mapped_ids <- if (!is.na(file_col)) {
+    as.character(sample_info$sample_id)[match(tolower(intensity_cols),
+      tolower(basename(as.character(sample_info[[file_col]]))))]
+  } else {
+    candidates <- tools::file_path_sans_ext(intensity_cols)
+    if (all(candidates %in% sample_info$sample_id)) candidates else rep(NA_character_, length(candidates))
+  }
+  if (anyNA(mapped_ids) || any(!nzchar(mapped_ids)) || anyDuplicated(mapped_ids)) {
+    stop("Provide an unambiguous mzml_file-to-sample_id mapping.", call. = FALSE)
+  }
+  protein_lists <- lapply(strsplit(as.character(lfq[[protein_col]]), ";", fixed = TRUE),
+    function(ids) sort(unique(trimws(ids[nzchar(trimws(ids))]))))
+  # Do not remove decoys from a mixed target/decoy group and call it unique.
+  unique_target <- lengths(protein_lists) == 1L &
+    !vapply(protein_lists, function(ids) any(grepl("rev_", ids, fixed = TRUE)), logical(1))
+  protein_ids <- vapply(protein_lists[unique_target], `[[`, character(1), 1L)
+  proteins <- sort(unique(protein_ids))
+  if (!length(proteins)) stop("No unique target peptides remain for protein quantification.", call. = FALSE)
+  result <- matrix(NA_real_, length(proteins), length(intensity_cols),
+    dimnames = list(proteins, mapped_ids))
   for (j in seq_along(intensity_cols)) {
-    values <- .protvis_safe_numeric(lfq[[intensity_cols[[j]]]])
-    for (i in which(is.finite(values) & lengths(protein_lists) > 0L)) {
-      ids <- protein_lists[[i]]
-      result[ids, j] <- rowSums(cbind(result[ids, j], values[[i]]), na.rm = TRUE)
+    values <- .protvis_safe_numeric(lfq[[intensity_cols[[j]]]])[unique_target]
+    for (id in proteins) {
+      observed <- values[protein_ids == id]
+      observed <- observed[is.finite(observed) & observed > 0]
+      if (length(observed)) result[id, j] <- sum(observed)
     }
   }
   as.data.frame(result, check.names = FALSE, stringsAsFactors = FALSE)
@@ -130,10 +172,12 @@
                    tolower(as.character(sample_info[[file_col]])))
     if (all(!is.na(index))) sample_info <- sample_info[index, , drop = FALSE]
   }
+  bundle <- .protvis_sage_filter_bundle(bundle, parameters$fdr %||% 0.01)
   matrix <- .protvis_sage_lfq_protein_matrix(bundle$lfq_table, sample_info, mzml_paths)
   dataset <- create_protvis_dataset(
     matrix, sample_info = sample_info,
-    metadata = list(source = "Sage LFQ", raw_fasta = list(
+    metadata = list(source = "Sage LFQ", expression_scale = "raw",
+      quantification_method = "unique_peptide_sum", raw_fasta = list(
       name = basename(fasta), path = fasta
     ), raw_directory = dirname(mzml_paths[[1L]]), output_directory = output_directory)
   )
@@ -279,6 +323,10 @@ protvis_sage_build_config <- function(fasta, mzml_paths, output_directory,
                                        parameters = list()) {
   defaults <- .protvis_sage_default_parameters()
   parameters <- utils::modifyList(defaults, parameters %||% list())
+  cutoff <- as.numeric(parameters$fdr)
+  if (length(cutoff) != 1L || !is.finite(cutoff) || cutoff <= 0 || cutoff > 1) {
+    stop("Sage FDR must be greater than 0 and at most 1.", call. = FALSE)
+  }
   fasta <- .protvis_sage_path(fasta, "FASTA", must_work = TRUE)
   if (is.null(mzml_paths) || length(mzml_paths) < 1L ||
       any(is.na(mzml_paths)) || any(!nzchar(trimws(as.character(mzml_paths))))) {
@@ -300,15 +348,15 @@ protvis_sage_build_config <- function(fasta, mzml_paths, output_directory,
     list(missed_cleavages = as.integer(parameters$missed_cleavages),
          min_len = as.integer(parameters$min_peptide_length),
          max_len = as.integer(parameters$max_peptide_length),
-         cleave_at = "KR", restrict = "P", c_terminal = TRUE)
+         cleave_at = "KR", restrict = NULL, c_terminal = TRUE)
   }
   static_mods <- if (isTRUE(parameters$fixed_carbamidomethyl)) {
     list(C = 57.021464)
-  } else list()
-  variable_mods <- list()
-  if (isTRUE(parameters$variable_oxidation)) variable_mods$M <- 15.994915
+  } else stats::setNames(list(), character())
+  variable_mods <- stats::setNames(list(), character())
+  if (isTRUE(parameters$variable_oxidation)) variable_mods$M <- list(15.994915)
   if (isTRUE(parameters$variable_nterm_acetyl)) {
-    variable_mods[["["]] <- 42.010565
+    variable_mods[["["]] <- list(42.010565)
   }
   list(
     database = list(
@@ -359,16 +407,19 @@ run_sage_search <- function(fasta, mzml_paths, output_directory,
                                          must_work = TRUE)
   sage <- protvis_sage_executable(sage_path)
   if (is.null(sage) || !file.exists(sage)) {
-    stop("Sage executable was not found. ProtVis checks the bundled executable for Windows, Linux, and macOS, then Sage on PATH.",
+    stop("Sage executable was not found. ProtVis checks the locally installed ProtVisDatabase executable for Windows, Linux, and macOS, then Sage on PATH.",
          call. = FALSE)
   }
   config <- protvis_sage_build_config(fasta, mzml_paths, output_directory, parameters)
   config_path <- file.path(output_directory, "sage_config.json")
-  jsonlite::write_json(config, config_path, auto_unbox = TRUE, pretty = TRUE,
-                       na = "null")
+  config_json <- config
+  config_json$mzml_paths <- unname(as.list(config$mzml_paths))
+  jsonlite::write_json(config_json, config_path, auto_unbox = TRUE, pretty = TRUE,
+                       na = "null", null = "null")
   started <- Sys.time()
   log <- tryCatch(
-    system2(sage, args = shQuote(config_path), stdout = TRUE, stderr = TRUE),
+    system2(sage, args = c("--disable-telemetry-i-dont-want-to-improve-sage",
+      shQuote(config_path)), stdout = TRUE, stderr = TRUE),
     error = function(e) structure(conditionMessage(e), status = 1L)
   )
   exit_status <- attr(log, "status", exact = TRUE) %||% 0L
@@ -389,6 +440,9 @@ run_sage_search <- function(fasta, mzml_paths, output_directory,
     psms = protvis_read_sage_table(files$results),
     lfq_table = protvis_read_sage_table(files$lfq)
   )
+  if (identical(bundle$status, "success")) {
+    bundle <- .protvis_sage_filter_bundle(bundle, parameters$fdr %||% 0.01)
+  }
   bundle
 }
 
@@ -410,7 +464,7 @@ sage_search_ui <- function(id) {
       shiny::checkboxInput(ns("fixed_carbamidomethyl"), "Carbamidomethyl (C), fixed", TRUE),
       shiny::checkboxInput(ns("variable_oxidation"), "Oxidation (M), variable", TRUE),
       shiny::checkboxInput(ns("variable_nterm_acetyl"), "Protein N-term Acetyl, variable", TRUE),
-      shiny::numericInput(ns("fdr"), "Spectrum/peptide/protein FDR", 0.01, min = 0.0001, max = 0.2, step = 0.001),
+      shiny::numericInput(ns("fdr"), "Post-search q-value cutoff (LFQ tracing ≤1%)", 0.01, min = 0.0001, max = 0.2, step = 0.001),
       shiny::checkboxInput(ns("lfq"), "Enable LFQ", TRUE),
       shiny::actionButton(ns("run"), "Run Sage Search", icon = bsicons::bs_icon("play-fill"),
                           class = "btn-primary w-100 pv-run-button"),

@@ -70,16 +70,14 @@ data_normalization_ui <- function(id) {
           ns("normalization_method"),
           "Normalization Method",
           choices = c(
-            "Auto (source recommended)" = "auto",
-            "MaxQuant recommended (median center + row shift)" = "maxquant_recommended",
+            "Median centering" = "auto",
+            "Median centering + positive-value shift" = "maxquant_recommended",
             "Median subtraction" = "median_subtraction"
           ),
           selected = "auto"
         ),
         shiny::div(
-          "For MaxQuant, Auto reproduces the archived workflow: sample-wise ",
-          "median subtraction followed by the row-wise +abs(min)+5 shift ",
-          "(exact zeros become 1).",
+          "Normalize sample intensity distributions before downstream analysis.",
           style = "font-size:12px;color:#657789;line-height:1.45;margin-top:-6px;margin-bottom:10px;"
         ),
 

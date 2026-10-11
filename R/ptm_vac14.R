@@ -2,6 +2,8 @@
 
 .protvis_vac14_target <- function() {
   list(
+    benchmark_id = "phosphorylation_pxd001057",
+    ptm_type = "phosphorylation",
     project = "PXD001057",
     protein = "AT2G01690.1 (Vac14)",
     sequence = "ATSGVPFSQYK",
@@ -23,12 +25,161 @@
   )
 }
 
+
+.protvis_maize_kac_metadata <- function() {
+  path <- ProtVisDatabase::protvis_database_path(
+    "extdata",
+    "ptm",
+    "maize_kac",
+    "maize_peptideatlas_kac_VGYNPDK_Acetyl.tsv",
+    must_work = TRUE
+  )
+  table <- utils::read.delim(
+    path,
+    sep = "\t",
+    header = TRUE,
+    quote = "",
+    comment.char = "",
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  if (!base::all(c("field", "value") %in% base::names(table))) {
+    stop("The maize K-acetylation benchmark metadata is malformed.", call. = FALSE)
+  }
+  stats::setNames(base::as.character(table$value), base::as.character(table$field))
+}
+
+.protvis_maize_kac_target <- function() {
+  meta <- .protvis_maize_kac_metadata()
+  value <- function(name, default = "") {
+    answer <- meta[[name]]
+    if (base::is.null(answer) || !base::length(answer) ||
+        base::is.na(answer[[1L]]) || !base::nzchar(answer[[1L]])) {
+      return(default)
+    }
+    base::as.character(answer[[1L]])
+  }
+
+  list(
+    benchmark_id = value("benchmark_id", "maize_kac_peptideatlas_2023_09"),
+    ptm_type = "acetylation",
+    project = value("dataset", "Maize PeptideAtlas 2023-09"),
+    organism = value("organism", "Zea mays"),
+    protein = value("primary_maize_protein", "Zm00001eb285220_P003"),
+    sequence = value("peptide", "VGYNPDKIAFVPISGFEGDNMIER"),
+    modified_sequence = value(
+      "modified_peptide",
+      "VGYNPDK[Acetyl]IAFVPISGFEGDNMIER"
+    ),
+    modification = value("modification", "N6-acetyl-L-lysine (Kac)"),
+    acetyl_position = base::as.integer(value("modified_position", "7")),
+    acetyl_mass = base::as.numeric(value("mass_shift_da", "42.010565")),
+    precursor_mz = base::as.numeric(value("precursor_mz", "904.110900")),
+    precursor_charge = base::as.integer(value("precursor_charge", "3")),
+    spectrum_title = paste0(
+      "MaizePeptideAtlas_2023-09_",
+      "VGYNPDK[Acetyl]IAFVPISGFEGDNMIER/3"
+    ),
+    best_raw_spectrum = value(
+      "best_raw_spectrum",
+      "qe2_03102014_14_o2.28787.28787"
+    ),
+    best_raw_source_pxd = value("best_raw_source_pxd", "PXD002379"),
+    supporting_pxd_ids = value("supporting_pxd_ids"),
+    peptideatlas_probability = value("peptideatlas_probability"),
+    consensus_replicates = value("consensus_replicates"),
+    consensus_dot = value("consensus_dot"),
+    consensus_fraction_assigned_peaks = value(
+      "consensus_fraction_assigned_peaks"
+    ),
+    source_library = value("source_library"),
+    peptideatlas_build = value("peptideatlas_build"),
+    paper_doi = value("paper_doi", "10.1021/acs.jproteome.4c00320"),
+    mgf = ProtVisDatabase::protvis_database_path(
+      "extdata",
+      "ptm",
+      "maize_kac",
+      "maize_peptideatlas_kac_VGYNPDK_Acetyl.mgf",
+      must_work = TRUE
+    )
+  )
+}
+
+.protvis_maize_kac_bundle <- function() {
+  .protvis_ptm_require_spectrum_packages()
+  target <- .protvis_maize_kac_target()
+
+  modifications <- base::data.frame(
+    location = target$acetyl_position,
+    mass = target$acetyl_mass,
+    name = "Acetyl",
+    stringsAsFactors = FALSE
+  )
+
+  psm <- base::data.frame(
+    sequence = target$sequence,
+    spectrumID = "index=0",
+    chargeState = target$precursor_charge,
+    passThreshold = TRUE,
+    experimentalMassToCharge = target$precursor_mz,
+    calculatedMassToCharge = target$precursor_mz,
+    spectrum.title = target$spectrum_title,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  psm$DatabaseAccess <- I(base::list(target$protein))
+  psm$modLocation <- I(base::list(modifications$location))
+  psm$modMass <- I(base::list(modifications$mass))
+  psm$modName <- I(base::list(modifications$name))
+
+  catalog <- .protvis_ptm_psm_catalog(psm)
+  spectra <- Spectra::Spectra(
+    target$mgf,
+    source = MsBackendMgf::MsBackendMgf()
+  )
+  metadata <- base::as.data.frame(
+    Spectra::spectraData(spectra),
+    optional = TRUE
+  )
+  if (!base::length(spectra)) {
+    stop("The bundled maize K-acetylation spectrum is empty.", call. = FALSE)
+  }
+
+  list(
+    psm = psm,
+    catalog = catalog,
+    spectra = spectra,
+    metadata = metadata,
+    source = "Maize PeptideAtlas reanalysis · consensus HR-HCD spectrum",
+    benchmark = target
+  )
+}
+
+.protvis_ptm_require_spectrum_packages <- function() {
+  packages <- c("Spectra", "MsBackendMgf")
+  missing <- packages[!base::vapply(
+    packages,
+    base::requireNamespace,
+    quietly = TRUE,
+    FUN.VALUE = logical(1L)
+  )]
+  if (base::length(missing)) {
+    stop(
+      "PTM spectrum visualization requires Bioconductor packages: ",
+      base::paste(missing, collapse = ", "),
+      ". Install them with BiocManager::install(c(\"Spectra\", \"MsBackendMgf\" )).",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 .protvis_vac14_require_packages <- function() {
   packages <- c("Spectra", "MsBackendMgf", "PSMatch", "BiocParallel")
   missing <- packages[!vapply(packages, requireNamespace, logical(1L), quietly = TRUE)]
   if (length(missing)) {
     stop(
-      "Vac14 validation requires Bioconductor packages: ",
+      "PTM mzIdentML workflow requires Bioconductor packages: ",
       paste(missing, collapse = ", "),
       ". Install them with BiocManager::install(c(\"Spectra\", ",
       "\"MsBackendMgf\", \"PSMatch\", \"BiocParallel\")).",
@@ -312,7 +463,7 @@
   if (is.list(value) && length(value) == 1L) value <- value[[1L]]
   value <- unlist(value, recursive = TRUE, use.names = FALSE)
   value <- as.character(value)
-  if (length(value) == 1L && grepl(";", value, fixed = TRUE)) {
+  if (column != "spectrum.title" && length(value) == 1L && grepl(";", value, fixed = TRUE)) {
     value <- unlist(strsplit(value, ";", fixed = TRUE), use.names = FALSE)
   }
   trimws(value[!is.na(value) & nzchar(trimws(value))])
@@ -353,6 +504,13 @@
     if (!nrow(mods)) next
     if (nrow(mods) == 1L && grepl("phosph", mods$name[[1L]], ignore.case = TRUE)) {
       labels[i] <- paste0("[p", residues[i], "]")
+      next
+    }
+    if (nrow(mods) == 1L &&
+        residues[i] == "K" &&
+        (grepl("acetyl", mods$name[[1L]], ignore.case = TRUE) ||
+         abs(mods$mass[[1L]] - 42.010565) < 0.02)) {
+      labels[i] <- "K[Acetyl]"
       next
     }
     annotations <- vapply(seq_len(nrow(mods)), function(j) {
@@ -561,7 +719,11 @@
   psm_row <- bundle$psm[catalog_row$psm_index, , drop = FALSE]
   sequence <- catalog_row$sequence[[1L]]
   modifications <- .protvis_ptm_modifications(psm_row, sequence)
-  theoretical <- .protvis_ptm_theoretical(sequence, modifications)
+  theoretical <- if (identical(bundle$benchmark$fragmentation, "ETD")) {
+    .protvis_ptm_etd_theoretical(sequence, modifications)
+  } else {
+    .protvis_ptm_theoretical(sequence, modifications)
+  }
   spectrum_match <- .protvis_ptm_find_spectrum(bundle, psm_row, catalog_row)
   spectrum <- bundle$spectra[spectrum_match$index]
   peak_matrix <- Spectra::peaksData(spectrum)[[1L]]
@@ -589,29 +751,69 @@
   protein <- if (length(proteins)) paste(proteins, collapse = "; ") else "Protein not reported"
   spectrum_title <- catalog_row$spectrum_title[[1L]]
   if (!nzchar(spectrum_title)) spectrum_title <- catalog_row$spectrum_id[[1L]]
-  benchmark <- .protvis_vac14_target()
-  is_public_benchmark <- identical(bundle$source, "PRIDE public files") &&
-    identical(sequence, benchmark$sequence) &&
-    (identical(catalog_row$spectrum_id[[1L]], benchmark$spectrum_id) ||
-       identical(spectrum_title, benchmark$spectrum_title))
-  if (is_public_benchmark) protein <- benchmark$protein
+  benchmark <- bundle$benchmark %||% NULL
+  if (base::is.null(benchmark) &&
+      identical(bundle$source, "PRIDE public files")) {
+    benchmark <- .protvis_vac14_target()
+  }
+
+  benchmark_match <- !base::is.null(benchmark) &&
+    identical(sequence, benchmark$sequence)
+
+  benchmark_id <- if (benchmark_match) {
+    benchmark$benchmark_id %||% ""
+  } else {
+    ""
+  }
+  is_public_benchmark <- identical(
+    benchmark_id,
+    "phosphorylation_pxd001057"
+  )
+
+  if (benchmark_match &&
+      base::nzchar(benchmark$protein %||% "")) {
+    protein <- benchmark$protein
+  }
+
   display_sequence <- if (is_public_benchmark) {
     paste0("R.", catalog_row$modified_sequence[[1L]], ".H")
   } else {
     catalog_row$modified_sequence[[1L]]
   }
+
   spectrum_label <- if (is_public_benchmark) {
     paste("Vac14", display_sequence)
+  } else if (benchmark_match &&
+             base::nzchar(benchmark$ptm_type %||% "")) {
+    paste(
+      if (identical(benchmark$ptm_type, "acetylation")) {
+        "Maize Kac"
+      } else {
+        benchmark$ptm_type
+      },
+      display_sequence
+    )
   } else {
     display_sequence
   }
+
+  project <- if (benchmark_match) {
+    benchmark$project %||% "Built-in PTM benchmark"
+  } else {
+    "Uploaded dataset"
+  }
+
   target <- list(
-    project = if (identical(bundle$source, "PRIDE public files")) "PXD001057" else "Uploaded dataset",
-    protein = protein, sequence = sequence,
+    benchmark_id = benchmark_id,
+    ptm_type = if (benchmark_match) benchmark$ptm_type %||% "" else "",
+    project = project,
+    protein = protein,
+    sequence = sequence,
     modified_sequence = catalog_row$modified_sequence[[1L]],
     display_sequence = display_sequence,
     spectrum_label = spectrum_label,
     is_public_benchmark = is_public_benchmark,
+    is_builtin_benchmark = benchmark_match,
     spectrum_id = catalog_row$spectrum_id[[1L]],
     spectrum_title = spectrum_title,
     precursor_mz = if (is.finite(observed_mz)) observed_mz else calculated_precursor,
@@ -629,7 +831,7 @@
     Item = c("Dataset", "Protein", "Peptide", "Modified peptide", "Spectrum",
              "Spectrum mapping", "Data source", "Observed precursor m/z",
              "Calculated precursor m/z", "Charge", "Fragment tolerance",
-             "Matched fragment ions", "Matched b/y coverage ions"),
+             "Matched fragment ions", "Matched backbone coverage ions"),
     Value = c(target$project, protein, sequence, target$modified_sequence,
               spectrum_title, spectrum_match$method, bundle$source,
               ifelse(is.finite(observed_mz), sprintf("%.6f", observed_mz), "Not reported"),
@@ -638,6 +840,61 @@
               paste0(sum(coverage$matched), "/", nrow(coverage))),
     stringsAsFactors = FALSE
   )
+
+  if (benchmark_match &&
+      identical(benchmark$ptm_type %||% "", "acetylation")) {
+    provenance <- data.frame(
+      Item = c(
+        "PTM benchmark",
+        "Modified site",
+        "Best contributing raw spectrum",
+        "Best raw source PXD",
+        "Supporting PXD IDs",
+        "PeptideAtlas probability",
+        "Consensus replicates",
+        "Consensus dot score",
+        "Assigned peak fraction",
+        "Reference DOI"
+      ),
+      Value = c(
+        "Maize lysine acetylation (Kac)",
+        paste0("Lys", benchmark$acetyl_position, " · +",
+               sprintf("%.6f", benchmark$acetyl_mass), " Da"),
+        benchmark$best_raw_spectrum %||% "Not reported",
+        benchmark$best_raw_source_pxd %||% "Not reported",
+        benchmark$supporting_pxd_ids %||% "Not reported",
+        benchmark$peptideatlas_probability %||% "Not reported",
+        benchmark$consensus_replicates %||% "Not reported",
+        benchmark$consensus_dot %||% "Not reported",
+        benchmark$consensus_fraction_assigned_peaks %||% "Not reported",
+        benchmark$paper_doi %||% "Not reported"
+      ),
+      stringsAsFactors = FALSE
+    )
+    summary <- base::rbind(summary, provenance)
+  }
+  if (benchmark_match && identical(benchmark$ptm_type, "glycosylation")) {
+    provenance <- benchmark$provenance
+    summary <- rbind(summary, data.frame(
+      Item = c("Organism", "Source-assigned site", "Fragmentation", "Identification score / expectation", "Source table", "Reference", "Scope"),
+      Value = c(benchmark$organism, "Asn117 (peptide Asn1), HexNAc +203.079373 Da",
+        "ETD; c / z radical, charges 1–3; cleavage before Pro excluded",
+        paste(provenance$score, provenance$expectation, sep = " / "),
+        provenance$source_table, provenance$paper_url,
+        "Mass-based annotation of source identification; no intact glycan or new FDR inference"),
+      stringsAsFactors = FALSE))
+  }
+  if (benchmark_match && identical(benchmark$ptm_type, "methylation")) {
+    provenance <- benchmark$provenance
+    summary <- rbind(summary, data.frame(
+      Item = c("Organism", "Source-assigned site", "Source spectrum", "Mascot score / identity threshold", "Mascot expectation", "Source PSM status", "Reference DOI", "Scope"),
+      Value = c(benchmark$organism, "AGO1 Arg62 (peptide Arg3), Dimethyl +28.031300 Da",
+        paste(provenance$source_mgf, provenance$source_spectrum_id, "scan", provenance$source_scan),
+        paste(provenance$score, provenance$identity_threshold, sep = " / "),
+        provenance$expectation, "rank 1; passThreshold=true; non-decoy",
+        provenance$paper_doi, "Source-assigned biological dimethylation; mass alone does not distinguish symmetric / asymmetric forms"),
+      stringsAsFactors = FALSE))
+  }
   list(target = target, source = bundle$source, psm_table = psm_table,
        spectrum_match_column = spectrum_match$column, peaks = peaks,
        matched = matched, theoretical = theoretical, key_ions = coverage,
@@ -792,7 +1049,7 @@
     xlab = "m/z", ylab = "Relative intensity (%)", main = ""
   )
   colors <- ifelse(matched$neutral, "#228B22",
-                   ifelse(matched$series == "b", b_color, y_color))
+                   ifelse(matched$series %in% c("b", "c"), b_color, y_color))
   segments(matched$observed_mz, 0, matched$observed_mz, matched$intensity,
            col = colors, lwd = 1.5)
   labels <- matched[matched$intensity >= 1, , drop = FALSE]
@@ -800,7 +1057,8 @@
                          ifelse(labels$series == "b", b_color, y_color))
   text(labels$observed_mz, pmin(labels$intensity + 3, 101), labels = labels$label,
        col = label_colors, cex = 0.72, font = 2)
-  legend("topright", legend = c("b ions", "y ions", "neutral loss"),
+  legend("topright", legend = c(if (identical(result$theoretical$fragmentation, "ETD")) "c ions" else "b ions",
+                                          if (identical(result$theoretical$fragmentation, "ETD")) "z radical ions" else "y ions", "neutral loss"),
          col = c(b_color, y_color, "#228B22"), lwd = 2, bty = "n", cex = 0.8)
   mtext(
     paste0("Vac14 ", result$target$modified_sequence, "; ",
@@ -858,8 +1116,8 @@
       shiny::numericInput(ns("vac14_tolerance"), "Fragment tolerance (Da)",
                           value = 0.5, min = 0.01, max = 2, step = 0.01),
       shiny::fluidRow(
-        shiny::column(6, colourpicker::colourInput(ns("vac14_b_color"), "b ions", "#C0392B")),
-        shiny::column(6, colourpicker::colourInput(ns("vac14_y_color"), "y ions", "#2E63C4"))
+        shiny::column(6, colourpicker::colourInput(ns("vac14_b_color"), "b / c ions", "#C0392B")),
+        shiny::column(6, colourpicker::colourInput(ns("vac14_y_color"), "y / z ions", "#2E63C4"))
       ),
       shiny::actionButton(
         ns("vac14_run"), "RUN VAC14 VALIDATION",
@@ -908,6 +1166,79 @@
     } else {
       paste("public", input$vac14_tolerance, sep = "|")
     }
+  })
+
+  output$vac14_benchmark_note <- shiny::renderUI({
+    ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
+
+    if (identical(ptm_type, "acetylation")) {
+      return(shiny::p(
+        "Maize Kac benchmark: ",
+        shiny::strong("VGYNPDK[Acetyl]IAFVPISGFEGDNMIER"),
+        " · internal Lys7 acetylation.",
+        class = "pw-note"
+      ))
+    }
+
+    shiny::p(
+      "Phosphorylation benchmark: ",
+      shiny::strong("AT[pS]GVPFSQYK (Ser3)"),
+      ".",
+      class = "pw-note"
+    )
+  })
+
+  output$vac14_benchmark_info <- shiny::renderUI({
+    ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
+
+    if (identical(ptm_type, "acetylation")) {
+      target <- base::tryCatch(
+        .protvis_maize_kac_target(),
+        error = function(e) NULL
+      )
+      if (base::is.null(target)) {
+        return(shiny::div(
+          class = "alert alert-warning py-2 small",
+          "Maize Kac benchmark data are unavailable. Reinstall ProtVisDatabase."
+        ))
+      }
+
+      source_pxd <- target$best_raw_source_pxd %||% "PXD002379"
+      return(shiny::div(
+        class = "alert alert-info py-2 small",
+        shiny::strong("Maize PeptideAtlas 2023-09"),
+        " · consensus HR-HCD · ",
+        shiny::tags$a(
+          href = target$peptideatlas_build,
+          target = "_blank",
+          rel = "noopener noreferrer",
+          "PeptideAtlas"
+        ),
+        " · ",
+        shiny::tags$a(
+          href = base::paste0(
+            "https://www.ebi.ac.uk/pride/archive/projects/",
+            source_pxd
+          ),
+          target = "_blank",
+          rel = "noopener noreferrer",
+          source_pxd
+        )
+      ))
+    }
+
+    target <- .protvis_vac14_target()
+    shiny::div(
+      class = "alert alert-info py-2 small",
+      shiny::strong("PXD001057"),
+      " · mzIdentML + MGF · ",
+      shiny::tags$a(
+        href = target$base_url,
+        target = "_blank",
+        rel = "noopener noreferrer",
+        "PRIDE"
+      )
+    )
   })
 
   output$vac14_status <- shiny::renderUI({
@@ -1039,6 +1370,12 @@
   b_number <- as.integer(table$B)
   y_number <- as.integer(table$Y)
   mappings <- list(
+    `C Ions` = paste0("c", b_number),
+    `C+2H` = paste0("c", b_number, "++"),
+    `C+3H` = paste0("c", b_number, "+++"),
+    `Z Ions` = paste0("z", y_number),
+    `Z+2H` = paste0("z", y_number, "++"),
+    `Z+3H` = paste0("z", y_number, "+++"),
     `B Ions` = paste0("b", b_number),
     `B+2H` = paste0("b", b_number, "++"),
     `B-NH3` = paste0("b", b_number, "-NH3"),
@@ -1089,7 +1426,7 @@
   ifelse(
     matched$neutral,
     neutral_color,
-    ifelse(matched$series == "b", b_color, y_color)
+    ifelse(matched$series %in% c("b", "c"), b_color, y_color)
   )
 }
 
@@ -1155,7 +1492,8 @@
   label_colors <- .protvis_vac14_match_colors(labels, b_color, y_color, "#228B22")
   text(labels$observed_mz, pmin(labels$intensity + 3, 101), labels = labels$label,
        col = label_colors, cex = 0.72, font = 2)
-  legend("topright", legend = c("b ions", "y ions", "neutral loss"),
+  legend("topright", legend = c(if (identical(result$theoretical$fragmentation, "ETD")) "c ions" else "b ions",
+                                          if (identical(result$theoretical$fragmentation, "ETD")) "z radical ions" else "y ions", "neutral loss"),
          col = c(b_color, y_color, "#228B22"), lwd = 2, bty = "n", cex = 0.8)
   mtext(
     paste0(result$target$spectrum_label %||% result$target$modified_sequence, "; ",
@@ -1198,15 +1536,25 @@
   bslib::layout_sidebar(
     sidebar = bslib::sidebar(
       width = 380,
-      shiny::h4("PTM peptide-spectrum visualization"),
-      shiny::p(
-        "Load all PSMs from mzIdentML, select any peptide/spectrum, and visualize its dynamic fragment annotation. ",
-        "Changing the selection refreshes the table and spectrum automatically; the button reruns it manually. ",
-        shiny::strong("AT[pS]GVPFSQYK (Ser3)"), " remains the default public benchmark."
+      shiny::h4("PTM spectrum"),
+      shiny::selectInput(
+        ns("vac14_ptm_type"),
+        "PTM type",
+        choices = c(
+          "Phosphorylation" = "phosphorylation",
+          "Lysine acetylation (Kac)" = "acetylation",
+          "Plant N-glycosylation (HexNAc / ETD)" = "glycosylation",
+          "Plant arginine dimethylation" = "methylation"
+        ),
+        selected = "phosphorylation"
       ),
+      shiny::uiOutput(ns("vac14_benchmark_note")),
       shiny::radioButtons(
         ns("vac14_source"), "Input source",
-        choices = c("PRIDE PXD001057 files" = "public", "Upload files" = "upload"),
+        choices = c(
+          "Built-in benchmark" = "public",
+          "Upload files" = "upload"
+        ),
         selected = "public"
       ),
       shiny::conditionalPanel(
@@ -1217,34 +1565,26 @@
       ),
       shiny::conditionalPanel(
         condition = sprintf("input['%s'] === 'public'", ns("vac14_source")),
-        shiny::div(
-          class = "alert alert-info py-2 small",
-          shiny::strong("PXD001057 files"), shiny::tags$br(),
-          "E1R2_SCX5_soluble.mzid.gz", shiny::tags$br(),
-          "E1R2_SCX5_soluble.mzid_E1R2_SCX5_soluble.MGF", shiny::tags$br(),
-          shiny::tags$a(href = .protvis_vac14_target()$base_url,
-                        target = "_blank", rel = "noopener noreferrer",
-                        "Open PRIDE archive")
-        )
+        shiny::uiOutput(ns("vac14_benchmark_info"))
       ),
       shiny::actionButton(
-        ns("vac14_load"), "LOAD PSM LIST",
+        ns("vac14_load"), "LOAD PSMs",
         class = "btn-outline-primary w-100 pv-run-button",
         icon = bsicons::bs_icon("list-ul")
       ),
       shiny::selectizeInput(
-        ns("vac14_psm_choice"), "Select peptide / PSM",
+        ns("vac14_psm_choice"), "Peptide / PSM",
         choices = NULL, multiple = FALSE,
-        options = list(placeholder = "Load files first, then search peptide or spectrum")
+        options = list(placeholder = "Search peptide or spectrum")
       ),
       shiny::numericInput(ns("vac14_tolerance"), "Fragment tolerance (Da)",
                           value = 0.5, min = 0.01, max = 2, step = 0.01),
       shiny::fluidRow(
-        shiny::column(6, colourpicker::colourInput(ns("vac14_b_color"), "b ions", "#C0392B")),
-        shiny::column(6, colourpicker::colourInput(ns("vac14_y_color"), "y ions", "#2E63C4"))
+        shiny::column(6, colourpicker::colourInput(ns("vac14_b_color"), "b / c ions", "#C0392B")),
+        shiny::column(6, colourpicker::colourInput(ns("vac14_y_color"), "y / z ions", "#2E63C4"))
       ),
       shiny::actionButton(
-        ns("vac14_run"), "VISUALIZE SELECTED PEPTIDE",
+        ns("vac14_run"), "VISUALIZE",
         class = "btn-primary w-100 pv-run-button",
         icon = bsicons::bs_icon("play-fill")
       ),
@@ -1272,7 +1612,8 @@
   bundle <- shiny::reactiveVal(NULL)
   result <- shiny::reactiveVal(NULL)
   status <- shiny::reactiveVal(list(
-    type = "idle", message = "Load the mzIdentML and MGF files to list their peptide-spectrum matches."
+    type = "idle",
+    message = "Choose a PTM benchmark or upload mzIdentML + MGF files."
   ))
   load_running <- shiny::reactiveVal(FALSE)
   run_running <- shiny::reactiveVal(FALSE)
@@ -1290,8 +1631,128 @@
     result(NULL)
     completed_signature(NULL)
     shiny::updateSelectizeInput(session, "vac14_psm_choice", choices = character(), selected = character())
-    status(list(type = "idle", message = "Input changed. Click LOAD PSM LIST."))
+    status(list(type = "idle", message = "Input changed. Click LOAD PSMs."))
   }
+
+
+  output$vac14_benchmark_note <- shiny::renderUI({
+    ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
+
+    if (identical(ptm_type, "methylation")) {
+      return(shiny::p("Arabidopsis AGO1 methylation: ",
+        shiny::strong("GGR[Dimethyl]GYGQPPQQQQQYGGPQEYQGR"),
+        " · Arg62 · HCD. Mass annotation does not distinguish symmetric / asymmetric dimethylation.",
+        class = "pw-note"))
+    }
+
+    if (identical(ptm_type, "glycosylation")) {
+      return(shiny::p("Arabidopsis N-glycosylation: ",
+        shiny::strong("N[HexNAc]VTHAPRPGGFSSSVVSGLSQGSGEYFTR"),
+        " · Asn117 / ETD c and z radical ions. Source-assigned HexNAc remnant; no intact glycan inference.",
+        class = "pw-note"))
+    }
+
+    if (identical(ptm_type, "acetylation")) {
+      return(shiny::p(
+        "Maize Kac benchmark: ",
+        shiny::strong("VGYNPDK[Acetyl]IAFVPISGFEGDNMIER"),
+        " · Lys7.",
+        class = "pw-note"
+      ))
+    }
+
+    shiny::p(
+      "Phosphorylation benchmark: ",
+      shiny::strong("AT[pS]GVPFSQYK (Ser3)"),
+      ".",
+      class = "pw-note"
+    )
+  })
+
+  output$vac14_benchmark_info <- shiny::renderUI({
+    ptm_type <- input$vac14_ptm_type %||% "phosphorylation"
+
+    if (identical(ptm_type, "methylation")) {
+      return(shiny::div(class = "alert alert-info py-2 small",
+        shiny::strong("Arabidopsis thaliana · AGO1 · PXD043460"),
+        " · Experimental HCD scan 18622 · Mascot 97.12 (identity threshold 35) · ",
+        shiny::tags$a(href = "https://www.ebi.ac.uk/pride/archive/projects/PXD043460",
+          target = "_blank", rel = "noopener noreferrer", "PRIDE")))
+    }
+
+    if (identical(ptm_type, "glycosylation")) {
+      return(shiny::div(class = "alert alert-info py-2 small",
+        shiny::strong("Arabidopsis thaliana · MSV000079345"),
+        " · Experimental ETD scan 3863 · ",
+        shiny::tags$a(href = "https://msviewer.ucsf.edu/prospector/cgi-bin/mssearch.cgi?search_name=msviewer&search_key=6mvcoan57m",
+          target = "_blank", rel = "noopener noreferrer", "Author MSViewer")))
+    }
+
+    if (identical(ptm_type, "acetylation")) {
+      target <- base::tryCatch(
+        .protvis_maize_kac_target(),
+        error = function(e) NULL
+      )
+      if (base::is.null(target)) {
+        return(shiny::div(
+          class = "alert alert-warning py-2 small",
+          "Maize Kac benchmark data are unavailable. Reinstall ProtVisDatabase."
+        ))
+      }
+
+      source_pxd <- target$best_raw_source_pxd %||% "PXD002379"
+      return(shiny::div(
+        class = "alert alert-info py-2 small",
+        shiny::strong("Maize PeptideAtlas 2023-09"),
+        " · Kac consensus HR-HCD · ",
+        shiny::tags$a(
+          href = target$peptideatlas_build,
+          target = "_blank",
+          rel = "noopener noreferrer",
+          "PeptideAtlas"
+        ),
+        shiny::tags$br(),
+        shiny::span(
+          "Best contributing raw spectrum: ",
+          target$best_raw_spectrum %||% "not reported",
+          " · "
+        ),
+        shiny::tags$a(
+          href = base::paste0(
+            "https://www.ebi.ac.uk/pride/archive/projects/",
+            source_pxd
+          ),
+          target = "_blank",
+          rel = "noopener noreferrer",
+          source_pxd
+        )
+      ))
+    }
+
+    target <- .protvis_vac14_target()
+    shiny::div(
+      class = "alert alert-info py-2 small",
+      shiny::strong("PXD001057"),
+      " · mzIdentML + MGF · ",
+      shiny::tags$a(
+        href = target$base_url,
+        target = "_blank",
+        rel = "noopener noreferrer",
+        "PRIDE"
+      )
+    )
+  })
+  shiny::observeEvent(input$vac14_ptm_type, {
+    clear_loaded_data()
+    shiny::updateNumericInput(
+      session,
+      "vac14_tolerance",
+      value = if (identical(
+        input$vac14_ptm_type %||% "phosphorylation",
+        "acetylation"
+      )) 0.05 else if (identical(input$vac14_ptm_type, "methylation")) 0.02 else if (identical(input$vac14_ptm_type, "glycosylation")) 0.6 else 0.5
+    )
+  }, ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_source, clear_loaded_data(), ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_mzid, clear_loaded_data(), ignoreInit = TRUE)
   shiny::observeEvent(input$vac14_mgf, clear_loaded_data(), ignoreInit = TRUE)
@@ -1330,7 +1791,7 @@
       }
       value <- if (isTRUE(show_progress)) {
         shiny::withProgress(message = "Visualizing selected peptide", value = 0, {
-          shiny::incProgress(0.25, detail = "Calculating modified b/y ions")
+          shiny::incProgress(0.25, detail = "Calculating modified backbone ions")
           answer <- calculate()
           shiny::incProgress(0.65, detail = "Matching experimental peaks")
           answer
@@ -1355,10 +1816,29 @@
       .protvis_record_shared_run(
         shared_state,
         module = "ptm_spectrum",
-        method = "mzIdentML_MGF_fragment_matching",
+        method = if (identical(
+          value$target$benchmark_id %||% "",
+          "maize_kac_peptideatlas_2023_09"
+        )) {
+          "PeptideAtlas_consensus_fragment_matching"
+        } else {
+          if (identical(value$target$ptm_type, "glycosylation") &&
+              identical(loaded$benchmark$fragmentation, "ETD")) {
+            "MSViewer_MGF_ETD_fragment_matching"
+          } else {
+            if (identical(value$target$ptm_type, "methylation") &&
+                isTRUE(value$target$is_builtin_benchmark)) {
+              "PRIDE_MGF_source_PSM_fragment_matching"
+            } else {
+              "mzIdentML_MGF_fragment_matching"
+            }
+          }
+        },
         category = "ptm",
         parameters = list(
           fragment_tolerance_da = input$vac14_tolerance,
+          ptm_type = input$vac14_ptm_type %||% NA_character_,
+          benchmark_id = value$target$benchmark_id %||% NA_character_,
           source = loaded$source %||% input$vac14_source,
           psm_index = choice,
           b_ion_color = input$vac14_b_color,
@@ -1390,7 +1870,7 @@
           "Displayed ", value$target$modified_sequence, ": ",
           nrow(value$matched), " fragment ions matched; ",
           sum(value$key_ions$matched), "/", nrow(value$key_ions),
-          " primary b/y ions covered."
+          " primary backbone ions covered."
         )
       ))
       invisible(TRUE)
@@ -1431,23 +1911,71 @@
     }, add = TRUE)
     result(NULL)
     completed_signature(NULL)
-    status(list(type = "running", message = "Reading mzIdentML and MGF files…"))
+    status(list(
+      type = "running",
+      message = if (identical(input$vac14_source, "upload")) {
+        "Reading mzIdentML and MGF files…"
+      } else {
+        "Loading built-in PTM benchmark…"
+      }
+    ))
     tryCatch({
       loaded <- shiny::withProgress(message = "Loading peptide-spectrum matches", value = 0, {
-        shiny::incProgress(0.15, detail = "Preparing files")
-        selected <- if (identical(input$vac14_source, "upload")) {
-          .protvis_vac14_prepare_uploads(input$vac14_mzid, input$vac14_mgf)
+        shiny::incProgress(0.15, detail = "Preparing benchmark or input files")
+
+        if (identical(input$vac14_source, "upload")) {
+          selected <- .protvis_vac14_prepare_uploads(
+            input$vac14_mzid,
+            input$vac14_mgf
+          )
+          shiny::incProgress(0.35, detail = "Reading all PSMs and spectra")
+          answer <- .protvis_ptm_load_bundle(
+            selected$mzid,
+            selected$mgf,
+            selected$source
+          )
+        } else if (identical(
+          input$vac14_ptm_type %||% "phosphorylation",
+          "acetylation"
+        )) {
+          shiny::incProgress(0.35, detail = "Loading maize Kac consensus spectrum")
+          answer <- .protvis_maize_kac_bundle()
+        } else if (identical(input$vac14_ptm_type, "glycosylation")) {
+          shiny::incProgress(0.35, detail = "Loading Arabidopsis experimental ETD spectrum")
+          answer <- .protvis_arabidopsis_glyco_bundle()
+        } else if (identical(input$vac14_ptm_type, "methylation")) {
+          shiny::incProgress(0.35, detail = "Loading Arabidopsis AGO1 methylation spectrum")
+          answer <- .protvis_arabidopsis_methyl_bundle()
         } else {
-          .protvis_vac14_download_files()
+          selected <- .protvis_vac14_download_files()
+          shiny::incProgress(0.35, detail = "Reading PXD001057 PSMs and spectra")
+          answer <- .protvis_ptm_load_bundle(
+            selected$mzid,
+            selected$mgf,
+            selected$source
+          )
+          answer$benchmark <- .protvis_vac14_target()
         }
-        shiny::incProgress(0.35, detail = "Reading all PSMs and spectra")
-        .protvis_ptm_load_bundle(selected$mzid, selected$mgf, selected$source)
+
+        shiny::incProgress(0.45, detail = "Preparing selectable PSMs")
+        answer
       })
       bundle(loaded)
-      choices <- stats::setNames(as.character(loaded$catalog$psm_index), loaded$catalog$label)
-      target <- .protvis_vac14_target()
-      default_hit <- which(loaded$catalog$spectrum_id == target$spectrum_id &
-                             loaded$catalog$sequence == target$sequence)
+      choices <- stats::setNames(
+        as.character(loaded$catalog$psm_index),
+        loaded$catalog$label
+      )
+
+      target <- loaded$benchmark %||% NULL
+      if (!base::is.null(target) &&
+          base::nzchar(target$sequence %||% "")) {
+        default_hit <- which(
+          loaded$catalog$sequence == target$sequence
+        )
+      } else {
+        default_hit <- integer()
+      }
+
       selected_value <- if (length(default_hit)) {
         as.character(loaded$catalog$psm_index[default_hit[[1L]]])
       } else {

@@ -5,11 +5,11 @@
 # public UI/server names below replace the earlier fixed-median implementation.
 
 .protvis_norm_methods <- c(
-  "Median" = "median",
-  "Quantile" = "quantile",
-  "VSN" = "vsn",
-  "Cyclic Loess" = "cyclic_loess",
-  "RLR" = "rlr"
+  "Median normalization" = "median",
+  "Quantile normalization" = "quantile",
+  "Variance Stabilizing Normalization (VSN)" = "vsn",
+  "Cyclic Loess normalization" = "cyclic_loess",
+  "Robust Linear Regression (RLR)" = "rlr"
 )
 
 .protvis_norm_matrix <- function(x) {
@@ -235,25 +235,25 @@ data_normalization_ui <- function(id) {
         shiny::uiOutput(ns("load_status_panel")),
         shiny::hr(),
         shiny::selectInput(
-          ns("input_scale"), "Input scale",
+          ns("input_scale"), "Input data scale",
           choices = c(
-            "Auto from Transformation step" = "auto",
+            "Transformation output" = "auto",
             "Raw intensity" = "raw",
-            "log2" = "log2",
-            "log10" = "log10"
+            "log2 scale" = "log2",
+            "log10 scale" = "log10"
           ), selected = "auto"
         ),
         shiny::selectInput(
           ns("normalization_method"), "Normalization method",
           choices = c(
-            "Auto (source recommended)" = "auto",
-            "MaxQuant recommended · median center + row shift" = "maxquant_recommended",
+            "Median centering" = "auto",
+            "Median centering + positive-value shift" = "maxquant_recommended",
             .protvis_norm_methods
           ),
           selected = "auto"
         ),
         shiny::p(
-          "Auto uses the source-specific preset. For MaxQuant it reproduces the archived workflow: sample-wise median subtraction followed by the row-wise +abs(min)+5 shift (exact zeros become 1). Other normalization methods remain available for comparison.",
+          "Choose a normalization method for the transformed and imputed intensity matrix.",
           class = "pv-norm-method-note"
         ),
         shiny::actionButton(ns("run_normalization"), "Run selected normalization", class = "btn btn-success fw-bold pv-load-button pv-run-button"),

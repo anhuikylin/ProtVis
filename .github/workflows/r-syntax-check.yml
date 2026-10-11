@@ -13,6 +13,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout companion data
+        uses: actions/checkout@v4
+        with:
+          repository: anhuikylin/ProtVisDatabase
+          ref: main
+          path: ProtVisDatabase
+
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -36,6 +43,323 @@ jobs:
           }
           if (length(failures)) stop(paste(failures, collapse = "\n"))
           cat("Parsed", length(files), "R files successfully.\n")
+
+      - name: Validate localization web result parsers
+        shell: Rscript {0}
+        run: |
+          source("R/subcellular_localization.R")
+          stopifnot(
+            identical(.subcellular_parse_refresh("5; URL=/results/job.html"),
+                      "/results/job.html"),
+            identical(.subcellular_parse_refresh("5"), ""),
+            identical(.subcellular_parse_refresh("0; url=javascript:alert(1)"), ""),
+            identical(.subcellular_parse_wolfpsort(
+              "test_protein extr: 13, vacu: 1"
+            )$prediction, "Extracellular"),
+            identical(.subcellular_parse_busca_json(
+              list(data = list(list("test_protein", "GO:0005615",
+                                    "C:extracellular space", 1)))
+            ), "Extracellular")
+          )
+          `%||%` <- function(x, y) if (is.null(x)) y else x
+          example <- .subcellular_import_deeploc(
+            "Endoplasmic reticulum", "Soluble", "Signal peptide",
+            .subcellular_deeploc_example()
+          )
+          stopifnot(identical(.subcellular_normalize_locations("Endoplasmic reticulum"),
+                              "Endoplasmic reticulum"))
+          stopifnot(
+            identical(example$prediction, "Endoplasmic reticulum"),
+            identical(example$membrane_types, "Soluble"),
+            identical(example$signals, "Signal peptide"),
+            nrow(example$score_table) == 14L,
+            abs(example$score_table$probability[
+              example$score_table$label == "Endoplasmic reticulum"
+            ] - 0.7058) < 1e-10
+          )
+          sample_csv <- tempfile(fileext = ".csv")
+          utils::write.csv(data.frame(
+            "Protein ID" = "example",
+            "Predicted localizations" = "Endoplasmic reticulum",
+            "Predicted membrane association" = "Soluble",
+            check.names = FALSE
+          ), sample_csv, row.names = FALSE)
+          imported <- .subcellular_deeploc_summary(
+            list(datapath = sample_csv), "example"
+          )
+          stopifnot(identical(imported$location, "Endoplasmic reticulum"))
+          live_example <- .subcellular_deeploc_summary(
+            list(datapath = "inst/extdata/deeploc_2_1_example_summary.csv"),
+            "sp_P07221_CASQ1_RABIT"
+          )
+          predicted <- .subcellular_import_deeploc(
+            live_example$location, live_example$membrane,
+            live_example$signals, live_example$probabilities
+          )
+          stopifnot(
+            identical(predicted$prediction,
+                      c("Extracellular", "Endoplasmic reticulum")),
+            nrow(predicted$score_table) == 14L,
+            identical(.subcellular_deeploc_job_id(
+              "jobid=6ABB678C002764C16CB5A81F&wait=20"
+            ), "6ABB678C002764C16CB5A81F")
+          )
+          attention_file <- tempfile(fileext = ".csv")
+          utils::write.csv(data.frame(AA = c("M", "N"),
+                                      Alpha = c(0.00448785, 0.004924497)),
+                           attention_file, row.names = FALSE)
+          attention <- .subcellular_deeploc_importance(
+            list(datapath = attention_file)
+          )
+          stopifnot(identical(attention$position, 1:2),
+                    identical(attention$residue, c("M", "N")))
+          cat("Localization web and DeepLoc parsers validated.\\n")
+
+      - name: Validate DeepLoc job state detection
+        shell: Rscript {0}
+        run: |
+          source("R/subcellular_localization.R")
+          failed <- paste0(
+            "<html><h1>Failed run</h1><p>Unfortunately, your job failed.</p>",
+            "<h5>Download prediction results: CSV Summary</h5></html>"
+          )
+          stopifnot(
+            identical(.subcellular_deeploc_page_state(failed), "failed"),
+            identical(.subcellular_deeploc_page_state(
+              "<html><h1>Job submitted</h1><p>queued</p></html>"
+            ), "queued"),
+            identical(.subcellular_deeploc_page_state(
+              "<html><h1>Results</h1><h5>Download prediction results</h5></html>"
+            ), "complete")
+          )
+          cat("DeepLoc job states validated.\n")
+
+      - name: Validate archived GSEA reproduction geometry
+        shell: Rscript {0}
+        run: |
+          .protvis_data_file <- function(..., must_work = TRUE) {
+            path <- file.path("ProtVisDatabase", "inst", "extdata", ...)
+            if (isTRUE(must_work) && !file.exists(path)) {
+              stop("Missing companion test resource: ", path, call. = FALSE)
+            }
+            path
+          }
+          source("R/gsea.R")
+          x <- .protvis_gsea_prepare_archived()
+          stopifnot(
+            nrow(x$rank_tbl) == 6905L,
+            sum(x$rank_tbl$in_pathway) == 196L,
+            x$extreme_position == 6202L,
+            abs(x$extreme_es - (-0.3984103906)) < 1e-6,
+            abs(max(x$rank_tbl$running_ES) - 0.2562033114) < 1e-6,
+            abs(min(x$rank_tbl$running_ES) - (-0.3984103906)) < 1e-6,
+            abs(max(x$rank_tbl$rank_metric) - 154.317739) < 1e-6,
+            abs(min(x$rank_tbl$rank_metric) - (-175.843961)) < 1e-6
+          )
+          cat("Archived Root_VE phenylpropanoid GSEA geometry validated.\n")
+
+      - name: Validate transcriptome GSEA bundled assets
+        shell: Rscript {0}
+        run: |
+          .protvis_data_file <- function(..., must_work = TRUE) {
+            path <- file.path("ProtVisDatabase", "inst", "extdata", ...)
+            if (isTRUE(must_work) && !file.exists(path)) {
+              stop("Missing companion test resource: ", path, call. = FALSE)
+            }
+            path
+          }
+          source("R/DEG.R")
+          bg <- .protvis_deg_load_gsea_background()
+          ref <- .protvis_deg_load_gsea_reference()
+          stopifnot(
+            all(c("TERM", "GENE") %in% names(bg$TERM2GENE)),
+            all(c("TERM", "NAME") %in% names(bg$TERM2NAME)),
+            nrow(bg$TERM2GENE) > 50000L,
+            nrow(bg$TERM2NAME) > 150L,
+            "00940" %in% bg$TERM2NAME$TERM,
+            ref$ID[[1L]] == "00940",
+            abs(ref$NES[[1L]] - (-1.360826149505172)) < 1e-12,
+            abs(ref$p.adjust[[1L]] - 0.1009765165855614) < 1e-12
+          )
+          forbidden <- list.files(
+            "inst/extdata/transcriptome_gsea",
+            pattern = "expression|group|sample",
+            ignore.case = TRUE
+          )
+          stopifnot(length(forbidden) == 0L)
+          cat("Transcriptome GSEA bundled assets validated.\n")
+
+      - name: Validate PTM phosphorylation and maize Kac benchmarks
+        shell: Rscript {0}
+        run: |
+          source("R/ptm_vac14.R")
+
+          phospho <- .protvis_vac14_theoretical()
+          stopifnot(
+            abs(phospho$precursor_2plus - 632.784111) < 1e-6,
+            phospho$fragment_table$AA[[3L]] == "S+80",
+            any(phospho$candidates$label == "b3-98")
+          )
+
+          kac_mod <- data.frame(
+            location = 7L,
+            mass = 42.010565,
+            name = "Acetyl",
+            stringsAsFactors = FALSE
+          )
+          kac <- .protvis_ptm_theoretical(
+            "VGYNPDKIAFVPISGFEGDNMIER",
+            kac_mod
+          )
+          kac_label <- .protvis_modified_sequence_label(
+            "VGYNPDKIAFVPISGFEGDNMIER",
+            kac_mod
+          )
+          proton <- 1.007276466621
+          kac_mz3 <- (kac$mh + 2 * proton) / 3
+          stopifnot(
+            identical(
+              kac_label,
+              "VGYNPDK[Acetyl]IAFVPISGFEGDNMIER"
+            ),
+            abs(kac_mz3 - 904.1108942) < 1e-6,
+            !any(grepl("-98", kac$candidates$label, fixed = TRUE))
+          )
+
+          root <- file.path(
+            "ProtVisDatabase", "inst", "extdata", "ptm", "maize_kac"
+          )
+          meta_file <- file.path(
+            root,
+            "maize_peptideatlas_kac_VGYNPDK_Acetyl.tsv"
+          )
+          mgf_file <- file.path(
+            root,
+            "maize_peptideatlas_kac_VGYNPDK_Acetyl.mgf"
+          )
+          stopifnot(file.exists(meta_file), file.exists(mgf_file))
+
+          meta <- utils::read.delim(
+            meta_file,
+            sep = "\t",
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+          )
+          values <- stats::setNames(meta$value, meta$field)
+          stopifnot(
+            values[["modified_peptide"]] ==
+              "VGYNPDK[Acetyl]IAFVPISGFEGDNMIER",
+            values[["modified_position"]] == "7",
+            values[["mass_shift_da"]] == "42.010565",
+            values[["peptideatlas_probability"]] == "1.0000",
+            values[["library_num_peaks"]] == "150",
+            values[["best_raw_source_pxd"]] == "PXD002379"
+          )
+
+          mgf <- readLines(mgf_file, warn = FALSE)
+          peak_lines <- grepl(
+            "^[0-9]+(?:\\.[0-9]+)?[[:space:]]+[0-9]+",
+            mgf
+          )
+          stopifnot(
+            sum(peak_lines) == 150L,
+            any(mgf == "PEPMASS=904.110900"),
+            any(mgf == "CHARGE=3+")
+          )
+
+          peak_text <- strsplit(
+            trimws(mgf[peak_lines]),
+            "[[:space:]]+"
+          )
+          peak_matrix <- do.call(
+            rbind,
+            lapply(peak_text, as.numeric)
+          )
+          peaks <- data.frame(
+            mz = peak_matrix[, 1L],
+            intensity = peak_matrix[, 2L]
+          )
+          peaks$rel <- peaks$intensity / max(peaks$intensity) * 100
+
+          matched <- .protvis_vac14_match_ions(
+            peaks,
+            kac$candidates,
+            tolerance_da = 0.05
+          )
+          coverage <- kac$key_ions
+          coverage$matched <- vapply(
+            coverage$mz,
+            function(mz) min(abs(peaks$mz - mz), na.rm = TRUE) <= 0.05,
+            logical(1L)
+          )
+          stopifnot(
+            nrow(matched) == 37L,
+            nrow(coverage) == 46L,
+            sum(coverage$matched) == 21L,
+            max(abs(matched$error_da)) < 0.05
+          )
+
+          source_text <- paste(
+            readLines("R/ptm_vac14.R", warn = FALSE),
+            collapse = "\n"
+          )
+          generic_server <- tail(
+            strsplit(
+              source_text,
+              ".protvis_vac14_server <- function",
+              fixed = TRUE
+            )[[1L]],
+            1L
+          )
+          stopifnot(
+            grepl(
+              "output$vac14_benchmark_note",
+              generic_server,
+              fixed = TRUE
+            ),
+            grepl(
+              "output$vac14_benchmark_info",
+              generic_server,
+              fixed = TRUE
+            ),
+            grepl(
+              "PeptideAtlas_consensus_fragment_matching",
+              generic_server,
+              fixed = TRUE
+            )
+          )
+          cat(
+            "PTM phosphorylation and maize Kac benchmarks validated; ",
+            "37 Kac fragments matched at 0.05 Da with 21/46 primary b/y ions covered.\n",
+            sep = ""
+          )
+
+      - name: Validate quiet startup dependency graph
+        shell: Rscript {0}
+        run: |
+          desc <- read.dcf("DESCRIPTION")
+          imports <- strsplit(desc[1, "Imports"], ",")[[1]]
+          imports <- trimws(gsub("\\n", "", imports))
+          noisy <- c(
+            "GseaVis", "ggpubr", "pathview",
+            "golem", "clusterProfiler", "enrichplot", "fgsea"
+          )
+          stopifnot(!any(noisy %in% imports))
+
+          ns <- readLines("NAMESPACE", warn = FALSE)
+          forbidden <- c(
+            "importFrom(GseaVis,gseaNb)",
+            "importFrom(ggpubr,compare_means)",
+            "importFrom(ggpubr,stat_compare_means)",
+            "importFrom(pathview,pathview)",
+            "importFrom(golem,bundle_resources)",
+            "importFrom(golem,with_golem_options)",
+            "importFrom(clusterProfiler,GSEA)",
+            "importFrom(clusterProfiler,dotplot)",
+            "importFrom(clusterProfiler,enricher)"
+          )
+          stopifnot(!any(forbidden %in% ns))
+          cat("Optional plotting packages are excluded from eager startup imports.\n")
 
       - name: Validate DESCRIPTION and new help pages
         shell: Rscript {0}
@@ -162,3 +486,69 @@ jobs:
           )
 
           cat("Schema v4 core smoke tests passed.\n")
+
+      - name: Validate experimental Arabidopsis glycosylation benchmark
+        shell: Rscript {0}
+        run: |
+          source("R/ptm_vac14.R")
+          source("R/ptm_plant_benchmarks.R")
+          target <- .protvis_arabidopsis_glyco_target()
+          theory <- .protvis_ptm_etd_theoretical(target$sequence,
+            data.frame(location = 1L, mass = 203.079372533, name = "HexNAc"))
+          mz <- (theory$mh + 3 * 1.007276466621) / 4
+          stopifnot(abs((mz - target$precursor_mz) / mz * 1e6) < 10,
+            all(theory$candidates$series %in% c("c", "z")),
+            !any(theory$candidates$label %in% c("c5", "c7", "z22", "z24")),
+            any(theory$candidates$label == "c1+++"))
+          lines <- readLines(target$mgf, warn = FALSE)
+          rows <- lines[grepl("^[0-9]", lines)]
+          peaks <- do.call(rbind, lapply(strsplit(rows, "[[:space:]]+"), as.numeric))
+          stopifnot(nrow(peaks) == 411L)
+          peaks <- data.frame(mz = peaks[, 1L], intensity = peaks[, 2L])
+          peaks$rel <- peaks$intensity / max(peaks$intensity) * 100
+          matched <- .protvis_vac14_match_ions(peaks, theory$candidates, 0.6)
+          stopifnot(nrow(matched) == 68L, max(abs(matched$error_da)) <= 0.6)
+          colors <- .protvis_vac14_match_colors(matched)
+          stopifnot(all(colors[matched$series == "c"] == "#C0392B"))
+          png(tempfile(fileext = ".png"), width = 1000, height = 700)
+          .protvis_vac14_draw_table(theory$fragment_table, matched)
+          dev.off()
+          cat("Arabidopsis experimental ETD benchmark:", nrow(matched), "unique peaks matched.\n")
+
+      - name: Validate experimental Arabidopsis AGO1 methylation benchmark
+        shell: Rscript {0}
+        run: |
+          source("R/ptm_vac14.R")
+          source("R/ptm_plant_benchmarks.R")
+          target <- .protvis_arabidopsis_methyl_target()
+          theory <- .protvis_ptm_theoretical(target$sequence,
+            data.frame(location = 3L, mass = 28.031300, name = "Dimethyl"))
+          mz <- (theory$mh + 2 * 1.007276466621) / 3
+          stopifnot(abs(mz - 898.091886) < 1e-5,
+            target$provenance$passThreshold == "true",
+            as.numeric(target$provenance$score) > as.numeric(target$provenance$identity_threshold),
+            !any(grepl("-98", theory$candidates$label, fixed = TRUE)))
+          lines <- readLines(target$mgf, warn = FALSE)
+          stopifnot(any(lines == paste0("TITLE=", target$spectrum_title)),
+            any(lines == "SCANS=18622"), any(lines == "CHARGE=3+"))
+          rows <- lines[grepl("^[0-9]", lines)]
+          peaks <- do.call(rbind, lapply(strsplit(rows, "[[:space:]]+"), as.numeric))
+          stopifnot(nrow(peaks) == 308L)
+          peaks <- data.frame(mz = peaks[, 1L], intensity = peaks[, 2L])
+          peaks$rel <- peaks$intensity / max(peaks$intensity) * 100
+          matched <- .protvis_vac14_match_ions(peaks, theory$candidates, 0.02)
+          stopifnot(nrow(matched) == 58L, max(abs(matched$error_da)) <= 0.02)
+          psm <- data.frame(sequence = target$sequence, spectrumID = "index=0",
+            chargeState = 3L, spectrum.title = target$spectrum_title,
+            stringsAsFactors = FALSE, check.names = FALSE)
+          psm$modLocation <- I(list(3L))
+          psm$modMass <- I(list(28.0313))
+          psm$modName <- I(list("Dimethyl"))
+          catalog <- .protvis_ptm_psm_catalog(psm)
+          stopifnot(catalog$spectrum_title == target$spectrum_title,
+            grepl("Dimethyl", catalog$modified_sequence, fixed = TRUE))
+          # The modification shifts only fragments containing Arg3.
+          plain <- .protvis_ptm_theoretical(target$sequence)
+          stopifnot(abs(theory$b_mz[2] - plain$b_mz[2]) < 1e-8,
+            abs(theory$b_mz[3] - plain$b_mz[3] - 28.0313) < 1e-8)
+          cat("Arabidopsis AGO1 methylation benchmark:", nrow(matched), "unique peaks matched.\n")
