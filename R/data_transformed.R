@@ -125,7 +125,9 @@ data_transformed_ui <- function(id) {
       ),
 
       bslib::page_fluid(
-        bslib::layout_column_wrap(
+        bslib::navset_tab(
+          bslib::nav_panel("Results",
+          bslib::layout_column_wrap(
           width = 1/2,
 
           bslib::card(
@@ -163,6 +165,8 @@ data_transformed_ui <- function(id) {
               shiny::plotOutput(ns("transformedPlot"), height = "720px")
             )
           )
+        )),
+          bslib::nav_panel("Processing report", .protvis_change_report_ui(ns))
         )
       )
     )
@@ -188,6 +192,8 @@ data_transformed_ui <- function(id) {
 #' @export
 data_transformed_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
+    .protvis_change_report_outputs(output, shared_state, "transformation")
+
     # DT requires a data.frame with no row.names attribute. Keep row names
     # internally for matrix calculations, but strip them at the display edge.
     display_data_frame <- function(x) {
@@ -399,6 +405,9 @@ data_transformed_server <- function(id, shared_state) {
             multiplier = if (identical(rv$transformation_method, "maxquant_log2")) 1e7 else NULL
           )
         )
+      rownames(df_mat) <- rownames(transformed_matrix)
+      dataset <- .protvis_save_change_report(dataset, "transformation",
+        df_mat, transformed_matrix, rv$transformation_method)
         directory <- protvis_output_directory(shared_state$workdir %||% getwd())
         dataset <- tryCatch(
           protvis_auto_export_dataset(dataset, directory = directory),

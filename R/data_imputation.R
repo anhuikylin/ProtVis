@@ -119,6 +119,8 @@ data_imputation_ui <- function(id) {
           DT::DTOutput(ns("expression_matrix"))
         ),
 
+        shiny::tabPanel("Processing report", .protvis_change_report_ui(ns)),
+
         shiny::tabPanel(
           title = "Visualize missing values",
           bslib::layout_column_wrap(
@@ -228,6 +230,8 @@ data_imputation_ui <- function(id) {
 #' @export
 data_imputation_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
+    .protvis_change_report_outputs(output, shared_state, "imputation")
+
     rv <- shiny::reactiveValues(
       sample_info = NULL,
       expression_matrix = NULL,
@@ -605,6 +609,8 @@ data_imputation_server <- function(id, shared_state) {
           engine = if (identical(input$choice_method, "kNN")) "impute::impute.knn" else NULL
         )
       )
+      dataset <- .protvis_save_change_report(dataset, "imputation",
+        rv$expression_matrix, imputed_df, input$choice_method)
       .protvis_ui_sync_state(dataset, shared_state)
       .protvis_save_stage_dataset(
         dataset,

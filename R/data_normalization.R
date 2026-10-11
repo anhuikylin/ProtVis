@@ -130,7 +130,9 @@ data_normalization_ui <- function(id) {
       ),
 
       bslib::page_fluid(
-        bslib::layout_column_wrap(
+        bslib::navset_tab(
+          bslib::nav_panel("Results",
+          bslib::layout_column_wrap(
           width = 1 / 2,
           height = 600,
 
@@ -169,6 +171,8 @@ data_normalization_ui <- function(id) {
               shiny::plotOutput(ns("normalizedPlot"))
             )
           )
+        )),
+          bslib::nav_panel("Processing report", .protvis_change_report_ui(ns))
         )
       )
     )
@@ -206,6 +210,8 @@ data_normalization_ui <- function(id) {
 #' @export
 data_normalization_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
+    .protvis_change_report_outputs(output, shared_state, "normalization")
+
 
     rv <- shiny::reactiveValues(
       sample_info = NULL,
@@ -440,6 +446,8 @@ data_normalization_server <- function(id, shared_state) {
           zero_value = if (identical(resolved_method, "maxquant_recommended")) 1 else NULL
         )
       )
+      dataset <- .protvis_save_change_report(dataset, "normalization",
+        expr_df, normalized_data, resolved_method)
       .protvis_ui_sync_state(dataset, shared_state)
       .protvis_save_stage_dataset(
         dataset,
