@@ -206,21 +206,25 @@ correct_noise_ui <- function(id) {
         bslib::accordion_panel(
           title = "Step2 Correct Noise",
           icon = bsicons::bs_icon("tools"),
-          bslib::navset_tab(
-            id = ns("noise_method"),
-            selected = "replicate_correction",
-            bslib::nav_panel(
-              "Existing method", value = "replicate_correction",
-              shiny::tags$p("Original replicate correction (default): require two positive replicates and replace zeros with half the sum of positive values.")
-            ),
-            bslib::nav_panel(
-              "Replicate filtering", value = "replicate_filter",
-              shiny::tags$p("Require at least two detected replicates per group. Groups failing this rule become missing; proteins failing in every group are removed."),
-              shiny::checkboxInput(ns("replicate_mean_imputation"),
-                                   "Impute missing values using the group mean",
-                                   value = FALSE),
-              shiny::tags$small("Without imputation, observed values stay unchanged and missing values remain NA. Sample names must end in _1, _2, ... .")
-            )
+          shiny::selectInput(
+            ns("noise_method"), "Processing method",
+            choices = c("Existing method" = "replicate_correction",
+                        "Replicate filtering (at least two detected)" = "replicate_filter"),
+            selected = "replicate_correction"
+          ),
+          shiny::conditionalPanel(
+            condition = "input.noise_method === 'replicate_correction'",
+            ns = ns,
+            shiny::tags$p("Original replicate correction (default): require two positive replicates and replace zeros with half the sum of positive values.")
+          ),
+          shiny::conditionalPanel(
+            condition = "input.noise_method === 'replicate_filter'",
+            ns = ns,
+            shiny::tags$p("Require at least two detected replicates per group. Groups failing this rule become missing; proteins failing in every group are removed."),
+            shiny::checkboxInput(ns("replicate_mean_imputation"),
+                                 "Impute missing values using the group mean",
+                                 value = FALSE),
+            shiny::tags$small("Without imputation, observed values stay unchanged and missing values remain NA. Sample names must end in _1, _2, ... .")
           ),
           shiny::actionButton(
             inputId = ns("correct_noise"),
