@@ -53,7 +53,7 @@ normalize_protvis_stage <- normalise_protvis_stage
 
 protvis_stage_labels <- function() {
   c(
-    noise_correction = "Noise correction / QC filter",
+    noise_correction = "Within-group Processing / QC filter",
     transformation = "Transformation",
     imputation = "Missing-value imputation",
     normalization = "Normalization",
@@ -157,7 +157,7 @@ protvis_stage_labels <- function() {
   matrix <- as.matrix(dataset$expression_data)
   missing_fraction <- rowMeans(is.na(matrix) | !is.finite(matrix))
   keep <- missing_fraction <= max_missing
-  if (!any(keep)) stop("Noise correction removed every protein.", call. = FALSE)
+  if (!any(keep)) stop("Within-group Processing removed every protein.", call. = FALSE)
   dataset$expression_data <- dataset$expression_data[keep, , drop = FALSE]
   dataset$variable_info <- dataset$variable_info[
     match(rownames(dataset$expression_data),

@@ -19,7 +19,7 @@ utils::globalVariables(c("ID", "sample_id", "value", "value_fix", "sample_group"
 
 correct_values <- function(raw_mat) {
   if (base::is.null(raw_mat) || !base::is.data.frame(raw_mat)) {
-    stop("Noise correction requires a data frame with an ID column and sample columns.",
+    stop("Within-group Processing requires a data frame with an ID column and sample columns.",
          call. = FALSE)
   }
   if (!"ID" %in% base::names(raw_mat)) {
@@ -188,7 +188,7 @@ correct_values <- function(raw_mat) {
        note = "Detected means finite positive intensity. Cell transitions refer to retained proteins. Duplicate input IDs prevent unambiguous cell transition counts.")
 }
 
-#' UI for Noise Correction Module
+#' UI for Within-group Processing Module
 #' @param id Character string module ID for namespacing
 #' @return A Shiny UI layout with sidebar controls and main display area
 #' @import shiny
@@ -245,7 +245,7 @@ correct_noise_ui <- function(id) {
           )
         ),
         bslib::accordion_panel(
-          title = "Step2 Correct Noise",
+          title = "Step2 Within-group Processing",
           icon = bsicons::bs_icon("tools"),
           shiny::selectInput(
             ns("noise_method"), "Processing method",
@@ -269,7 +269,7 @@ correct_noise_ui <- function(id) {
           ),
           shiny::actionButton(
             inputId = ns("correct_noise"),
-            label = "Correct Noise",
+            label = "Run Processing",
             class = "btn btn-success w-100 pv-run-button"
           ),
           shinyWidgets::progressBar(
@@ -279,7 +279,7 @@ correct_noise_ui <- function(id) {
             display_pct = TRUE,
             striped = TRUE,
             status = "warning",
-            title = "Noise correction progress"
+            title = "Within-group Processing progress"
           )
         )
       ),
@@ -319,7 +319,7 @@ correct_noise_ui <- function(id) {
             DT::DTOutput(ns("tbl_rename_columns"))
           ),
           bslib::nav_panel(
-            "Correct Noise",
+            "Within-group Processing",
             DT::DTOutput(ns("tbl_correct_noise"))
           ),
           bslib::nav_panel(
@@ -337,10 +337,10 @@ correct_noise_ui <- function(id) {
 }
 
 
-#' Server Logic for Noise Correction Module
+#' Server Logic for Within-group Processing Module
 #' @param id Character string module ID for namespacing
 #' @param shared_state Reactive values list for sharing data between modules
-#' @return Server logic for the noise correction module
+#' @return Server logic for the Within-group Processing module
 #' @import shiny
 #' @importFrom dplyr left_join pull
 #' @importFrom DT renderDT datatable
@@ -413,7 +413,7 @@ correct_noise_server <- function(id, shared_state) {
     shiny::observeEvent(input$load_data, {
       if (!.protvis_begin_run(shared_state, "correct_noise_load", session,
                               "load_data")) {
-        shiny::showNotification("Correct Noise data loading is already running; duplicate click ignored.",
+        shiny::showNotification("Within-group Processing data loading is already running; duplicate click ignored.",
                                 type = "warning")
         return(invisible(NULL))
       }
@@ -436,7 +436,7 @@ correct_noise_server <- function(id, shared_state) {
       shinyWidgets::updateProgressBar(session, id = "load_progress", value = 10)
       workdir <- valid_workdir()
       # Step2_remove_unreliable_peptide.rda is the canonical checkpoint for
-      # Correct Noise, regardless of the selected data source.  Sage and old
+      # Within-group Processing, regardless of the selected data source.  Sage and old
       # project checkpoints remain fallbacks so existing workspaces continue
       # to load after an update.
       stage_candidates <- c(
@@ -470,7 +470,7 @@ correct_noise_server <- function(id, shared_state) {
           stage_label <- if (grepl("sage_database_search", basename(rda_path),
                                     fixed = TRUE)) "Sage search results" else "ProtVis data"
           shiny::showNotification(
-            paste0("✅ ", stage_label, " loaded successfully for Correct Noise."),
+            paste0("✅ ", stage_label, " loaded successfully for Within-group Processing."),
             type = "message"
           )
         } else {
@@ -485,7 +485,7 @@ correct_noise_server <- function(id, shared_state) {
         shiny::showNotification(
           paste(
             "No completed input stage was found.",
-            "Run Sage Search or the previous preprocessing step before loading Correct Noise."
+            "Run Sage Search or the previous preprocessing step before loading Within-group Processing."
           ),
           type = "error"
         )
@@ -608,7 +608,7 @@ correct_noise_server <- function(id, shared_state) {
     shiny::observeEvent(input$correct_noise, {
       if (!.protvis_begin_run(shared_state, "correct_noise", session,
                               "correct_noise")) {
-        shiny::showNotification("Correct Noise is already running; duplicate click ignored.",
+        shiny::showNotification("Within-group Processing is already running; duplicate click ignored.",
                                 type = "warning")
         return(invisible(NULL))
       }
@@ -619,7 +619,7 @@ correct_noise_server <- function(id, shared_state) {
       tryCatch({
           if (!isTRUE(rv$load_success)) {
             shiny::showNotification(
-              "Load data successfully before running Correct Noise.",
+              "Load data successfully before running Within-group Processing.",
               type = "warning"
             )
             return(invisible(NULL))
@@ -630,7 +630,7 @@ correct_noise_server <- function(id, shared_state) {
             stop(
               paste(
                 "The current ProtVis_dataset has no expression matrix.",
-                "For Raw/Sage staging data, complete Sage Search before Correct Noise."
+                "For Raw/Sage staging data, complete Sage Search before Within-group Processing."
               ),
               call. = FALSE
             )
@@ -691,7 +691,7 @@ correct_noise_server <- function(id, shared_state) {
           shared_state$correct_noise_result <- result
           rv$noise_report <- report
           # Keep Step2 as the single, data-source-independent checkpoint for
-          # the hand-off from input/search to Correct Noise.  Step3 remains
+          # the hand-off from input/search to Within-group Processing.  Step3 remains
           # as a compatibility export for older downstream modules.
           .protvis_save_stage_dataset(
             dataset,
@@ -706,17 +706,17 @@ correct_noise_server <- function(id, shared_state) {
           # make a successful correction look like an empty result.
           tryCatch(
             bslib::nav_select(
-              id = "Expression_Matrix", selected = "Correct Noise",
+              id = "Expression_Matrix", selected = "Within-group Processing",
               session = session
             ),
             error = function(e) invisible(NULL)
           )
-          shiny::showNotification("✅ Noise correction completed.", type = "message")
+          shiny::showNotification("✅ Within-group Processing completed.", type = "message")
         }, error = function(e) {
           shared_state$correct_noise_result <- NULL
           shinyWidgets::updateProgressBar(session, id = "noise_progress", value = 0)
           shiny::showNotification(
-            paste0("Noise correction failed: ", conditionMessage(e)),
+            paste0("Within-group Processing failed: ", conditionMessage(e)),
             type = "error"
           )
         })
@@ -743,7 +743,7 @@ correct_noise_server <- function(id, shared_state) {
     })
     output$noise_report_details <- shiny::renderUI({
       report <- current_noise_report()
-      if (is.null(report)) return(shiny::tags$p("Run Correct Noise to generate a before/after report."))
+      if (is.null(report)) return(shiny::tags$p("Run Within-group Processing to generate a before/after report."))
       method <- if (identical(report$parameters$method, "replicate_filter")) {
         if (isTRUE(report$parameters$impute_mean)) "Replicate filtering + group mean imputation" else "Replicate filtering only"
       } else "Existing replicate correction"
@@ -772,7 +772,7 @@ correct_noise_server <- function(id, shared_state) {
       if (!isTRUE(rv$noise_requested) || is.null(result) ||
           !is.data.frame(result)) {
         result <- data.frame(
-          Message = "Run Correct Noise to display the corrected matrix.",
+          Message = "Run Within-group Processing to display the corrected matrix.",
           stringsAsFactors = FALSE
         )
       }

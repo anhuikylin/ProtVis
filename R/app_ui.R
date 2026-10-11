@@ -1052,7 +1052,7 @@ protvis_homepage <- function() {
           shiny::div(class = "pv-route-icon", bsicons::bs_icon("search")),
           shiny::h3("Raw / mzML + Sage"),
           shiny::p("Register sample information, a protein FASTA, and the mzML directory. The Search tab then runs the bundled Sage executable on Windows."),
-          shiny::tags$small("Project init → Search → Correct Noise")
+          shiny::tags$small("Project init → Search → Within-group Processing")
         ),
         shiny::div(
           class = "pv-route-card pv-route-table",
@@ -1076,7 +1076,7 @@ protvis_homepage <- function() {
       shiny::div(
         class = "pv-capability-grid",
         capability("database", "Flexible data ingestion", "Import MaxQuant, DIA-NN, Spectronaut, FragPipe, Skyline, OpenMS, Proteome Discoverer, or a custom matrix."),
-        capability("sliders", "Proteomics preprocessing", "Correct noise, transform intensities, impute missing values, normalize samples, and retain each analytical stage."),
+        capability("sliders", "Proteomics preprocessing", "Within-group Processing, transform intensities, impute missing values, normalize samples, and retain each analytical stage."),
         capability("bar-chart-line", "Statistical exploration", "Assess sample relationships, dimensionality reduction, quality metrics, and differential protein abundance."),
         capability("diagram-3", "Biological interpretation", "Connect significant proteins with enrichment, GSEA, pathway views, and structured functional annotations."),
         capability("layers", "Structure and PTM", "Explore protein structure, modification sites, and strict peptide-spectrum evidence in dedicated modules."),
@@ -1097,7 +1097,7 @@ protvis_homepage <- function() {
         class = "pv-workflow",
         workflow_step(1, "Project init", "Set the working directory and confirm metadata."),
         workflow_step(2, "Input route", "Search raw data with Sage or import a supported results table."),
-        workflow_step(3, "Pre-processing", "Correct noise, transform, impute, and normalize."),
+        workflow_step(3, "Pre-processing", "Within-group Processing, transform, impute, and normalize."),
         workflow_step(4, "Overview", "Inspect data quality and sample structure."),
         workflow_step(5, "DEP", "Model differential protein abundance."),
         workflow_step(6, "Interpret", "Run enrichment, GSEA, and pathways."),
@@ -1219,7 +1219,7 @@ app_ui <- function(request) {
           data_input_ui("data_input")
         ),
         bslib::nav_panel(
-          "Correct Noise",
+          "Within-group Processing",
           icon = bsicons::bs_icon("soundwave"),
           correct_noise_ui("correct_noise")
         ),

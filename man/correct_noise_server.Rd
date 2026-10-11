@@ -2,7 +2,7 @@
 % Please edit documentation in R/correct_noise.R
 \name{correct_noise_server}
 \alias{correct_noise_server}
-\title{Server Logic for Noise Correction Module}
+\title{Server Logic for Within-group Processing Module}
 \usage{
 correct_noise_server(id, shared_state)
 }
@@ -12,8 +12,8 @@ correct_noise_server(id, shared_state)
 \item{shared_state}{Reactive values list for sharing data between modules}
 }
 \value{
-Server logic for the noise correction module
+Server logic for the Within-group Processing module
 }
 \description{
-Server Logic for Noise Correction Module
+Server Logic for Within-group Processing Module
 }

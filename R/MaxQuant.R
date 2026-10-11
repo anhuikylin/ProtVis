@@ -462,7 +462,7 @@ MaxQuant_server <- function(id, shared_state) {
       shared_state$maxquant_raw_table <- raw_table
       .protvis_save_stage_dataset(dataset, save_path)
       shiny::showNotification(
-        "✅ MaxQuant output prepared; continue with Correct Noise.",
+        "✅ MaxQuant output prepared; continue with Within-group Processing.",
         type = "message"
       )
     })

@@ -49,7 +49,7 @@ app_ui <- function(request) {
           data_input_ui("data_input")
         ),
         bslib::nav_panel(
-          "Correct Noise",
+          "Within-group Processing",
           icon = bsicons::bs_icon("soundwave"),
           correct_noise_ui("correct_noise")
         ),
