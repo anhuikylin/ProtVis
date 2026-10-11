@@ -1,0 +1,6 @@
+"comparison","annotated_selected","annotated_universe","enrichment_terms","significant_terms"
+"B73_Root_VE_vs_Y12_Root_VE",65,6088,430,1
+"B73_Root_V1.V2_vs_Y12_Root_V1.V2",104,6091,430,0
+"B73_Root_V4_vs_Y12_Root_V4",202,6070,430,0
+"B73_Leaf_VE.V1.V2_vs_Y12_Leaf_VE.V1.V2",162,6080,430,2
+"B73_Leaf_V4.V6.V8_vs_Y12_Leaf_V4.V6.V8",80,6067,430,5

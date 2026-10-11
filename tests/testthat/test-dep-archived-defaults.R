@@ -122,5 +122,6 @@ testthat::test_that("archived limma helper returns BH adjusted table", {
   testthat::expect_true(all(c(
     "ID", "logFC", "P.Value", "adj.P.Val", "FC", "Group1", "Group2"
   ) %in% names(out)))
-  testthat::expect_true(all(diff(out$logFC) <= 0))
+  # limma topTable(sort.by="logFC") orders by absolute effect size.
+  testthat::expect_true(all(diff(abs(out$logFC)) <= 0))
 })

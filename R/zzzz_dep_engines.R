@@ -793,6 +793,7 @@ DEP_analysis_server <- function(id, shared_state) {
                   "Recommended limma requires Step4_data_transformed.rda."
                 )
               }
+              .protvis_require_log2_scale(rv$pre_imputation_dataset)
               observed <- .protvis_dep_matrix(rv$pre_imputation_dataset)
               if (!base::all(sample_sets$samples %in% base::colnames(observed))) {
                 base::stop(
@@ -823,9 +824,13 @@ DEP_analysis_server <- function(id, shared_state) {
                 g2
               )
             },
-            deqms = .protvis_dep_run_deqms(current_mat, sample_sets$group1, sample_sets$group2, g1, g2, rv$count_table),
+            deqms = {
+              .protvis_require_log2_scale(rv$dataset)
+              .protvis_dep_run_deqms(current_mat, sample_sets$group1, sample_sets$group2, g1, g2, rv$count_table)
+            },
             proda = {
               source_dataset <- rv$pre_imputation_dataset %||% rv$dataset
+              .protvis_require_log2_scale(source_dataset)
               proda_mat <- .protvis_dep_matrix(source_dataset)
               if (!base::all(sample_sets$samples %in% base::colnames(proda_mat))) {
                 base::stop("The pre-imputation matrix does not contain all selected samples.")

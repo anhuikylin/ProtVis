@@ -7,7 +7,7 @@ test_that("built-in fixtures provide real B73 and Y12 metadata", {
     expect_equal(info$condition, info$group)
     expect_true(all(info$organism == "Zea mays"))
     expect_true(all(grepl(
-      "ProtVis/blob/dev/inst/extdata/MaxQuant_output.xlsx",
+      "ProtVisDatabase/tree/main/inst/extdata/examples/tabular",
                           info$source_url, fixed = TRUE)))
   }
 })
@@ -43,8 +43,10 @@ test_that("MaxQuant demo metadata matches all 30 biological samples", {
 })
 
 test_that("the Sage sample-information template is downloadable and searchable", {
-  template <- file.path(testthat::test_path("..", "..", "inst", "extdata"),
-                        "PXD065315_sample_info_template.csv")
+  template <- ProtVisDatabase::protvis_database_path(
+    "extdata", "raw_search", "PXD065315_sample_info_template.csv",
+    must_work = TRUE
+  )
   expect_true(file.exists(template))
   info <- utils::read.csv(template, stringsAsFactors = FALSE,
                           check.names = FALSE)

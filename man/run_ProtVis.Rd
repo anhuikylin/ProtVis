@@ -21,7 +21,8 @@ run_ProtVis(
 
 \item{uiPattern}{A regular expression used to determine which requests should be handled by the UI.}
 
-\item{...}{Arguments to pass to `golem_opts`. See `?golem::get_golem_options` for more details.}
+
+\item{...}{Reserved for backward compatibility; currently ignored.}
 }
 \value{
 An object that represents the app.

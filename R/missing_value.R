@@ -339,9 +339,9 @@ missing_value_server <- function(id, shared_state) {
     # Display processing status
     output$noise_status_panel <- shiny::renderUI({
       if (!is.null(rv$step3_imputed)) {
-        shiny::span("✅ Noise correction completed", style = "color: green;")
+        shiny::span("✅ Within-group Processing completed", style = "color: green;")
       } else {
-        shiny::span("ℹ️ Noise correction not run", style = "color: gray;")
+        shiny::span("ℹ️ Within-group Processing not run", style = "color: gray;")
       }
     })
     # Keep "Replace 0 with NA" switch disabled (prevent toggling off)

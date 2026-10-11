@@ -174,7 +174,6 @@ boxplot_module_ui <- function(id) {
 #' @importFrom tidyr pivot_longer
 #' @importFrom tidyselect everything
 #' @importFrom RColorBrewer brewer.pal
-#' @importFrom ggpubr stat_compare_means compare_means
 #' @importFrom ggplot2 ggplot aes geom_boxplot geom_jitter scale_fill_manual
 #' @importFrom ggplot2 labs theme margin theme_minimal theme_classic
 #' @importFrom ggplot2 theme_light theme_bw theme_dark theme_grey ggsave
@@ -428,6 +427,10 @@ boxplot_module_server <- function(id, shared_state = NULL) {
     })
 
     make_pairwise_stats <- function(dat, method) {
+      .protvis_require_optional(
+        "ggpubr",
+        "pairwise statistics and significance annotation"
+      )
       if (is.null(comparison_list())) {
         return(data.frame(
           Message = "Please select at least two groups for pairwise comparison."
@@ -549,6 +552,10 @@ boxplot_module_server <- function(id, shared_state = NULL) {
       }
 
       if (isTRUE(input$show_significance)) {
+        .protvis_require_optional(
+          "ggpubr",
+          "boxplot significance annotation"
+        )
         if (input$stat_method %in% c("t.test", "wilcox.test") && !is.null(comparison_list())) {
           p <- p + ggpubr::stat_compare_means(
             method = input$stat_method,

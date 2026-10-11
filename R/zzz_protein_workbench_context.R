@@ -9,6 +9,47 @@
 .protvis_pw_base_ui <- protein_workbench_ui
 .protvis_pw_base_server <- protein_workbench_server
 
+.protvis_pw_deeploc_fasta <- function(sequence, id = "query_protein") {
+  sequence <- .protvis_pw_clean_sequence(sequence)
+  if (base::nchar(sequence) < 10L) {
+    base::stop("DeepLoc 2.1 requires at least 10 amino acids.", call. = FALSE)
+  }
+  if (!base::grepl("^[ACDEFGHIKLMNPQRSTVWY]+$", sequence)) {
+    base::stop("DeepLoc 2.1 input must contain the 20 standard amino acids.", call. = FALSE)
+  }
+  id <- base::as.character(id %||% "query_protein")
+  id <- if (base::length(id)) base::trimws(id[[1L]]) else "query_protein"
+  id <- base::gsub("[^A-Za-z0-9_.-]+", "_", id)
+  if (!base::nzchar(id)) id <- "query_protein"
+  starts <- base::seq.int(1L, base::nchar(sequence), by = 70L)
+  lines <- base::substring(sequence, starts, base::pmin(starts + 69L, base::nchar(sequence)))
+  base::paste(c(base::paste0(">", id), lines), collapse = "\n")
+}
+
+.protvis_pw_deeploc_result <- function(location, membrane = "", signal = "") {
+  labels <- c(
+    "Nucleus", "Cytoplasm", "Extracellular", "Mitochondrion",
+    "Cell membrane", "Endoplasmic reticulum", "Chloroplast",
+    "Golgi apparatus", "Lysosome/Vacuole", "Peroxisome"
+  )
+  locations <- base::trimws(base::unlist(base::strsplit(base::gsub("\n", ";", location %||% "", fixed = TRUE), "[,;]+")))
+  locations <- locations[base::nzchar(locations)]
+  selected <- labels[base::match(base::tolower(locations), base::tolower(labels))]
+  if (!base::length(locations) || base::anyNA(selected)) {
+    base::stop(
+      "Enter DeepLoc's predicted localization labels, separated by semicolons. Check spelling against the 10 labels on the DeepLoc website.",
+      call. = FALSE
+    )
+  }
+  base::data.frame(
+    predicted_location = base::unique(selected),
+    predicted_membrane_type = base::trimws(membrane %||% ""),
+    predicted_signals = base::trimws(signal %||% ""),
+    source = "DeepLoc 2.1 (user-entered web result)",
+    stringsAsFactors = FALSE
+  )
+}
+
 .protvis_pw_evidence_text <- function(x) {
   if (base::is.null(x) || !base::length(x)) return("")
   values <- base::unique(base::unlist(base::lapply(x, function(item) {
@@ -295,7 +336,7 @@
             "Localization",
             shiny::div(
               style = "color:#657789;font-size:12px;margin-bottom:12px;",
-              "Combines curated UniProt subcellular-location annotation, sequence topology features, and optional Plant-mPLoc prediction for plant proteins."
+              "Combines curated UniProt annotation, sequence features, and DeepLoc 2.1 web predictions for eukaryotic proteins."
             ),
             bslib::layout_columns(
               col_widths = c(6, 6),
@@ -306,6 +347,42 @@
               bslib::card(
                 bslib::card_header("Localization-related sequence features"),
                 DT::DTOutput(ns("localization_features"))
+              )
+            ),
+            shiny::br(),
+            bslib::card(
+              bslib::card_header("DeepLoc 2.1 web prediction"),
+              bslib::layout_columns(
+                col_widths = c(4, 8),
+                shiny::div(
+                  shiny::p(
+                    "Download the current protein as FASTA, submit it to the DeepLoc 2.1 website, then enter the predicted labels from its result page. The website runs the model.",
+                    style = "font-size:12px;color:#657789;"
+                  ),
+                  shiny::downloadButton(
+                    ns("deeploc_fasta"), "DOWNLOAD FASTA", class = "btn-outline-primary"
+                  ),
+                  shiny::tags$a(
+                    href = "https://services.healthtech.dtu.dk/services/DeepLoc-2.1/",
+                    target = "_blank", rel = "noopener noreferrer",
+                    class = "btn btn-outline-info",
+                    bsicons::bs_icon("box-arrow-up-right"), " Open DeepLoc 2.1"
+                  ),
+                  shiny::uiOutput(ns("deeploc_status"))
+                ),
+                shiny::div(
+                  shiny::textAreaInput(
+                    ns("deeploc_location"), "Predicted localizations (separate multiple labels with semicolons)",
+                    rows = 2, placeholder = "For example: Chloroplast; Cytoplasm"
+                  ),
+                  shiny::textInput(ns("deeploc_membrane"), "Predicted membrane types (optional)"),
+                  shiny::textInput(ns("deeploc_signal"), "Predicted signals (optional)"),
+                  shiny::actionButton(
+                    ns("save_deeploc"), "ADD WEB RESULT",
+                    icon = bsicons::bs_icon("check-circle"), class = "btn-primary"
+                  ),
+                  DT::DTOutput(ns("deeploc_table"))
+                )
               )
             ),
             shiny::br(),
@@ -409,6 +486,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       partners = base::data.frame(),
       mapping = base::data.frame(),
       plant_mploc = NULL,
+      deeploc = NULL,
       message = "Resolve a UniProt protein above to populate localization and interaction context."
     )
 
@@ -434,6 +512,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         rv_context$partners <- base::data.frame()
         rv_context$mapping <- base::data.frame()
         rv_context$plant_mploc <- NULL
+        rv_context$deeploc <- NULL
         return()
       }
       base::tryCatch({
@@ -441,6 +520,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         rv_context$partners <- base::data.frame()
         rv_context$mapping <- base::data.frame()
         rv_context$plant_mploc <- NULL
+        rv_context$deeploc <- NULL
         rv_context$message <- base::paste("Context loaded for", accession)
       }, error = function(e) {
         rv_context$message <- base::paste("Could not load context:", base::conditionMessage(e))
@@ -452,6 +532,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       rv_context$partners <- base::data.frame()
       rv_context$mapping <- base::data.frame()
       rv_context$plant_mploc <- NULL
+      rv_context$deeploc <- NULL
       rv_context$message <- "Protein context cleared."
     })
 
@@ -483,6 +564,81 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         table,
         rownames = FALSE,
         options = base::list(pageLength = 10, scrollX = TRUE, autoWidth = TRUE)
+      )
+    })
+
+    output$deeploc_status <- shiny::renderUI({
+      sequence <- base::tryCatch(current_sequence_context(), error = function(e) "")
+      status <- base::tryCatch({
+        .protvis_pw_deeploc_fasta(sequence)
+        base::paste0("Ready: ", base::nchar(sequence), " aa. DeepLoc 2.1 is for eukaryotic proteins.")
+      }, error = function(e) base::conditionMessage(e))
+      shiny::div(status, style = "margin-top:8px;font-size:12px;color:#657789;")
+    })
+
+    output$deeploc_fasta <- shiny::downloadHandler(
+      filename = function() {
+        id <- base::gsub("[^A-Za-z0-9_.-]+", "_", current_accession_context())
+        if (!base::nzchar(id)) id <- "query_protein"
+        base::paste0(id, "_deeploc.fasta")
+      },
+      content = function(file) {
+        fasta <- .protvis_pw_deeploc_fasta(
+          current_sequence_context(), current_accession_context()
+        )
+        base::writeLines(fasta, file, useBytes = TRUE)
+      },
+      contentType = "text/plain"
+    )
+
+    shiny::observeEvent(input$sequence, {
+      rv_context$deeploc <- NULL
+    }, ignoreInit = TRUE)
+
+    shiny::observeEvent(input$save_deeploc, {
+      base::tryCatch({
+        sequence <- current_sequence_context()
+        .protvis_pw_deeploc_fasta(sequence)
+        table <- .protvis_pw_deeploc_result(
+          input$deeploc_location, input$deeploc_membrane, input$deeploc_signal
+        )
+        id <- current_accession_context()
+        if (!base::nzchar(id)) id <- "query_protein"
+        table$protein_id <- id
+        table$sequence_length <- base::nchar(sequence)
+        table <- table[, c("protein_id", "sequence_length", "predicted_location",
+                           "predicted_membrane_type", "predicted_signals", "source")]
+        .protvis_record_shared_run(
+          shared_state,
+          module = "protein_workbench",
+          method = "DeepLoc 2.1 web result",
+          category = "subcellular_localization",
+          parameters = base::list(
+            protein_id = id,
+            website = "https://services.healthtech.dtu.dk/services/DeepLoc-2.1/",
+            entry = "user-entered result"
+          ),
+          tables = base::list(prediction = table),
+          statistics = base::list(sequence = sequence)
+        )
+        rv_context$deeploc <- table
+        shiny::showNotification("DeepLoc 2.1 web result added.", type = "message", duration = 3)
+      }, error = function(e) {
+        shiny::showNotification(
+          base::paste("DeepLoc 2.1:", base::conditionMessage(e)),
+          type = "error", duration = 7
+        )
+      })
+    })
+
+    output$deeploc_table <- DT::renderDT({
+      table <- rv_context$deeploc
+      if (base::is.null(table)) {
+        table <- base::data.frame(Message = "Enter the predictions shown on the DeepLoc 2.1 result page.")
+      }
+      DT::datatable(
+        table, rownames = FALSE,
+        options = base::list(dom = "t", paging = FALSE, scrollX = TRUE)
       )
     })
 

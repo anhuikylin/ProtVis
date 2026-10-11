@@ -62,7 +62,7 @@ testthat::test_that("repeated ordinary analyses append instead of overwrite", {
 
   registry <- protvis_result_registry(object, module = "custom_analysis")
   testthat::expect_equal(nrow(registry), 2L)
-  testthat::expect_false(anyDuplicated(registry$run_id))
+  testthat::expect_identical(anyDuplicated(registry$run_id), 0L)
 })
 
 testthat::test_that("core matrices are complete snapshots and can be reactivated", {

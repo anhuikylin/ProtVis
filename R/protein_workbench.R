@@ -48,9 +48,10 @@
   jsonlite::fromJSON(text, simplifyVector = FALSE)
 }
 
-.protvis_pw_http_text <- function(url, timeout = 60, not_found = NULL) {
+.protvis_pw_http_text <- function(url, query = NULL, timeout = 60, not_found = NULL) {
   response <- httr::GET(
     url,
+    query = query,
     httr::user_agent("ProtVis Protein Workbench"),
     httr::timeout(timeout)
   )
@@ -58,6 +59,250 @@
   if (status == 404L) return(not_found)
   if (status < 200L || status >= 300L) return(not_found)
   httr::content(response, as = "text", encoding = "UTF-8")
+}
+
+.protvis_pw_xml_escape <- function(x) {
+  x <- base::as.character(x %||% "")
+  x <- base::gsub("&", "&amp;", x, fixed = TRUE)
+  x <- base::gsub('"', "&quot;", x, fixed = TRUE)
+  x <- base::gsub("<", "&lt;", x, fixed = TRUE)
+  x <- base::gsub(">", "&gt;", x, fixed = TRUE)
+  x
+}
+
+.protvis_pw_maize_gene_id <- function(identifier) {
+  identifier <- base::trimws(base::as.character(identifier %||% ""))
+  if (!base::nzchar(identifier) ||
+      !base::grepl("^Zm", identifier, ignore.case = TRUE)) {
+    return("")
+  }
+
+  gene_id <- base::sub("_[TP][0-9]+.*$", "", identifier, ignore.case = TRUE)
+  gene_id <- base::sub("\\.[0-9]+$", "", gene_id)
+  if (!base::grepl("^Zm[A-Za-z0-9]+$", gene_id, ignore.case = TRUE)) {
+    return("")
+  }
+  gene_id
+}
+
+.protvis_pw_maizemine_rows <- function(gene_id, paths, timeout = 30) {
+  if (!base::nzchar(gene_id) || !base::length(paths)) {
+    return(base::data.frame())
+  }
+
+  query_xml <- base::sprintf(
+    '<query model="genomic" view="%s"><constraint path="Gene" op="LOOKUP" value="%s"/></query>',
+    base::paste(paths, collapse = " "),
+    .protvis_pw_xml_escape(gene_id)
+  )
+
+  raw <- .protvis_pw_http_json(
+    "https://maizemine.rnet.missouri.edu/maizemine/service/query/results",
+    query = base::list(
+      query = query_xml,
+      format = "jsonrows"
+    ),
+    timeout = timeout,
+    not_found = NULL
+  )
+
+  results <- raw$results %||% base::list()
+  if (base::is.data.frame(results)) {
+    out <- results
+    if (base::ncol(out) == base::length(paths)) {
+      base::names(out) <- paths
+    }
+    return(out)
+  }
+  if (!base::length(results)) return(base::data.frame())
+
+  rows <- base::lapply(results, function(row) {
+    if (base::is.data.frame(row)) {
+      row <- base::as.list(row[1, , drop = FALSE])
+    }
+
+    if (base::is.list(row) && !base::is.null(base::names(row)) &&
+        base::any(base::nzchar(base::names(row)))) {
+      values <- base::lapply(paths, function(path) {
+        short <- base::sub("^Gene\\.", "", path)
+        value <- row[[path]] %||% row[[short]] %||% NA_character_
+        if (base::is.list(value)) {
+          value <- base::paste(.protvis_pw_leaf_values(value), collapse = "; ")
+        }
+        value <- base::as.character(value %||% NA_character_)
+        if (!base::length(value)) NA_character_ else value[[1L]]
+      })
+    } else {
+      values <- base::as.list(
+        base::unlist(row, recursive = TRUE, use.names = FALSE)
+      )
+      if (base::length(values) < base::length(paths)) {
+        values <- c(
+          values,
+          base::rep(
+            base::list(NA_character_),
+            base::length(paths) - base::length(values)
+          )
+        )
+      }
+      values <- values[base::seq_along(paths)]
+    }
+
+    base::as.data.frame(
+      stats::setNames(values, paths),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  })
+
+  out <- base::do.call(base::rbind, rows)
+  base::rownames(out) <- NULL
+  out
+}
+
+.protvis_pw_maizegdb_live <- function(identifier) {
+  gene_id <- .protvis_pw_maize_gene_id(identifier)
+  if (!base::nzchar(gene_id)) {
+    return(base::list(
+      gene_id = "",
+      url = "",
+      table = base::data.frame(),
+      status = "not_maize"
+    ))
+  }
+
+  maizegdb_url <- base::paste0(
+    "https://www.maizegdb.org/gene_center/gene/",
+    utils::URLencode(gene_id, reserved = TRUE)
+  )
+
+  summary_paths <- c(
+    "Gene.primaryIdentifier",
+    "Gene.symbol",
+    "Gene.name",
+    "Gene.length",
+    "Gene.chromosome.primaryIdentifier",
+    "Gene.chromosomeLocation.start",
+    "Gene.chromosomeLocation.end"
+  )
+
+  summary <- base::tryCatch(
+    .protvis_pw_maizemine_rows(gene_id, summary_paths),
+    error = function(e) base::data.frame()
+  )
+
+  rows <- base::list()
+  if (base::nrow(summary)) {
+    first <- summary[1, , drop = FALSE]
+    get_value <- function(path) {
+      value <- first[[path]]
+      if (base::is.null(value) || !base::length(value) ||
+          base::is.na(value[[1L]]) ||
+          !base::nzchar(base::as.character(value[[1L]]))) {
+        return("")
+      }
+      base::as.character(value[[1L]])
+    }
+
+    chromosome <- get_value("Gene.chromosome.primaryIdentifier")
+    start <- get_value("Gene.chromosomeLocation.start")
+    end <- get_value("Gene.chromosomeLocation.end")
+    coordinate <- if (base::nzchar(chromosome)) chromosome else ""
+    if (base::nzchar(start)) coordinate <- base::paste0(coordinate, ":", start)
+    if (base::nzchar(end)) coordinate <- base::paste0(coordinate, "..", end)
+
+    summary_values <- c(
+      "Gene model" = get_value("Gene.primaryIdentifier"),
+      "Gene symbol" = get_value("Gene.symbol"),
+      "Gene name" = get_value("Gene.name"),
+      "Chromosomal location" = coordinate,
+      "Gene length (bp)" = get_value("Gene.length")
+    )
+    summary_values <- summary_values[base::nzchar(summary_values)]
+
+    if (base::length(summary_values)) {
+      rows[[base::length(rows) + 1L]] <- base::data.frame(
+        source = "MaizeGDB / MaizeMine",
+        category = "Gene summary",
+        annotation = base::names(summary_values),
+        value = base::unname(summary_values),
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  go_paths <- c(
+    "Gene.goAnnotation.ontologyTerm.identifier",
+    "Gene.goAnnotation.ontologyTerm.name",
+    "Gene.goAnnotation.ontologyTerm.namespace"
+  )
+  go <- base::tryCatch(
+    .protvis_pw_maizemine_rows(gene_id, go_paths),
+    error = function(e) base::data.frame()
+  )
+  if (base::nrow(go) && base::all(go_paths %in% base::names(go))) {
+    go_id <- base::as.character(go[[go_paths[[1L]]]])
+    go_name <- base::as.character(go[[go_paths[[2L]]]])
+    go_ns <- base::as.character(go[[go_paths[[3L]]]])
+    keep <- !base::is.na(go_id) & base::nzchar(go_id)
+    if (base::any(keep)) {
+      go_table <- base::data.frame(
+        source = "MaizeGDB / MaizeMine",
+        category = ifelse(
+          base::is.na(go_ns[keep]) | !base::nzchar(go_ns[keep]),
+          "Gene Ontology",
+          base::paste0("GO · ", go_ns[keep])
+        ),
+        annotation = go_id[keep],
+        value = go_name[keep],
+        stringsAsFactors = FALSE
+      )
+      rows[[base::length(rows) + 1L]] <- base::unique(go_table)
+    }
+  }
+
+  pathway_paths <- c(
+    "Gene.pathways.identifier",
+    "Gene.pathways.name"
+  )
+  pathways <- base::tryCatch(
+    .protvis_pw_maizemine_rows(gene_id, pathway_paths),
+    error = function(e) base::data.frame()
+  )
+  if (base::nrow(pathways) &&
+      base::all(pathway_paths %in% base::names(pathways))) {
+    pathway_id <- base::as.character(pathways[[pathway_paths[[1L]]]])
+    pathway_name <- base::as.character(pathways[[pathway_paths[[2L]]]])
+    keep <- (!base::is.na(pathway_id) & base::nzchar(pathway_id)) |
+      (!base::is.na(pathway_name) & base::nzchar(pathway_name))
+    if (base::any(keep)) {
+      pathway_table <- base::data.frame(
+        source = "MaizeGDB / MaizeMine",
+        category = "Pathway",
+        annotation = ifelse(
+          base::is.na(pathway_id[keep]) | !base::nzchar(pathway_id[keep]),
+          "Pathway",
+          pathway_id[keep]
+        ),
+        value = pathway_name[keep],
+        stringsAsFactors = FALSE
+      )
+      rows[[base::length(rows) + 1L]] <- base::unique(pathway_table)
+    }
+  }
+
+  table <- if (base::length(rows)) {
+    base::unique(base::do.call(base::rbind, rows))
+  } else {
+    base::data.frame()
+  }
+
+  base::list(
+    gene_id = gene_id,
+    url = maizegdb_url,
+    table = table,
+    status = if (base::nrow(table)) "loaded" else "unavailable"
+  )
 }
 
 .protvis_pw_protein_name <- function(entry) {
@@ -385,6 +630,108 @@
   )
 }
 
+.protvis_pw_empty_plot <- function(message) {
+  ggplot2::ggplot() +
+    ggplot2::annotate("text", x = 0.5, y = 0.5, label = message, colour = "#657789", size = 4) +
+    ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), expand = FALSE) +
+    ggplot2::theme_void() +
+    ggplot2::theme(plot.margin = ggplot2::margin(12, 12, 12, 12))
+}
+
+.protvis_pw_plot_download_controls <- function(ns, id_prefix) {
+  shiny::div(
+    style = "display:flex;align-items:center;gap:6px;white-space:nowrap;",
+    shiny::downloadButton(
+      ns(base::paste0("download_", id_prefix, "_png")),
+      "PNG",
+      icon = bsicons::bs_icon("download"),
+      class = "btn-sm btn-outline-secondary"
+    ),
+    shiny::downloadButton(
+      ns(base::paste0("download_", id_prefix, "_svg")),
+      "SVG",
+      icon = bsicons::bs_icon("download"),
+      class = "btn-sm btn-outline-secondary"
+    ),
+    shiny::downloadButton(
+      ns(base::paste0("download_", id_prefix, "_pdf")),
+      "PDF",
+      icon = bsicons::bs_icon("download"),
+      class = "btn-sm btn-outline-secondary"
+    )
+  )
+}
+
+.protvis_pw_plot_card_header <- function(title, ns, id_prefix) {
+  bslib::card_header(
+    shiny::div(
+      style = "display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;",
+      shiny::span(title),
+      .protvis_pw_plot_download_controls(ns, id_prefix)
+    )
+  )
+}
+
+.protvis_pw_save_plot <- function(file, plot, extension, width, height) {
+  device <- base::switch(
+    extension,
+    png = grDevices::png,
+    svg = grDevices::svg,
+    pdf = grDevices::pdf,
+    base::stop("Unsupported plot download format: ", extension, call. = FALSE)
+  )
+  ggplot2::ggsave(
+    filename = file,
+    plot = plot,
+    device = device,
+    width = width,
+    height = height,
+    units = "in",
+    dpi = 600,
+    bg = "white",
+    limitsize = FALSE
+  )
+}
+
+.protvis_pw_register_plot_downloads <- function(
+  output,
+  id_prefix,
+  filename_prefix,
+  plot_fun,
+  width = 8,
+  height = 5
+) {
+  base::stopifnot(base::is.function(plot_fun))
+  for (extension in c("png", "svg", "pdf")) {
+    base::local({
+      ext <- extension
+      output_id <- base::paste0("download_", id_prefix, "_", ext)
+      output[[output_id]] <- shiny::downloadHandler(
+        filename = function() base::paste0(filename_prefix, ".", ext),
+        content = function(file) {
+          current_height <- if (base::is.function(height)) height() else height
+          current_width <- if (base::is.function(width)) width() else width
+          .protvis_pw_save_plot(
+            file = file,
+            plot = plot_fun(),
+            extension = ext,
+            width = current_width,
+            height = current_height
+          )
+        },
+        contentType = base::switch(
+          ext,
+          png = "image/png",
+          svg = "image/svg+xml",
+          pdf = "application/pdf",
+          "application/octet-stream"
+        )
+      )
+    })
+  }
+  invisible(NULL)
+}
+
 .protvis_pw_fasta <- function(sequence, accession = "protein") {
   sequence <- .protvis_pw_clean_sequence(sequence)
   chunks <- base::substring(sequence, base::seq(1, base::nchar(sequence), 60), base::seq(60, base::nchar(sequence) + 59, 60))
@@ -423,6 +770,34 @@
   refs[refs$database %in% c("InterPro", "Pfam", "PROSITE", "SMART", "SUPFAM", "Gene3D"), , drop = FALSE]
 }
 
+.protvis_pw_domain_plot_data <- function(table) {
+  required <- c("start", "end", "name")
+  if (!base::is.data.frame(table) || !base::all(required %in% base::names(table))) {
+    return(base::data.frame())
+  }
+  plot_data <- table[!base::is.na(table$start) & !base::is.na(table$end), , drop = FALSE]
+  if (!base::nrow(plot_data)) return(plot_data)
+
+  fallback <- if ("accession" %in% base::names(plot_data)) plot_data$accession else "Domain"
+  plot_data$label <- ifelse(base::nzchar(plot_data$name), plot_data$name, fallback)
+  plot_data$label <- base::gsub("\\s+", " ", base::trimws(plot_data$label))
+  plot_data$label[!base::nzchar(plot_data$label)] <- "Domain"
+  plot_data$label_display <- base::ifelse(
+    base::nchar(plot_data$label) > 52L,
+    base::paste0(base::substr(plot_data$label, 1L, 49L), "..."),
+    plot_data$label
+  )
+  plot_data$track <- base::rev(base::seq_len(base::nrow(plot_data)))
+  plot_data
+}
+
+.protvis_pw_domain_plot_height <- function(n_domains) {
+  n_domains <- base::suppressWarnings(base::as.integer(n_domains %||% 0L))
+  if (!base::length(n_domains) || base::is.na(n_domains[[1]])) n_domains <- 0L
+  n_domains <- base::max(0L, n_domains[[1]])
+  base::min(1600L, base::max(320L, 130L + 30L * n_domains))
+}
+
 .protvis_pw_structure_table <- function(entry, alphafold = NULL) {
   refs <- .protvis_pw_xrefs_table(entry)
   structural <- if (base::nrow(refs)) {
@@ -450,17 +825,252 @@
   structural
 }
 
-.protvis_pw_external_links <- function(accession) {
+.protvis_pw_primary_gene <- function(entry) {
+  genes <- entry$genes %||% base::list()
+  if (!base::length(genes)) return("")
+  primary <- genes[[1]]$geneName$value %||% ""
+  base::as.character(primary[[1]] %||% "")
+}
+
+.protvis_pw_is_maize <- function(entry) {
+  organism <- base::as.character(entry$organism$scientificName %||% "")
+  base::grepl("^Zea mays\\b", organism, ignore.case = TRUE)
+}
+
+.protvis_pw_external_links <- function(accession, entry = NULL, query = NULL) {
   if (base::is.null(accession) || !base::nzchar(accession)) return(base::list())
   id <- utils::URLencode(accession, reserved = TRUE)
-  base::list(
+  gene_id <- .protvis_pw_primary_gene(entry)
+  search_id <- base::trimws(query %||% "")
+  if (!base::nzchar(search_id)) search_id <- gene_id
+  if (!base::nzchar(search_id)) search_id <- accession
+  search_id <- utils::URLencode(search_id, reserved = TRUE)
+
+  links <- base::list(
     UniProt = base::paste0("https://www.uniprot.org/uniprotkb/", id, "/entry"),
     InterPro = base::paste0("https://www.ebi.ac.uk/interpro/protein/UniProt/", id, "/"),
     AlphaFold_DB = base::paste0("https://alphafold.ebi.ac.uk/entry/", id),
     SWISS_MODEL_Repository = base::paste0("https://swissmodel.expasy.org/repository/uniprot/", id),
     STRING = base::paste0("https://string-db.org/network/", id),
-    PDBe_KB = base::paste0("https://www.ebi.ac.uk/pdbe/pdbe-kb/proteins/", id)
+    PDBe_KB = base::paste0("https://www.ebi.ac.uk/pdbe/pdbe-kb/proteins/", id),
+    Ensembl = base::paste0("https://www.ensembl.org/Multi/Search/Results?q=", search_id),
+    NCBI_Gene = base::paste0("https://www.ncbi.nlm.nih.gov/gene/?term=", search_id),
+    KEGG_Genes = base::paste0("https://www.kegg.jp/dbget-bin/www_bfind?dbkey=genes&keywords=", search_id),
+    Plant_Reactome = base::paste0("https://plantreactome.gramene.org/PathwayBrowser/#/search?query=", search_id)
   )
+  if (.protvis_pw_is_maize(entry)) {
+    links$MaizeGDB <- base::paste0("https://www.maizegdb.org/gene_center/gene/", search_id)
+  }
+  links
+}
+
+.protvis_pw_common_species <- function() {
+  c(
+    "Zea mays (maize)" = "4577",
+    "Arabidopsis thaliana" = "3702",
+    "Oryza sativa (rice)" = "4530",
+    "Triticum aestivum (wheat)" = "4565",
+    "Glycine max (soybean)" = "3847",
+    "Solanum lycopersicum (tomato)" = "4081",
+    "Homo sapiens" = "9606",
+    "Mus musculus" = "10090",
+    "Drosophila melanogaster" = "7227",
+    "Saccharomyces cerevisiae" = "4932",
+    "All species (accession IDs recommended)" = ""
+  )
+}
+
+.protvis_pw_maize_versions <- function() {
+  c(
+    "Auto-detect from identifier" = "auto",
+    "B73 RefGen_v5 / NAM v5 (Zm00001eb...)" = "b73_v5",
+    "B73 RefGen_v4 (Zm00001d...)" = "b73_v4",
+    "B73 RefGen_v3 (GRMZM2G...)" = "b73_v3",
+    "PH207 v1 (Zm00008a...)" = "ph207_v1",
+    "W22 v2 (Zm00004b...)" = "w22_v2",
+    "Mo17 v1 (Zm00014a...)" = "mo17_v1",
+    "Other maize gene-model version" = "other"
+  )
+}
+
+.protvis_pw_maize_version_label <- function(version = "auto") {
+  choices <- .protvis_pw_maize_versions()
+  match_index <- base::match(version, choices)
+  if (base::is.na(match_index)) base::names(choices)[[1]] else base::names(choices)[[match_index]]
+}
+
+.protvis_pw_maize_fallback_links <- function(identifier) {
+  query <- utils::URLencode(identifier, reserved = TRUE)
+  maizegdb <- base::paste0("https://www.maizegdb.org/gene_center/gene/", query)
+  phytozome <- base::paste0("https://phytozome-next.jgi.doe.gov/search?query=", query)
+  base::paste0(
+    '<a href="', maizegdb, '" target="_blank">MaizeGDB</a> · ',
+    '<a href="', phytozome, '" target="_blank">Phytozome</a>'
+  )
+}
+
+.protvis_pw_parse_identifiers <- function(text, limit = 1000L) {
+  ids <- base::unlist(base::strsplit(base::trimws(text %||% ""), "[,;[:space:]]+"), use.names = FALSE)
+  ids <- base::unique(ids[base::nzchar(ids)])
+  if (!base::length(ids)) return(base::character())
+  if (base::length(ids) > limit) {
+    base::stop(base::sprintf("Enter at most %d identifiers per retrieval.", limit), call. = FALSE)
+  }
+  invalid <- !base::grepl("^[A-Za-z0-9_.-]+$", ids)
+  if (base::any(invalid)) {
+    base::stop("Identifiers may contain only letters, numbers, periods, underscores and hyphens.", call. = FALSE)
+  }
+  ids
+}
+
+.protvis_pw_chunk <- function(values, size = 50L) {
+  if (!base::length(values)) return(base::list())
+  base::split(values, base::ceiling(base::seq_along(values) / base::as.integer(size)))
+}
+
+.protvis_pw_parse_fasta_records <- function(fasta_text) {
+  if (base::is.null(fasta_text) || !base::nzchar(base::trimws(fasta_text))) return(base::data.frame())
+  lines <- base::strsplit(base::gsub("\\r", "", fasta_text), "\\n", fixed = FALSE)[[1]]
+  starts <- base::which(base::startsWith(lines, ">"))
+  if (!base::length(starts)) return(base::data.frame())
+  ends <- base::c(starts[-1L] - 1L, base::length(lines))
+  rows <- base::lapply(base::seq_along(starts), function(i) {
+    header <- base::substring(lines[[starts[[i]]]], 2L)
+    sequence <- base::paste(lines[base::seq.int(starts[[i]] + 1L, ends[[i]])], collapse = "")
+    fields <- base::strsplit(header, "\\|", fixed = FALSE)[[1]]
+    accession <- if (base::length(fields) >= 2L) fields[[2]] else base::strsplit(header, " ", fixed = TRUE)[[1]][[1]]
+    extract <- function(pattern) {
+      value <- base::sub(pattern, "\\1", header, perl = TRUE)
+      if (identical(value, header)) NA_character_ else value
+    }
+    base::data.frame(
+      record_type = if (base::length(fields)) fields[[1]] else NA_character_,
+      accession = accession,
+      entry_name = if (base::length(fields) >= 3L) base::strsplit(fields[[3]], " ", fixed = TRUE)[[1]][[1]] else NA_character_,
+      gene = extract(".* GN=([^ ]+).*"),
+      organism = extract(".* OS=(.*?) OX=.*"),
+      taxon_id = extract(".* OX=([0-9]+).*"),
+      sequence = .protvis_pw_clean_sequence(sequence),
+      stringsAsFactors = FALSE
+    )
+  })
+  result <- base::do.call(base::rbind, rows)
+  result$length <- base::nchar(result$sequence)
+  result
+}
+
+.protvis_pw_batch_sequence_fetch <- function(identifiers, taxon_id = "", maize_version = "auto") {
+  identifiers <- .protvis_pw_parse_identifiers(base::paste(identifiers, collapse = "\n"), limit = 1000L)
+  taxon_id <- base::trimws(taxon_id %||% "")
+  if (base::nzchar(taxon_id) && !base::grepl("^[0-9]+$", taxon_id)) {
+    base::stop("NCBI taxon ID must contain digits only.", call. = FALSE)
+  }
+  # UniProt query URLs have practical length limits. Keep each exact lookup
+  # compact, then combine the FASTA records locally so large ID lists remain
+  # supported without sacrificing exact accession/gene matching.
+  direct_records <- base::lapply(.protvis_pw_chunk(identifiers, size = 40L), function(id_chunk) {
+    terms <- base::unlist(base::lapply(id_chunk, function(id) {
+      base::paste0("(accession:", id, " OR gene_exact:", id, ")")
+    }), use.names = FALSE)
+    query <- base::paste0("(", base::paste(terms, collapse = " OR "), ")")
+    if (base::nzchar(taxon_id)) query <- base::paste0("(", query, ") AND (organism_id:", taxon_id, ")")
+    fasta_text <- .protvis_pw_http_text(
+      "https://rest.uniprot.org/uniprotkb/stream",
+      query = base::list(format = "fasta", query = query),
+      timeout = 120,
+      not_found = ""
+    )
+    .protvis_pw_parse_fasta_records(fasta_text)
+  })
+  direct_records <- direct_records[base::vapply(direct_records, base::nrow, integer(1)) > 0L]
+  retrieved <- if (base::length(direct_records)) base::do.call(base::rbind, direct_records) else base::data.frame()
+  has_direct_match <- base::vapply(identifiers, function(input_id) {
+    if (!base::nrow(retrieved)) return(FALSE)
+    id_upper <- base::toupper(input_id)
+    base::any(base::toupper(retrieved$accession) == id_upper | base::toupper(retrieved$gene) == id_upper, na.rm = TRUE)
+  }, logical(1))
+
+  # Many plant gene models are indexed by UniProt but are not retained in the
+  # FASTA GN field. Resolve only those remaining identifiers, then retrieve
+  # their sequences together by accession.
+  fallback_map <- base::do.call(base::rbind, base::lapply(identifiers[!has_direct_match], function(input_id) {
+    hits <- base::tryCatch(
+      .protvis_pw_search_uniprot(input_id, if (base::nzchar(taxon_id)) taxon_id else NULL, size = 1L),
+      error = function(e) base::data.frame()
+    )
+    if (!base::nrow(hits)) {
+      return(base::data.frame(input_id = input_id, accession = NA_character_, stringsAsFactors = FALSE))
+    }
+    base::data.frame(input_id = input_id, accession = hits$accession[[1]], stringsAsFactors = FALSE)
+  }))
+  if (base::is.null(fallback_map)) {
+    fallback_map <- base::data.frame(input_id = base::character(), accession = base::character(), stringsAsFactors = FALSE)
+  }
+  fallback_accessions <- base::unique(fallback_map$accession[!base::is.na(fallback_map$accession) & base::nzchar(fallback_map$accession)])
+  if (base::length(fallback_accessions)) {
+    chunks <- .protvis_pw_chunk(fallback_accessions, size = 50L)
+    fallback_records <- base::lapply(chunks, function(accessions) {
+      accession_query <- base::paste0("(", base::paste(base::paste0("accession:", accessions), collapse = " OR "), ")")
+      text <- .protvis_pw_http_text(
+        "https://rest.uniprot.org/uniprotkb/stream",
+        query = base::list(format = "fasta", query = accession_query), timeout = 120, not_found = ""
+      )
+      .protvis_pw_parse_fasta_records(text)
+    })
+    fallback_records <- fallback_records[base::vapply(fallback_records, base::nrow, integer(1)) > 0L]
+    if (base::length(fallback_records)) {
+      retrieved <- if (base::nrow(retrieved)) base::rbind(retrieved, base::do.call(base::rbind, fallback_records)) else base::do.call(base::rbind, fallback_records)
+    }
+  }
+  is_maize <- identical(taxon_id, "4577")
+  maize_reference <- if (is_maize) .protvis_pw_maize_version_label(maize_version) else NA_character_
+  empty_row <- function(input_id) {
+    base::data.frame(
+      input_id = input_id, status = "Not found", record_type = NA_character_, accession = NA_character_,
+      entry_name = NA_character_, gene = NA_character_, organism = NA_character_,
+      taxon_id = if (base::nzchar(taxon_id)) taxon_id else NA_character_, sequence = NA_character_,
+      length = NA_integer_, maize_reference = maize_reference,
+      external_resources = if (is_maize) .protvis_pw_maize_fallback_links(input_id) else NA_character_,
+      stringsAsFactors = FALSE
+    )
+  }
+  selected <- base::lapply(identifiers, function(input_id) {
+    if (!base::nrow(retrieved)) return(empty_row(input_id))
+    id_upper <- base::toupper(input_id)
+    accession_match <- base::toupper(retrieved$accession) == id_upper
+    gene_match <- base::toupper(retrieved$gene) == id_upper
+    candidates <- base::which(accession_match | gene_match)
+    mapped_accession <- fallback_map$accession[fallback_map$input_id == input_id]
+    if (!base::length(candidates) && base::length(mapped_accession) && !base::is.na(mapped_accession[[1]])) {
+      candidates <- base::which(retrieved$accession == mapped_accession[[1]])
+      accession_match <- retrieved$accession == mapped_accession[[1]]
+    }
+    if (!base::length(candidates)) return(empty_row(input_id))
+    ordering <- base::order(
+      !accession_match[candidates],
+      !(base::tolower(retrieved$record_type[candidates]) == "sp"),
+      -retrieved$length[candidates],
+      retrieved$accession[candidates],
+      na.last = TRUE
+    )
+    row <- retrieved[candidates[[ordering[[1]]]], , drop = FALSE]
+    row$input_id <- input_id
+    row$status <- "Retrieved"
+    row$maize_reference <- maize_reference
+    row$external_resources <- NA_character_
+    row[, c("input_id", "status", "record_type", "accession", "entry_name", "gene", "organism", "taxon_id", "length", "maize_reference", "external_resources", "sequence"), drop = FALSE]
+  })
+  base::do.call(base::rbind, selected)
+}
+
+.protvis_pw_batch_fasta <- function(table) {
+  table <- table[table$status == "Retrieved" & !base::is.na(table$sequence) & base::nzchar(table$sequence), , drop = FALSE]
+  if (!base::nrow(table)) return("")
+  base::paste(base::vapply(base::seq_len(base::nrow(table)), function(i) {
+    name <- table$gene[[i]]
+    if (base::is.na(name) || !base::nzchar(name)) name <- table$input_id[[i]]
+    .protvis_pw_fasta(table$sequence[[i]], base::paste(table$accession[[i]], name, sep = "|"))
+  }, character(1)), collapse = "\n")
 }
 
 .protvis_pw_model_view <- function(pdb_text) {
@@ -485,10 +1095,15 @@ utils::globalVariables(c("Residue", "Count", "position", "hydropathy", "start", 
 protein_workbench_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
-    shiny::tags$style(shiny::HTML("\n      .pw-note {color:#657789;font-size:12px;line-height:1.55;}\n      .pw-kpis {display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-bottom:14px;}\n      .pw-kpi {border:1px solid #dbe8f3;border-radius:14px;background:#f8fbff;padding:13px 15px;}\n      .pw-kpi strong {display:block;color:#1787c9;font-size:19px;line-height:1.2;overflow-wrap:anywhere;}\n      .pw-kpi span {display:block;color:#657789;font-size:11px;margin-top:5px;text-transform:uppercase;letter-spacing:.05em;}\n      .pw-resource-grid {display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px;}\n      .pw-resource {display:block;border:1px solid #dbe8f3;border-radius:14px;background:#fff;padding:16px;text-decoration:none!important;}\n      .pw-resource:hover {border-color:#9ccce8;background:#f8fbff;}\n      .pw-resource strong {display:block;color:#1f3447;margin-bottom:5px;}\n      .pw-resource span {color:#657789;font-size:12px;}\n      @media(max-width:1000px){.pw-kpis{grid-template-columns:repeat(2,1fr)}.pw-resource-grid{grid-template-columns:1fr 1fr}}\n    ")),
+    shiny::tags$style(shiny::HTML("\n      .pw-note {color:#657789;font-size:12px;line-height:1.55;}\n      .pw-kpis {display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-bottom:14px;}\n      .pw-kpi {border:1px solid #dbe8f3;border-radius:14px;background:#f8fbff;padding:13px 15px;}\n      .pw-kpi strong {display:block;color:#1787c9;font-size:19px;line-height:1.2;overflow-wrap:anywhere;}\n      .pw-kpi span {display:block;color:#657789;font-size:11px;margin-top:5px;text-transform:uppercase;letter-spacing:.05em;}\n      .pw-resource-grid {display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px;}\n      .pw-resource {display:block;border:1px solid #dbe8f3;border-radius:14px;background:#fff;padding:16px;text-decoration:none!important;}\n      .pw-resource:hover {border-color:#9ccce8;background:#f8fbff;}\n      .pw-resource strong {display:block;color:#1f3447;margin-bottom:5px;}\n      .pw-resource span {color:#657789;font-size:12px;}\n      .pw-maizegdb-live {border:1px solid #cfe5f3;border-radius:12px;background:#f7fbfe;margin-bottom:14px;overflow:hidden;}
+      .pw-maizegdb-live-head {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid #dbe8f3;}
+      .pw-maizegdb-live-head strong {color:#1f3447;}
+      .pw-maizegdb-live-body {padding:10px 12px;}
+      .pw-live-badge {display:inline-flex;align-items:center;border-radius:999px;background:#e8f5fc;color:#1787c9;padding:2px 8px;font-size:11px;font-weight:700;margin-left:8px;}
+      .pw-batch-status {margin-top:10px;padding:10px 12px;border:1px solid;border-radius:10px;font-size:12px;line-height:1.5;}\n      .pw-batch-status-success {color:#17764d;background:#eef9f2;border-color:#bde5cc;}\n      .pw-batch-status-warning {color:#825b12;background:#fff8e6;border-color:#f1d79c;}\n      @media(max-width:1000px){.pw-kpis{grid-template-columns:repeat(2,1fr)}.pw-resource-grid{grid-template-columns:1fr 1fr}}\n    ")),
     bslib::layout_sidebar(
       sidebar = bslib::sidebar(
-        width = 365,
+        width = 550,
         open = "open",
         shiny::h4("Protein Workbench"),
         shiny::p(
@@ -523,7 +1138,45 @@ protein_workbench_ui <- function(id) {
         shiny::uiOutput(ns("status")),
         shiny::hr(),
         shiny::downloadButton(ns("download_fasta"), "Download FASTA"),
-        shiny::downloadButton(ns("download_json"), "Download UniProt JSON")
+        shiny::downloadButton(ns("download_json"), "Download UniProt JSON"),
+        shiny::hr(),
+        shiny::h5("Batch sequence retrieval"),
+        shiny::p(
+          "Retrieve multiple protein sequences directly from UniProt. No FASTA upload is needed.",
+          class = "pw-note"
+        ),
+        shiny::selectInput(
+          ns("batch_species"), "Common species",
+          choices = .protvis_pw_common_species(), selected = "4577"
+        ),
+        shiny::conditionalPanel(
+          condition = base::sprintf("input['%s'] === '4577'", ns("batch_species")),
+          shiny::selectInput(
+            ns("batch_maize_version"), "Maize reference version",
+            choices = .protvis_pw_maize_versions(), selected = "auto"
+          ),
+          shiny::p(
+            "Choose the gene-model version when known; auto-detect remains suitable for mixed identifier lists.",
+            class = "pw-note"
+          )
+        ),
+        shiny::textInput(
+          ns("batch_taxon"), "NCBI taxon ID override (optional)",
+          placeholder = "Overrides the common-species selection"
+        ),
+        shiny::textAreaInput(
+          ns("batch_ids"), "Gene IDs or UniProt accessions",
+          rows = 8,
+          placeholder = "One ID per line, or separate IDs with commas\ne.g. Zm00001eb000210\nZm00001eb000440\nA0A1D6JJK6"
+        ),
+        shiny::actionButton(
+          ns("batch_run"), "RETRIEVE SEQUENCES",
+          icon = bsicons::bs_icon("cloud-download"), class = "btn-primary pv-run-button"
+        ),
+        shiny::uiOutput(ns("batch_status")),
+        shiny::br(), shiny::br(),
+        shiny::downloadButton(ns("download_batch_fasta"), "Download batch FASTA"),
+        shiny::downloadButton(ns("download_batch_table"), "Download result table")
       ),
       bslib::card(
         full_screen = TRUE,
@@ -556,13 +1209,38 @@ protein_workbench_ui <- function(id) {
               shiny::br(),
               bslib::layout_columns(
                 col_widths = c(5, 7),
-                bslib::card(bslib::card_header("Residue composition"), shiny::plotOutput(ns("composition_plot"), height = "360px")),
-                bslib::card(bslib::card_header("Kyte-Doolittle hydropathy"), shiny::sliderInput(ns("hydro_window"), "Window", min = 3, max = 31, value = 9, step = 2), shiny::plotOutput(ns("hydropathy_plot"), height = "310px"))
+                bslib::card(
+                  .protvis_pw_plot_card_header("Residue composition", ns, "composition_plot"),
+                  shiny::plotOutput(ns("composition_plot"), height = "360px")
+                ),
+                bslib::card(
+                  .protvis_pw_plot_card_header("Kyte-Doolittle hydropathy", ns, "hydropathy_plot"),
+                  shiny::sliderInput(ns("hydro_window"), "Window", min = 3, max = 31, value = 9, step = 2),
+                  shiny::plotOutput(ns("hydropathy_plot"), height = "310px")
+                )
               )
             ),
             bslib::nav_panel(
+              "Batch sequences",
+              bslib::card(
+                bslib::card_header("Batch protein sequence retrieval"),
+                bslib::card_body(
+                  shiny::p(
+                    "Configure the species and identifiers in the left panel, then select RETRIEVE SEQUENCES. This tab displays the complete retrieval result and supports filtering.",
+                    class = "pw-note"
+                  )
+                )
+              ),
+              shiny::br(),
+              bslib::card(bslib::card_header("Retrieved sequences"), DT::DTOutput(ns("batch_table")))
+            ),
+            bslib::nav_panel(
               "Annotations",
-              shiny::p("UniProt sequence features including regions, active sites, binding sites, variants and processing features.", class = "pw-note"),
+              shiny::uiOutput(ns("maizegdb_annotation_panel")),
+              shiny::p(
+                "UniProt sequence features including regions, active sites, binding sites, variants and processing features.",
+                class = "pw-note"
+              ),
               DT::DTOutput(ns("features_table"))
             ),
             bslib::nav_panel(
@@ -573,7 +1251,11 @@ protein_workbench_ui <- function(id) {
             bslib::nav_panel(
               "Domains",
               shiny::p("InterPro is queried when a UniProt accession is available; UniProt cross-references remain available as a fallback.", class = "pw-note"),
-              shiny::plotOutput(ns("domain_plot"), height = "280px"),
+              shiny::div(
+                style = "display:flex;justify-content:flex-end;margin-bottom:8px;",
+                .protvis_pw_plot_download_controls(ns, "domain_plot")
+              ),
+              shiny::uiOutput(ns("domain_plot_ui")),
               DT::DTOutput(ns("domain_table"))
             ),
             bslib::nav_panel(
@@ -581,7 +1263,16 @@ protein_workbench_ui <- function(id) {
               bslib::layout_columns(
                 col_widths = c(5, 7),
                 bslib::card(bslib::card_header("Structure resources"), DT::DTOutput(ns("structure_table"))),
-                bslib::card(bslib::card_header("AlphaFold structure"), r3dmol::r3dmolOutput(ns("alphafold_view"), height = "470px"))
+                bslib::card(
+                  bslib::card_header(
+                    shiny::div(
+                      style = "display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;",
+                      shiny::span("AlphaFold structure"),
+                      shiny::uiOutput(ns("alphafold_pdb_download_ui"))
+                    )
+                  ),
+                  r3dmol::r3dmolOutput(ns("alphafold_view"), height = "470px")
+                )
               ),
               shiny::br(),
               DT::DTOutput(ns("alphafold_table"))
@@ -593,10 +1284,6 @@ protein_workbench_ui <- function(id) {
             bslib::nav_panel(
               "Resources",
               shiny::uiOutput(ns("resource_cards"))
-            ),
-            bslib::nav_panel(
-              "Raw record",
-              shiny::verbatimTextOutput(ns("raw_json"))
             )
           )
         )
@@ -618,7 +1305,13 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       interpro = base::data.frame(),
       alphafold = NULL,
       alphafold_pdb = NULL,
+      maizegdb = base::data.frame(),
+      maizegdb_gene = "",
+      maizegdb_url = "",
+      maizegdb_status = "not_maize",
       local_sequence = "",
+      batch_results = base::data.frame(),
+      batch_requested = base::character(),
       message = "Enter a protein identifier or sequence to begin."
     )
 
@@ -673,8 +1366,49 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       rv$interpro <- base::data.frame()
       rv$alphafold <- NULL
       rv$alphafold_pdb <- NULL
+      rv$maizegdb <- base::data.frame()
+      rv$maizegdb_gene <- ""
+      rv$maizegdb_url <- ""
+      rv$maizegdb_status <- "not_maize"
       rv$local_sequence <- ""
       rv$message <- "Protein Workbench cleared."
+    })
+
+    shiny::observeEvent(input$batch_run, {
+      base::tryCatch({
+        identifiers <- .protvis_pw_parse_identifiers(input$batch_ids %||% "")
+        if (!base::length(identifiers)) base::stop("Enter at least one gene ID or UniProt accession.")
+        taxon_id <- base::trimws(input$batch_taxon %||% "")
+        if (!base::nzchar(taxon_id)) taxon_id <- input$batch_species %||% ""
+        maize_version <- input$batch_maize_version %||% "auto"
+        rv$batch_requested <- identifiers
+        rv$batch_results <- .protvis_pw_batch_sequence_fetch(identifiers, taxon_id, maize_version)
+        retrieved <- base::sum(rv$batch_results$status == "Retrieved", na.rm = TRUE)
+        missing <- base::sum(rv$batch_results$status == "Not found", na.rm = TRUE)
+        rv$message <- base::sprintf("Batch sequence retrieval completed: %d of %d identifiers matched.", retrieved, base::length(identifiers))
+        shiny::showNotification(
+          base::sprintf(
+            "Sequence retrieval completed: %d retrieved, %d not found (%d requested).",
+            retrieved, missing, base::length(identifiers)
+          ),
+          type = if (retrieved > 0L) "message" else "warning",
+          duration = 8
+        )
+        .protvis_record_shared_run(
+          shared_state,
+          module = "protein_workbench",
+          method = "batch_uniprot_sequence_retrieval",
+          category = "toolkits",
+          parameters = list(
+            taxon_id = taxon_id, maize_reference_version = maize_version,
+            requested_identifiers = identifiers
+          ),
+          tables = list(batch_sequence_results = rv$batch_results),
+          statistics = list(requested = base::length(identifiers), retrieved = retrieved)
+        )
+      }, error = function(e) {
+        shiny::showNotification(base::conditionMessage(e), type = "error", duration = 8)
+      })
     })
 
     shiny::observeEvent(input$run, {
@@ -690,7 +1424,32 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         }
 
         if (base::nzchar(query)) {
-          rv$message <- "Searching UniProt..."
+          maize_gene <- .protvis_pw_maize_gene_id(query)
+          if (base::nzchar(maize_gene)) {
+            rv$message <- "Searching UniProt and MaizeGDB..."
+            maize_live <- base::tryCatch(
+              .protvis_pw_maizegdb_live(query),
+              error = function(e) base::list(
+                gene_id = maize_gene,
+                url = base::paste0(
+                  "https://www.maizegdb.org/gene_center/gene/",
+                  utils::URLencode(maize_gene, reserved = TRUE)
+                ),
+                table = base::data.frame(),
+                status = "unavailable"
+              )
+            )
+            rv$maizegdb <- maize_live$table %||% base::data.frame()
+            rv$maizegdb_gene <- maize_live$gene_id %||% maize_gene
+            rv$maizegdb_url <- maize_live$url %||% ""
+            rv$maizegdb_status <- maize_live$status %||% "unavailable"
+          } else {
+            rv$maizegdb <- base::data.frame()
+            rv$maizegdb_gene <- ""
+            rv$maizegdb_url <- ""
+            rv$maizegdb_status <- "not_maize"
+            rv$message <- "Searching UniProt..."
+          }
           hits <- .protvis_pw_search_uniprot(query, input$organism_id %||% NULL, size = 25L)
           rv$search <- hits
           if (!base::nrow(hits)) base::stop("No UniProt entries matched the query.")
@@ -718,6 +1477,7 @@ protein_workbench_server <- function(id, shared_state = NULL) {
           search = rv$search,
           summary = .protvis_pw_summary_table(rv$entry),
           comments = .protvis_pw_comments_table(rv$entry),
+          maizegdb = rv$maizegdb,
           interpro = rv$interpro,
           sequence_stats = .protvis_pw_sequence_stats(sequence_value)
         )
@@ -815,9 +1575,44 @@ protein_workbench_server <- function(id, shared_state = NULL) {
 
     output$header_links <- shiny::renderUI({
       accession <- current_accession()
-      if (!base::nzchar(accession)) return(NULL)
-      links <- .protvis_pw_external_links(accession)
-      shiny::tags$a(href = links$UniProt, target = "_blank", class = "btn btn-outline-primary btn-sm", "Open UniProt")
+      maize_gene <- .protvis_pw_maize_gene_id(input$query %||% "")
+      buttons <- base::list()
+
+      if (base::nzchar(accession)) {
+        links <- .protvis_pw_external_links(
+          accession,
+          entry = rv$entry,
+          query = input$query
+        )
+        buttons[[base::length(buttons) + 1L]] <- shiny::tags$a(
+          href = links$UniProt,
+          target = "_blank",
+          class = "btn btn-outline-primary btn-sm",
+          "Open UniProt"
+        )
+      }
+
+      if (base::nzchar(maize_gene)) {
+        maize_url <- rv$maizegdb_url %||% ""
+        if (!base::nzchar(maize_url)) {
+          maize_url <- base::paste0(
+            "https://www.maizegdb.org/gene_center/gene/",
+            utils::URLencode(maize_gene, reserved = TRUE)
+          )
+        }
+        buttons[[base::length(buttons) + 1L]] <- shiny::tags$a(
+          href = maize_url,
+          target = "_blank",
+          class = "btn btn-outline-primary btn-sm",
+          "Open MaizeGDB"
+        )
+      }
+
+      if (!base::length(buttons)) return(NULL)
+      shiny::div(
+        style = "display:flex;gap:8px;flex-wrap:wrap;",
+        buttons
+      )
     })
 
     output$summary_table <- DT::renderDT({
@@ -844,10 +1639,47 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       base::paste(base::substring(sequence, base::seq(1, base::nchar(sequence), 60), base::seq(60, base::nchar(sequence) + 59, 60)), collapse = "\n")
     })
 
-    output$composition_plot <- shiny::renderPlot({
+    output$batch_status <- shiny::renderUI({
+      table <- rv$batch_results
+      if (!base::nrow(table)) {
+        return(shiny::div(class = "pw-note", "Choose a species, paste up to 1,000 identifiers, then retrieve sequences."))
+      }
+      retrieved <- base::sum(table$status == "Retrieved", na.rm = TRUE)
+      missing <- base::sum(table$status == "Not found", na.rm = TRUE)
+      shiny::div(
+        class = base::paste(
+          "pw-batch-status",
+          if (retrieved > 0L) "pw-batch-status-success" else "pw-batch-status-warning"
+        ),
+        shiny::strong("Sequence retrieval completed"),
+        shiny::br(),
+        base::sprintf(
+          "%d retrieved · %d not found · %d requested",
+          retrieved, missing, base::length(rv$batch_requested)
+        )
+      )
+    })
+
+    output$batch_table <- DT::renderDT({
+      table <- rv$batch_results
+      if (!base::nrow(table)) {
+        table <- base::data.frame(Message = "No batch retrieval has been run.")
+      } else {
+        table <- table[, base::setdiff(base::names(table), "sequence"), drop = FALSE]
+      }
+      DT::datatable(
+        table,
+        rownames = FALSE,
+        escape = base::which(base::names(table) != "external_resources"),
+        filter = if (base::nrow(table) > 1L) "top" else "none",
+        options = base::list(pageLength = 15, scrollX = TRUE)
+      )
+    })
+
+    composition_plot_current <- shiny::reactive({
       table <- .protvis_pw_composition(current_sequence())
       if (!base::nrow(table)) {
-        graphics::plot.new(); graphics::text(0.5, 0.5, "No sequence loaded."); return(invisible(NULL))
+        return(.protvis_pw_empty_plot("No sequence loaded."))
       }
       ggplot2::ggplot(table, ggplot2::aes(x = stats::reorder(Residue, -Count), y = Count)) +
         ggplot2::geom_col() +
@@ -855,17 +1687,113 @@ protein_workbench_server <- function(id, shared_state = NULL) {
         ggplot2::theme_minimal(base_size = 12)
     })
 
-    output$hydropathy_plot <- shiny::renderPlot({
+    output$composition_plot <- shiny::renderPlot({
+      composition_plot_current()
+    })
+
+    .protvis_pw_register_plot_downloads(
+      output = output,
+      id_prefix = "composition_plot",
+      filename_prefix = "ProtVis_residue_composition",
+      plot_fun = composition_plot_current,
+      width = 6.5,
+      height = 5
+    )
+
+    hydropathy_plot_current <- shiny::reactive({
       table <- .protvis_pw_hydropathy(current_sequence(), input$hydro_window %||% 9L)
       table <- table[!base::is.na(table$hydropathy), , drop = FALSE]
       if (!base::nrow(table)) {
-        graphics::plot.new(); graphics::text(0.5, 0.5, "No sequence loaded."); return(invisible(NULL))
+        return(.protvis_pw_empty_plot("No hydropathy values are available for this sequence and window."))
       }
       ggplot2::ggplot(table, ggplot2::aes(x = position, y = hydropathy)) +
         ggplot2::geom_line(linewidth = 0.6) +
         ggplot2::geom_hline(yintercept = 0, linetype = 2, linewidth = 0.35) +
         ggplot2::labs(x = "Residue position", y = "Hydropathy") +
         ggplot2::theme_minimal(base_size = 12)
+    })
+
+    output$hydropathy_plot <- shiny::renderPlot({
+      hydropathy_plot_current()
+    })
+
+    .protvis_pw_register_plot_downloads(
+      output = output,
+      id_prefix = "hydropathy_plot",
+      filename_prefix = "ProtVis_Kyte_Doolittle_hydropathy",
+      plot_fun = hydropathy_plot_current,
+      width = 8,
+      height = 4.8
+    )
+
+    output$maizegdb_annotation_panel <- shiny::renderUI({
+      gene_id <- .protvis_pw_maize_gene_id(input$query %||% "")
+      if (!base::nzchar(gene_id)) return(NULL)
+
+      status_text <- if (base::identical(rv$maizegdb_status, "loaded")) {
+        base::paste0(
+          "Live MaizeGDB/MaizeMine annotation for ",
+          rv$maizegdb_gene %||% gene_id,
+          "."
+        )
+      } else {
+        base::paste0(
+          "MaizeGDB live annotation is currently unavailable for ",
+          gene_id,
+          "; the direct MaizeGDB record remains available."
+        )
+      }
+
+      maize_url <- rv$maizegdb_url %||% ""
+      if (!base::nzchar(maize_url)) {
+        maize_url <- base::paste0(
+          "https://www.maizegdb.org/gene_center/gene/",
+          utils::URLencode(gene_id, reserved = TRUE)
+        )
+      }
+
+      shiny::div(
+        class = "pw-maizegdb-live",
+        shiny::div(
+          class = "pw-maizegdb-live-head",
+          shiny::div(
+            shiny::strong("MaizeGDB live annotation"),
+            shiny::span("LIVE", class = "pw-live-badge")
+          ),
+          shiny::tags$a(
+            href = maize_url,
+            target = "_blank",
+            class = "btn btn-outline-primary btn-sm",
+            "Open MaizeGDB"
+          )
+        ),
+        shiny::div(
+          class = "pw-maizegdb-live-body",
+          shiny::p(status_text, class = "pw-note"),
+          DT::DTOutput(session$ns("maizegdb_table"))
+        )
+      )
+    })
+
+    output$maizegdb_table <- DT::renderDT({
+      table <- rv$maizegdb
+      if (!base::nrow(table)) {
+        table <- base::data.frame(
+          Message = "No live MaizeGDB annotation was returned.",
+          stringsAsFactors = FALSE
+        )
+      }
+      DT::datatable(
+        table,
+        rownames = FALSE,
+        filter = if (base::nrow(table) > 1L &&
+                     !"Message" %in% base::names(table)) "top" else "none",
+        options = base::list(
+          pageLength = 10,
+          scrollX = TRUE,
+          autoWidth = TRUE
+        )
+      )
     })
 
     output$features_table <- DT::renderDT({
@@ -887,29 +1815,88 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       DT::datatable(table, rownames = FALSE, options = base::list(pageLength = 15, scrollX = TRUE))
     })
 
-    output$domain_plot <- shiny::renderPlot({
+    domain_plot_data <- shiny::reactive({
       table <- rv$interpro
-      if (!base::nrow(table) || !base::all(c("start", "end", "name") %in% base::names(table))) {
-        graphics::plot.new(); graphics::text(0.5, 0.5, "InterPro positional domains will appear here when available."); return(invisible(NULL))
-      }
-      plot_data <- table[!base::is.na(table$start) & !base::is.na(table$end), , drop = FALSE]
-      if (!base::nrow(plot_data)) {
-        graphics::plot.new(); graphics::text(0.5, 0.5, "No positional domain coordinates returned by InterPro."); return(invisible(NULL))
-      }
-      plot_data$label <- ifelse(base::nzchar(plot_data$name), plot_data$name, plot_data$accession)
-      plot_data$track <- base::seq_len(base::nrow(plot_data))
-      ggplot2::ggplot(plot_data) +
-        ggplot2::geom_segment(ggplot2::aes(x = start, xend = end, y = track, yend = track), linewidth = 7, lineend = "round") +
-        ggplot2::scale_y_continuous(breaks = plot_data$track, labels = plot_data$label) +
-        ggplot2::labs(x = "Residue position", y = NULL) +
-        ggplot2::theme_minimal(base_size = 11)
+      .protvis_pw_domain_plot_data(table)
     })
+
+    output$domain_plot_ui <- shiny::renderUI({
+      height <- .protvis_pw_domain_plot_height(base::nrow(domain_plot_data()))
+      shiny::plotOutput(session$ns("domain_plot"), height = base::paste0(height, "px"))
+    })
+
+    domain_plot_current <- shiny::reactive({
+      plot_data <- domain_plot_data()
+      if (!base::nrow(plot_data)) {
+        return(.protvis_pw_empty_plot("InterPro positional domains will appear here when available."))
+      }
+      ggplot2::ggplot(plot_data) +
+        ggplot2::geom_segment(
+          ggplot2::aes(x = start, xend = end, y = track, yend = track, colour = label),
+          linewidth = 7, lineend = "round", show.legend = FALSE
+        ) +
+        ggplot2::scale_colour_hue(h = c(15, 375), c = 75, l = 48) +
+        ggplot2::scale_y_continuous(breaks = plot_data$track, labels = plot_data$label_display) +
+        ggplot2::labs(x = "Residue position", y = NULL) +
+        ggplot2::theme_minimal(base_size = 11) +
+        ggplot2::theme(
+          axis.text.y = ggplot2::element_text(size = 8),
+          plot.margin = ggplot2::margin(8, 12, 8, 10)
+        )
+    })
+
+    output$domain_plot <- shiny::renderPlot({
+      domain_plot_current()
+    })
+
+    .protvis_pw_register_plot_downloads(
+      output = output,
+      id_prefix = "domain_plot",
+      filename_prefix = "ProtVis_domain_architecture",
+      plot_fun = domain_plot_current,
+      width = 10,
+      height = function() {
+        base::max(
+          4,
+          base::min(
+            16,
+            .protvis_pw_domain_plot_height(base::nrow(domain_plot_data())) / 100
+          )
+        )
+      }
+    )
 
     output$structure_table <- DT::renderDT({
       table <- if (base::is.null(rv$entry)) base::data.frame() else .protvis_pw_structure_table(rv$entry, rv$alphafold)
       if (!base::nrow(table)) table <- base::data.frame(Message = "No structure cross-reference is available.")
       DT::datatable(table, rownames = FALSE, options = base::list(pageLength = 12, scrollX = TRUE))
     })
+
+    output$alphafold_pdb_download_ui <- shiny::renderUI({
+      pdb <- rv$alphafold_pdb
+      if (base::is.null(pdb) || !base::nzchar(base::as.character(pdb))) return(NULL)
+      shiny::downloadButton(
+        session$ns("download_alphafold_pdb"),
+        "DOWNLOAD PDB",
+        icon = bsicons::bs_icon("download"),
+        class = "btn-sm btn-outline-primary"
+      )
+    })
+
+    output$download_alphafold_pdb <- shiny::downloadHandler(
+      filename = function() {
+        accession <- current_accession()
+        if (!base::nzchar(accession)) accession <- "protein"
+        accession <- base::gsub("[^A-Za-z0-9._-]+", "_", accession)
+        base::paste0(accession, "_AlphaFold.pdb")
+      },
+      content = function(file) {
+        pdb <- rv$alphafold_pdb
+        shiny::req(!base::is.null(pdb), base::nzchar(base::as.character(pdb)))
+        base::writeLines(base::as.character(pdb), con = file, useBytes = TRUE)
+      },
+      contentType = "chemical/x-pdb"
+    )
 
     output$alphafold_view <- r3dmol::renderR3dmol({
       .protvis_pw_model_view(rv$alphafold_pdb)
@@ -943,14 +1930,19 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       if (!base::nzchar(accession)) {
         return(shiny::div(class = "pw-note", "Resolve a UniProt accession to enable linked protein resources."))
       }
-      links <- .protvis_pw_external_links(accession)
+      links <- .protvis_pw_external_links(accession, entry = rv$entry, query = input$query)
       descriptions <- c(
         UniProt = "Curated sequence and functional annotation",
         InterPro = "Domains, families and signatures",
         AlphaFold_DB = "Predicted protein structures and confidence",
         SWISS_MODEL_Repository = "Homology models and experimental structure links",
         STRING = "Protein association network",
-        PDBe_KB = "Experimental structural knowledge"
+        PDBe_KB = "Experimental structural knowledge",
+        Ensembl = "Genome-linked gene and comparative annotation",
+        NCBI_Gene = "NCBI gene record and linked reference resources",
+        KEGG_Genes = "Pathway, orthology and gene annotation search",
+        Plant_Reactome = "Plant pathway and reaction annotation",
+        MaizeGDB = "Maize genome, gene and community annotation"
       )
       shiny::div(
         class = "pw-resource-grid",
@@ -962,11 +1954,6 @@ protein_workbench_server <- function(id, shared_state = NULL) {
           )
         })
       )
-    })
-
-    output$raw_json <- shiny::renderText({
-      if (base::is.null(rv$entry)) return("No UniProt record loaded.")
-      jsonlite::toJSON(rv$entry, auto_unbox = TRUE, pretty = TRUE, null = "null", digits = NA)
     })
 
     output$download_fasta <- shiny::downloadHandler(
@@ -985,6 +1972,23 @@ protein_workbench_server <- function(id, shared_state = NULL) {
       content = function(file) {
         if (base::is.null(rv$entry)) base::stop("No UniProt record available.")
         jsonlite::write_json(rv$entry, file, pretty = TRUE, auto_unbox = TRUE, null = "null")
+      }
+    )
+
+    output$download_batch_fasta <- shiny::downloadHandler(
+      filename = function() base::paste0("ProtVis_batch_sequences_", base::format(base::Sys.Date(), "%Y%m%d"), ".fasta"),
+      content = function(file) {
+        fasta <- .protvis_pw_batch_fasta(rv$batch_results)
+        if (!base::nzchar(fasta)) base::stop("No retrieved sequences are available for FASTA download.")
+        base::writeLines(fasta, file, useBytes = TRUE)
+      }
+    )
+
+    output$download_batch_table <- shiny::downloadHandler(
+      filename = function() base::paste0("ProtVis_batch_sequence_results_", base::format(base::Sys.Date(), "%Y%m%d"), ".csv"),
+      content = function(file) {
+        if (!base::nrow(rv$batch_results)) base::stop("No batch retrieval results are available for download.")
+        utils::write.csv(rv$batch_results, file, row.names = FALSE, na = "")
       }
     )
   })

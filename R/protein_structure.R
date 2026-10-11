@@ -250,7 +250,7 @@ protein_structure_server <- function(id, shared_state = NULL) {
       active_source = "None selected"
     )
 
-    demo_pdb_path <- system.file("extdata", "1hel.pdb", package = "ProtVis")
+    demo_pdb_path <- .protvis_data_file("structure", "1hel.pdb")
 
     output$demo_status <- shiny::renderUI({
       if (nzchar(demo_pdb_path) && file.exists(demo_pdb_path)) {
@@ -261,7 +261,7 @@ protein_structure_server <- function(id, shared_state = NULL) {
       } else {
         shiny::div(
           style = "font-size: 12px; color: #dc3545;",
-          "Demo PDB not found: inst/extdata/1hel.pdb"
+          "Demo PDB not found: ProtVisDatabase/structure/1hel.pdb"
         )
       }
     })
@@ -294,7 +294,7 @@ protein_structure_server <- function(id, shared_state = NULL) {
     shiny::observeEvent(input$use_demo, {
       if (!nzchar(demo_pdb_path) || !file.exists(demo_pdb_path)) {
         shiny::showNotification(
-          "Demo PDB file was not found. Please add inst/extdata/1hel.pdb",
+          "Demo PDB file was not found. Reinstall ProtVisDatabase.",
           type = "error",
           duration = 5
         )
