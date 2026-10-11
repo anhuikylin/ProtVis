@@ -106,6 +106,47 @@ correct_values <- function(raw_mat) {
   result
 }
 
+# Optional replicate filtering: keep observed values unchanged and mask groups
+# with fewer than two positive observations. Mean imputation is opt-in.
+.protvis_filter_replicates <- function(raw_mat, impute_mean = FALSE) {
+  if (!is.data.frame(raw_mat) || ncol(raw_mat) < 2L ||
+      !"ID" %in% names(raw_mat)) {
+    stop("Replicate filtering requires an ID column and sample columns.", call. = FALSE)
+  }
+  sample_cols <- setdiff(names(raw_mat), "ID")
+  if (anyDuplicated(raw_mat$ID)) {
+    stop("Replicate filtering requires unique protein IDs.", call. = FALSE)
+  }
+  # Accept any number of replicates; never silently process unmatched samples.
+  if (!all(grepl("_[0-9]+$", sample_cols))) {
+    stop("Use sample names ending in _1, _2, ... for replicate filtering.", call. = FALSE)
+  }
+  groups <- sub("_[0-9]+$", "", sample_cols)
+  if (any(table(groups) < 2L)) {
+    stop("Each group needs at least two replicate columns.", call. = FALSE)
+  }
+  values <- as.matrix(raw_mat[, sample_cols, drop = FALSE])
+  suppressWarnings(storage.mode(values) <- "double")
+  values[!is.finite(values) | values <= 0] <- NA_real_
+  for (group in unique(groups)) {
+    indices <- which(groups == group)
+    block <- values[, indices, drop = FALSE]
+    observed <- rowSums(!is.na(block))
+    block[observed < 2L, ] <- NA_real_
+    if (isTRUE(impute_mean)) {
+      means <- rowMeans(block, na.rm = TRUE)
+      missing <- is.na(block) & observed >= 2L
+      block[missing] <- means[row(missing)[missing]]
+    }
+    values[, indices] <- block
+  }
+  keep <- rowSums(!is.na(values)) > 0L
+  result <- raw_mat[keep, , drop = FALSE]
+  result[, sample_cols] <- as.data.frame(values[keep, , drop = FALSE],
+                                         check.names = FALSE)
+  result
+}
+
 #' UI for Noise Correction Module
 #' @param id Character string module ID for namespacing
 #' @return A Shiny UI layout with sidebar controls and main display area
@@ -165,6 +206,22 @@ correct_noise_ui <- function(id) {
         bslib::accordion_panel(
           title = "Step2 Correct Noise",
           icon = bsicons::bs_icon("tools"),
+          bslib::navset_tab(
+            id = ns("noise_method"),
+            selected = "replicate_correction",
+            bslib::nav_panel(
+              "Existing method", value = "replicate_correction",
+              shiny::tags$p("Original replicate correction (default): require two positive replicates and replace zeros with half the sum of positive values.")
+            ),
+            bslib::nav_panel(
+              "Replicate filtering", value = "replicate_filter",
+              shiny::tags$p("Require at least two detected replicates per group. Groups failing this rule become missing; proteins failing in every group are removed."),
+              shiny::checkboxInput(ns("replicate_mean_imputation"),
+                                   "Impute missing values using the group mean",
+                                   value = FALSE),
+              shiny::tags$small("Without imputation, observed values stay unchanged and missing values remain NA. Sample names must end in _1, _2, ... .")
+            )
+          ),
           shiny::actionButton(
             inputId = ns("correct_noise"),
             label = "Correct Noise",
@@ -529,7 +586,24 @@ correct_noise_server <- function(id, shared_state) {
           shinyWidgets::updateProgressBar(session, id = "noise_progress", value = 15)
           dat <- correct_noise_step1()
           shinyWidgets::updateProgressBar(session, id = "noise_progress", value = 45)
-          result <- correct_values(dat)
+          method <- input$noise_method %||% "replicate_correction"
+          impute_mean <- identical(method, "replicate_filter") &&
+            isTRUE(input$replicate_mean_imputation)
+          parameters <- list(method = method,
+                             minimum_observed_replicates = 2L)
+          if (identical(method, "replicate_filter")) {
+            parameters$impute_mean <- impute_mean
+          } else {
+            parameters$zero_replacement <- "sum_positive_divided_by_two"
+          }
+          result <- if (identical(method, "replicate_filter")) {
+            .protvis_filter_replicates(dat, impute_mean = impute_mean)
+          } else {
+            correct_values(dat)
+          }
+          if (nrow(result) == 0L) {
+            stop("No proteins pass the replicate rule.", call. = FALSE)
+          }
           shinyWidgets::updateProgressBar(session, id = "noise_progress", value = 100)
           shared_state$correct_noise_result <- result
           dataset <- if (inherits(shared_state$dataset, "ProtVis_dataset")) {
@@ -542,16 +616,16 @@ correct_noise_server <- function(id, shared_state) {
           }
           dataset <- .protvis_update_expression(dataset, result)
           dataset <- .protvis_new_analysis_dataset(
-            dataset, "noise_correction", list(method = "replicate_correction")
+            dataset, "noise_correction", parameters
           )
           dataset <- .protvis_store_preprocessing_result(
             dataset,
             stage = "noise_correction",
-            method = "replicate_correction"
+            method = method
           )
           dataset <- .protvis_append_process(
             dataset, "noise_correction", status = "success",
-            parameters = list(method = "replicate_correction")
+            parameters = parameters
           )
           .protvis_ui_sync_state(dataset, shared_state)
           # Keep Step2 as the single, data-source-independent checkpoint for

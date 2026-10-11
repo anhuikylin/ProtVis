@@ -132,6 +132,19 @@ protvis_stage_labels <- function() {
     return(dataset)
   }
 
+  if (identical(method, "replicate_filter")) {
+    raw <- data.frame(ID = rownames(dataset$expression_data),
+                      dataset$expression_data, check.names = FALSE)
+    corrected <- .protvis_filter_replicates(raw, isTRUE(params$impute_mean))
+    if (nrow(corrected) == 0L) stop("No proteins pass the replicate rule.", call. = FALSE)
+    dataset <- .protvis_update_expression(dataset, corrected)
+    dataset$analysis_results$noise_correction <- list(
+      method = method, minimum_observed_replicates = 2L,
+      impute_mean = isTRUE(params$impute_mean), retained_rows = nrow(corrected)
+    )
+    return(dataset)
+  }
+
   if (!method %in% c("missingness_filter", "missing_filter", "filter")) {
     base::stop("Unknown noise-correction method: ", method, call. = FALSE)
   }
