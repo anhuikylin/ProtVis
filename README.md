@@ -5,7 +5,7 @@
 [![](https://img.shields.io/badge/R-Shiny-orange.svg)](https://github.com/anhuikylin/ProtVis)
 [![](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/anhuikylin/ProtVis/blob/dev/LICENSE)
 
-<a href="https://raw.githubusercontent.com/anhuikylin/ProtVis/dev/app/www/ProtVis_ico.png"><img src="https://raw.githubusercontent.com/anhuikylin/ProtVis/dev/app/www/ProtVis_ico.png" alt="ProtVis logo" align="right" width="240" style="max-width:100%; height:auto; max-height:none; object-fit:contain; display:block;"/></a>
+<p align="center"><img src="https://raw.githubusercontent.com/anhuikylin/ProtVis/dev/app/www/ProtVis_ico.png" alt="ProtVis Logo" /></p>
 
 **ProtVis: interactive visualization and downstream interpretation for proteomics and metaproteomics data**
 
@@ -15,7 +15,6 @@ For detailed tutorials, parameter explanations, examples, and complete workflows
 
 **https://anhuikylin.github.io/ProtVis-cookbook/**
 
-<br clear="right"/>
 
 ---
 
