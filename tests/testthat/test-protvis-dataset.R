@@ -199,8 +199,11 @@ test_that("built-in-style sample names receive usable annotations", {
 test_that("bundled software fixtures import and enter the pipeline", {
   manifest <- protvis_builtin_datasets()
   expect_gte(nrow(manifest), 8)
-  fixture_paths <- vapply(manifest$file, function(name) {
-    system.file("extdata", name, package = "ProtVis")
+  fixture_paths <- vapply(manifest$path, function(path) {
+    ProtVisDatabase::protvis_database_path(
+      "extdata", path,
+      must_work = TRUE
+    )
   }, character(1))
   expect_true(all(nzchar(fixture_paths) & file.exists(fixture_paths)))
   for (source in unique(manifest$source)) {

@@ -1,4 +1,5 @@
-# Helpers for locating the bundled Sage database-search executable.
+# Helpers for locating the Sage database-search executable supplied by
+# ProtVisDatabase.
 
 .protvis_sage_path <- function(path, label, must_work = TRUE) {
   if (is.null(path) || length(path) != 1L || is.na(path)) {
@@ -19,7 +20,9 @@
 .protvis_sage_bundled_candidates <- function() {
   sysname <- unname(Sys.info()[["sysname"]])
   machine <- tolower(unname(Sys.info()[["machine"]]))
-  root <- function(...) system.file("extdata", "sage", ..., package = "ProtVis")
+  root <- function(...) {
+    .protvis_data_file("search_engines", "sage", ...)
+  }
   if (identical(.Platform$OS.type, "windows")) {
     return(root("windows", "sage.exe"))
   }
@@ -47,7 +50,10 @@ protvis_sage_executable <- function(path = NULL) {
   path_candidate <- if (!is.null(path) && length(path) == 1L && !is.na(path)) {
     as.character(path)
   } else character()
-  candidates <- c(path_candidate, .protvis_sage_bundled_candidates(),
+  if (length(path_candidate) && file.exists(path_candidate)) {
+    return(.protvis_sage_path(.protvis_prepare_sage_executable(path_candidate), "Sage executable"))
+  }
+  candidates <- c(.protvis_sage_bundled_candidates(),
                   unname(Sys.which("sage")), unname(Sys.which("sage.exe")))
   candidates <- candidates[!is.na(candidates) & nzchar(candidates) &
                            file.exists(candidates)]

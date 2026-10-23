@@ -49,19 +49,27 @@ data_imputation_ui <- function(id) {
 
         bslib::accordion(
           bslib::accordion_panel(
-            title = "Imputation Settings",
+            title = "Imputation",
             icon = bsicons::bs_icon("tools"),
             shiny::selectInput(
               ns("choice_method"),
               "Method",
               choices = c(
-                "kNN (MaxQuant recommended; seed 12345)" = "kNN",
-                "RF" = "RF",
-                "Mean" = "Mean",
-                "Median" = "Median",
-                "Minimum" = "Minimum"
+                "k-Nearest Neighbors (kNN)" = "kNN",
+                "Random Forest (RF)" = "RF",
+                "Mean imputation" = "Mean",
+                "Median imputation" = "Median",
+                "Minimum-value imputation" = "Minimum"
               ),
               selected = "kNN"
+            ),
+            shiny::numericInput(
+              ns("random_seed"),
+              "Random seed",
+              value = 12345,
+              min = 1,
+              max = .Machine$integer.max,
+              step = 1
             ),
             shiny::actionButton(
               ns("run_impute"),
@@ -110,6 +118,8 @@ data_imputation_ui <- function(id) {
           title = "Expression Matrix",
           DT::DTOutput(ns("expression_matrix"))
         ),
+
+        shiny::tabPanel("Processing report", .protvis_change_report_ui(ns)),
 
         shiny::tabPanel(
           title = "Visualize missing values",
@@ -176,6 +186,16 @@ data_imputation_ui <- function(id) {
 }
 
 
+.protvis_imputation_seed <- function(x, default = 12345L) {
+  value <- suppressWarnings(as.integer(x))
+  if (length(value) != 1L || is.na(value) ||
+      value < 1L || value > .Machine$integer.max) {
+    return(as.integer(default))
+  }
+  value
+}
+
+
 #' Data Imputation Server Module
 #'
 #' Server logic for the data imputation module. This module:
@@ -210,6 +230,8 @@ data_imputation_ui <- function(id) {
 #' @export
 data_imputation_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
+    .protvis_change_report_outputs(output, shared_state, "imputation")
+
     rv <- shiny::reactiveValues(
       sample_info = NULL,
       expression_matrix = NULL,
@@ -459,7 +481,8 @@ data_imputation_server <- function(id, shared_state) {
         )
       }
 
-      set.seed(12345)
+      seed <- .protvis_imputation_seed(input$random_seed)
+      set.seed(seed)
 
       result <- tryCatch({
         if (method == "kNN") {
@@ -561,7 +584,11 @@ data_imputation_server <- function(id, shared_state) {
       dataset <- .protvis_new_analysis_dataset(
         dataset, "imputation", list(
           method = input$choice_method,
-          seed = if (identical(input$choice_method, "kNN")) 12345L else NULL,
+          seed = if (input$choice_method %in% c("kNN", "RF")) {
+            .protvis_imputation_seed(input$random_seed)
+          } else {
+            NULL
+          },
           engine = if (identical(input$choice_method, "kNN")) "impute::impute.knn" else NULL
         )
       )
@@ -574,10 +601,16 @@ data_imputation_server <- function(id, shared_state) {
         dataset, "imputation", status = "success",
         parameters = list(
           method = input$choice_method,
-          seed = if (identical(input$choice_method, "kNN")) 12345L else NULL,
+          seed = if (input$choice_method %in% c("kNN", "RF")) {
+            .protvis_imputation_seed(input$random_seed)
+          } else {
+            NULL
+          },
           engine = if (identical(input$choice_method, "kNN")) "impute::impute.knn" else NULL
         )
       )
+      dataset <- .protvis_save_change_report(dataset, "imputation",
+        rv$expression_matrix, imputed_df, input$choice_method)
       .protvis_ui_sync_state(dataset, shared_state)
       .protvis_save_stage_dataset(
         dataset,

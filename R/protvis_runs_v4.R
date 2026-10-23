@@ -449,6 +449,10 @@
   plot_config <- plot_config %||% list()
   files <- files %||% list()
 
+  if (is.list(state) && !is.null(state$expression_data)) {
+    state$expression_scale <- metadata$expression_scale %||% "unknown"
+  }
+
   run <- list(
     run_id = run_id,
     schema_version = "4.0.0",
@@ -1169,6 +1173,7 @@ protvis_activate_result <- function(object, run_id) {
   }
 
   metadata <- .protvis_v4_metadata(object)
+  metadata$expression_scale <- state$expression_scale %||% "unknown"
   if (nrow(metadata$result_registry)) {
     metadata$result_registry$active <- FALSE
     if (!"matrix_active" %in% names(metadata$result_registry)) {

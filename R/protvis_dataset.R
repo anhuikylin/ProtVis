@@ -835,6 +835,21 @@ protvis_dataset_name <- function(object) {
     c("status", "method", "result_table")
   )]
 
+  if (identical(stage, "transformation")) {
+    scale <- if (method_value %in% c("log2", "maxquant_log2", "maxquant_recommended")) "log2"
+      else if (method_value %in% c("none", "identity")) dataset$metadata$expression_scale %||% "unknown"
+      else if (method_value %in% c("log10", "ln", "log")) method_value else "standardized"
+    dataset <- .protvis_set_expression_scale(dataset, scale)
+  } else if (identical(stage, "normalization")) {
+    if (method_value %in% c("zscore", "z_score", "standardize")) {
+      dataset <- .protvis_set_expression_scale(dataset, "standardized")
+    } else if (identical(method_value, "vsn")) {
+      dataset <- .protvis_set_expression_scale(dataset, "vsn")
+    } else if (!is.null(extra$input_scale) && is.null(dataset$metadata$expression_scale)) {
+      dataset <- .protvis_set_expression_scale(dataset, extra$input_scale)
+    }
+  }
+
   dataset$analysis_results[[stage]] <- base::c(
     base::list(
       status = base::as.character(status)[[1L]],

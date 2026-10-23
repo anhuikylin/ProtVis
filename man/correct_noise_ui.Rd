@@ -2,7 +2,7 @@
 % Please edit documentation in R/correct_noise.R
 \name{correct_noise_ui}
 \alias{correct_noise_ui}
-\title{UI for Noise Correction Module}
+\title{UI for Within-group Processing Module}
 \usage{
 correct_noise_ui(id)
 }
@@ -13,5 +13,5 @@ correct_noise_ui(id)
 A Shiny UI layout with sidebar controls and main display area
 }
 \description{
-UI for Noise Correction Module
+UI for Within-group Processing Module
 }

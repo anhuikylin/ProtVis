@@ -1,0 +1,24 @@
+<source_identification>
+<ns0:Peptide xmlns:ns0="http://psidev.info/psi/pi/mzIdentML/1.1" id="peptide_31651_1">
+      <ns0:PeptideSequence>GGRGYGQPPQQQQQYGGPQEYQGR</ns0:PeptideSequence>
+      <ns0:Modification location="3" residues="R" monoisotopicMassDelta="28.031300">
+        <ns0:cvParam accession="UNIMOD:36" name="Dimethyl" cvRef="UNIMOD" />
+      </ns0:Modification>
+    </ns0:Peptide>
+    
+<ns0:SpectrumIdentificationResult xmlns:ns0="http://psidev.info/psi/pi/mzIdentML/1.1" id="SIR_31651" spectrumID="index=10976" spectraData_ref="SD_1">
+          <ns0:SpectrumIdentificationItem id="SII_31651_1" calculatedMassToCharge="898.091886" chargeState="3" experimentalMassToCharge="898.08997" peptide_ref="peptide_31651_1" rank="1" passThreshold="true">
+            <ns0:PeptideEvidenceRef peptideEvidence_ref="PE_31651_1_1_sp|O04379|AGO1_ARATH_0_60_83" />
+            <ns0:cvParam accession="MS:1001171" name="Mascot:score" cvRef="PSI-MS" value="97.12" />
+            <ns0:cvParam accession="MS:1001172" name="Mascot:expectation value" cvRef="PSI-MS" value="3.9e-08" />
+            <ns0:cvParam accession="MS:1001363" name="peptide unique to one protein" cvRef="PSI-MS" />
+          </ns0:SpectrumIdentificationItem>
+          <ns0:cvParam accession="MS:1001371" name="Mascot:identity threshold" cvRef="PSI-MS" value="35" />
+          <ns0:cvParam accession="MS:1001370" name="Mascot:homology threshold" cvRef="PSI-MS" value="19" />
+          <ns0:cvParam accession="MS:1001030" name="number of peptide seqs compared to each spectrum" cvRef="PSI-MS" value="3974" />
+          <ns0:cvParam accession="MS:1000797" name="peak list scans" cvRef="PSI-MS" value="18622" />
+          <ns0:cvParam accession="MS:1000016" name="scan start time" cvRef="PSI-MS" value="3871" unitAccession="UO:0000010" unitName="second" unitCvRef="UO" />
+          <ns0:cvParam accession="MS:1000796" name="spectrum title" cvRef="PSI-MS" value="File: &quot;E:\2020_S46\J.Azevedo_AGO1-sDMA-ingel\2020_S46_JAzevedo_dil6_AGO1-ingel2.raw&quot;; SpectrumID: &quot;11037&quot;; PrecursorID: &quot;0&quot;; scans: &quot;18622&quot;" />
+        </ns0:SpectrumIdentificationResult>
+        
+</source_identification>

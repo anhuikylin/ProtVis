@@ -38,26 +38,24 @@ data_transformed_ui <- function(id) {
           ns("data_transformed"),
           "Transformation Method",
           choices = list(
-            "Recommended" = c(
-              "Auto (source recommended)" = "auto",
-              "MaxQuant: log2(x × 1e7)" = "maxquant_log2",
-              "log2" = "log2",
-              "None" = "None",
-              "log10" = "log10"
+            "Transformation" = c(
+              "log2 transformation" = "auto",
+              "Scaled log2 transformation (×10^7)" = "maxquant_log2",
+              "log2 transformation (direct)" = "log2",
+              "log10 transformation" = "log10",
+              "No transformation" = "None"
             ),
-            "Advanced" = c(
-              "Z-Score" = "Z-Score",
+            "Scaling" = c(
+              "Z-score standardization" = "Z-Score",
               "Scale only" = "scale",
               "Center only" = "center",
-              "Scale + center" = "scale-center"
+              "Scale and center" = "scale-center"
             )
           ),
           selected = "auto"
         ),
         shiny::div(
-          "Auto uses the source-specific preset. For MaxQuant this reproduces ",
-          "the archived workflow: log2(intensity × 1e7). Advanced scaling methods ",
-          "remain available for exploratory analysis or visualization.",
+          "Select the transformation applied before imputation and normalization.",
           style = "font-size:12px;color:#657789;line-height:1.45;margin-top:-6px;margin-bottom:10px;"
         ),
 
@@ -127,7 +125,9 @@ data_transformed_ui <- function(id) {
       ),
 
       bslib::page_fluid(
-        bslib::layout_column_wrap(
+        bslib::navset_tab(
+          bslib::nav_panel("Results",
+          bslib::layout_column_wrap(
           width = 1/2,
 
           bslib::card(
@@ -165,6 +165,8 @@ data_transformed_ui <- function(id) {
               shiny::plotOutput(ns("transformedPlot"), height = "720px")
             )
           )
+        )),
+          bslib::nav_panel("Processing report", .protvis_change_report_ui(ns))
         )
       )
     )
@@ -190,6 +192,8 @@ data_transformed_ui <- function(id) {
 #' @export
 data_transformed_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
+    .protvis_change_report_outputs(output, shared_state, "transformation")
+
     # DT requires a data.frame with no row.names attribute. Keep row names
     # internally for matrix calculations, but strip them at the display edge.
     display_data_frame <- function(x) {
@@ -401,6 +405,9 @@ data_transformed_server <- function(id, shared_state) {
             multiplier = if (identical(rv$transformation_method, "maxquant_log2")) 1e7 else NULL
           )
         )
+      rownames(df_mat) <- rownames(transformed_matrix)
+      dataset <- .protvis_save_change_report(dataset, "transformation",
+        df_mat, transformed_matrix, rv$transformation_method)
         directory <- protvis_output_directory(shared_state$workdir %||% getwd())
         dataset <- tryCatch(
           protvis_auto_export_dataset(dataset, directory = directory),

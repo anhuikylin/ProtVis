@@ -80,7 +80,7 @@ help_ui <- function() {
           bslib::card_body(
             shiny::tags$ul(
               shiny::tags$li("Load the current ProtVis_dataset before each downstream module."),
-              shiny::tags$li("Run Correct Noise, Data Transformation, Data Imputation, and Data Normalization in order."),
+              shiny::tags$li("Run Within-group Processing, Data Transformation, Data Imputation, and Data Normalization in order."),
               shiny::tags$li("Continue with Overview, DEP, Enrichment, GSEA, and Pathview."),
               shiny::tags$li("Use Multi-omics, PTM, Protein Structure, and Toolkits for specialized exploration."),
               shiny::tags$li("In PTM spectrum, load mzIdentML and MGF files, select any peptide-spectrum match, and visualize its modified b/y ions; the Vac14 PXD001057 case is retained as the public benchmark.")
@@ -94,7 +94,7 @@ help_ui <- function() {
         bslib::card_body(
           DT::datatable(
             data.frame(
-              Step = c("Project init", "Search", "MaxQuant Output Preparation", "Correct Noise", "Transformation → Imputation → Normalization", "Downstream analysis", "Specialized analysis"),
+              Step = c("Project init", "Search", "MaxQuant Output Preparation", "Within-group Processing", "Transformation → Imputation → Normalization", "Downstream analysis", "Specialized analysis"),
               When = c("All projects", "Raw only", "MaxQuant only", "All completed ProtVis_dataset routes", "After the input/correction stage", "After normalized data are available", "Whenever the required identifiers/results are available"),
               Output = c("Initial ProtVis_dataset and checkpoint", "Sage log, PSM/LFQ results, and searchable ProtVis_dataset", "Prepared quantitative matrix in ProtVis_dataset", "Corrected matrix and canonical checkpoint", "One new ProtVis_dataset stage per operation", "Statistics, enrichment, pathways, tables, and figures", "Protein structure, PTM, multi-omics, PPI, and toolkit results"),
               stringsAsFactors = FALSE
@@ -127,7 +127,7 @@ help_ui <- function() {
           bslib::card_body(
             shiny::tags$ul(
               shiny::tags$li("Sage writes its log and result files to the Sage_search directory."),
-              shiny::tags$li("After an interruption, return to the same project and load the completed Sage checkpoint before Correct Noise."),
+              shiny::tags$li("After an interruption, return to the same project and load the completed Sage checkpoint before Within-group Processing."),
               shiny::tags$li("Completed stages are saved as ProtVis_dataset checkpoints and can be loaded by downstream modules."),
               shiny::tags$li("Run buttons are protected by immediate UI disabling, a server-side lock, and completion-only checkpoint writes.")
             )

@@ -19,7 +19,7 @@ utils::globalVariables(c("ID", "sample_id", "value", "value_fix", "sample_group"
 
 correct_values <- function(raw_mat) {
   if (base::is.null(raw_mat) || !base::is.data.frame(raw_mat)) {
-    stop("Noise correction requires a data frame with an ID column and sample columns.",
+    stop("Within-group Processing requires a data frame with an ID column and sample columns.",
          call. = FALSE)
   }
   if (!"ID" %in% base::names(raw_mat)) {
@@ -106,7 +106,89 @@ correct_values <- function(raw_mat) {
   result
 }
 
-#' UI for Noise Correction Module
+# Optional replicate filtering: keep observed values unchanged and mask groups
+# with fewer than two positive observations. Mean imputation is opt-in.
+.protvis_filter_replicates <- function(raw_mat, impute_mean = FALSE) {
+  if (!is.data.frame(raw_mat) || ncol(raw_mat) < 2L ||
+      !"ID" %in% names(raw_mat)) {
+    stop("Replicate filtering requires an ID column and sample columns.", call. = FALSE)
+  }
+  sample_cols <- setdiff(names(raw_mat), "ID")
+  if (anyDuplicated(raw_mat$ID)) {
+    stop("Replicate filtering requires unique protein IDs.", call. = FALSE)
+  }
+  # Accept any number of replicates; never silently process unmatched samples.
+  if (!all(grepl("_[0-9]+$", sample_cols))) {
+    stop("Use sample names ending in _1, _2, ... for replicate filtering.", call. = FALSE)
+  }
+  groups <- sub("_[0-9]+$", "", sample_cols)
+  if (any(table(groups) < 2L)) {
+    stop("Each group needs at least two replicate columns.", call. = FALSE)
+  }
+  values <- as.matrix(raw_mat[, sample_cols, drop = FALSE])
+  suppressWarnings(storage.mode(values) <- "double")
+  values[!is.finite(values) | values <= 0] <- NA_real_
+  for (group in unique(groups)) {
+    indices <- which(groups == group)
+    block <- values[, indices, drop = FALSE]
+    observed <- rowSums(!is.na(block))
+    block[observed < 2L, ] <- NA_real_
+    if (isTRUE(impute_mean)) {
+      means <- rowMeans(block, na.rm = TRUE)
+      missing <- is.na(block) & observed >= 2L
+      block[missing] <- means[row(missing)[missing]]
+    }
+    values[, indices] <- block
+  }
+  keep <- rowSums(!is.na(values)) > 0L
+  result <- raw_mat[keep, , drop = FALSE]
+  result[, sample_cols] <- as.data.frame(values[keep, , drop = FALSE],
+                                         check.names = FALSE)
+  result
+}
+
+.protvis_noise_change_report <- function(before, after, parameters) {
+  samples <- setdiff(names(before), "ID")
+  numeric_matrix <- function(x) {
+    m <- as.matrix(x[, samples, drop = FALSE])
+    suppressWarnings(storage.mode(m) <- "double")
+    m
+  }
+  old <- numeric_matrix(before)
+  new <- numeric_matrix(after)
+  detected <- function(m) is.finite(m) & m > 0
+  old_valid <- detected(old)
+  new_valid <- detected(new)
+  summary <- data.frame(
+    Metric = c("Protein rows", "Unique protein IDs", "Samples", "Detected values",
+               "Missing / non-positive values", "Missing / non-positive (%)"),
+    Before = c(nrow(before), length(unique(before$ID)), length(samples),
+               sum(old_valid), sum(!old_valid), 100 * mean(!old_valid)),
+    After = c(nrow(after), length(unique(after$ID)), length(samples),
+              sum(new_valid), sum(!new_valid), 100 * mean(!new_valid)))
+  summary$Change <- summary$After - summary$Before
+  # Cell transitions are evaluated only for retained, uniquely matched IDs.
+  # Removed rows are reported separately, so they are not counted as masking.
+  transitions <- NULL
+  if (!anyDuplicated(before$ID) && !anyDuplicated(after$ID)) {
+    aligned <- old[match(after$ID, before$ID), , drop = FALSE]
+    valid <- detected(aligned)
+    transitions <- data.frame(
+      Sample = samples,
+      Detected_before = colSums(old_valid),
+      Detected_after = colSums(new_valid),
+      Filled = colSums(!valid & new_valid),
+      Masked = colSums(valid & !new_valid),
+      Changed_observed = colSums(valid & new_valid &
+                                  replace(aligned != new, is.na(aligned != new), FALSE)),
+      Removed_with_rows = colSums(old_valid[!before$ID %in% after$ID, , drop = FALSE]))
+  }
+  list(parameters = parameters, summary = summary, per_sample = transitions,
+       removed_ids = setdiff(unique(before$ID), unique(after$ID)),
+       note = "Detected means finite positive intensity. Cell transitions refer to retained proteins. Duplicate input IDs prevent unambiguous cell transition counts.")
+}
+
+#' UI for Within-group Processing Module
 #' @param id Character string module ID for namespacing
 #' @return A Shiny UI layout with sidebar controls and main display area
 #' @import shiny
@@ -163,11 +245,31 @@ correct_noise_ui <- function(id) {
           )
         ),
         bslib::accordion_panel(
-          title = "Step2 Correct Noise",
+          title = "Step2 Within-group Processing",
           icon = bsicons::bs_icon("tools"),
+          shiny::selectInput(
+            ns("noise_method"), "Processing method",
+            choices = c("Existing method" = "replicate_correction",
+                        "Replicate filtering (at least two detected)" = "replicate_filter"),
+            selected = "replicate_correction"
+          ),
+          shiny::conditionalPanel(
+            condition = "input.noise_method === 'replicate_correction'",
+            ns = ns,
+            shiny::tags$p("Original replicate correction (default): require two positive replicates and replace zeros with half the sum of positive values.")
+          ),
+          shiny::conditionalPanel(
+            condition = "input.noise_method === 'replicate_filter'",
+            ns = ns,
+            shiny::tags$p("Require at least two detected replicates per group. Groups failing this rule become missing; proteins failing in every group are removed."),
+            shiny::checkboxInput(ns("replicate_mean_imputation"),
+                                 "Impute missing values using the group mean",
+                                 value = FALSE),
+            shiny::tags$small("Without imputation, observed values stay unchanged and missing values remain NA. Sample names must end in _1, _2, ... .")
+          ),
           shiny::actionButton(
             inputId = ns("correct_noise"),
-            label = "Correct Noise",
+            label = "Run Processing",
             class = "btn btn-success w-100 pv-run-button"
           ),
           shinyWidgets::progressBar(
@@ -177,7 +279,7 @@ correct_noise_ui <- function(id) {
             display_pct = TRUE,
             striped = TRUE,
             status = "warning",
-            title = "Noise correction progress"
+            title = "Within-group Processing progress"
           )
         )
       ),
@@ -217,8 +319,15 @@ correct_noise_ui <- function(id) {
             DT::DTOutput(ns("tbl_rename_columns"))
           ),
           bslib::nav_panel(
-            "Correct Noise",
+            "Within-group Processing",
             DT::DTOutput(ns("tbl_correct_noise"))
+          ),
+          bslib::nav_panel(
+            "Processing report",
+            shiny::uiOutput(ns("noise_report_details")),
+            DT::DTOutput(ns("noise_report_summary")),
+            shiny::tags$h5("Changes by sample"),
+            DT::DTOutput(ns("noise_report_samples"))
           )
         )
       )
@@ -228,10 +337,10 @@ correct_noise_ui <- function(id) {
 }
 
 
-#' Server Logic for Noise Correction Module
+#' Server Logic for Within-group Processing Module
 #' @param id Character string module ID for namespacing
 #' @param shared_state Reactive values list for sharing data between modules
-#' @return Server logic for the noise correction module
+#' @return Server logic for the Within-group Processing module
 #' @import shiny
 #' @importFrom dplyr left_join pull
 #' @importFrom DT renderDT datatable
@@ -247,7 +356,8 @@ correct_noise_server <- function(id, shared_state) {
     rv <- shiny::reactiveValues(
       load_success = FALSE,
       rename_requested = FALSE,
-      noise_requested = FALSE
+      noise_requested = FALSE,
+      noise_report = NULL
     )
 
     valid_workdir <- function() {
@@ -303,7 +413,7 @@ correct_noise_server <- function(id, shared_state) {
     shiny::observeEvent(input$load_data, {
       if (!.protvis_begin_run(shared_state, "correct_noise_load", session,
                               "load_data")) {
-        shiny::showNotification("Correct Noise data loading is already running; duplicate click ignored.",
+        shiny::showNotification("Within-group Processing data loading is already running; duplicate click ignored.",
                                 type = "warning")
         return(invisible(NULL))
       }
@@ -326,7 +436,7 @@ correct_noise_server <- function(id, shared_state) {
       shinyWidgets::updateProgressBar(session, id = "load_progress", value = 10)
       workdir <- valid_workdir()
       # Step2_remove_unreliable_peptide.rda is the canonical checkpoint for
-      # Correct Noise, regardless of the selected data source.  Sage and old
+      # Within-group Processing, regardless of the selected data source.  Sage and old
       # project checkpoints remain fallbacks so existing workspaces continue
       # to load after an update.
       stage_candidates <- c(
@@ -360,7 +470,7 @@ correct_noise_server <- function(id, shared_state) {
           stage_label <- if (grepl("sage_database_search", basename(rda_path),
                                     fixed = TRUE)) "Sage search results" else "ProtVis data"
           shiny::showNotification(
-            paste0("✅ ", stage_label, " loaded successfully for Correct Noise."),
+            paste0("✅ ", stage_label, " loaded successfully for Within-group Processing."),
             type = "message"
           )
         } else {
@@ -375,7 +485,7 @@ correct_noise_server <- function(id, shared_state) {
         shiny::showNotification(
           paste(
             "No completed input stage was found.",
-            "Run Sage Search or the previous preprocessing step before loading Correct Noise."
+            "Run Sage Search or the previous preprocessing step before loading Within-group Processing."
           ),
           type = "error"
         )
@@ -498,17 +608,18 @@ correct_noise_server <- function(id, shared_state) {
     shiny::observeEvent(input$correct_noise, {
       if (!.protvis_begin_run(shared_state, "correct_noise", session,
                               "correct_noise")) {
-        shiny::showNotification("Correct Noise is already running; duplicate click ignored.",
+        shiny::showNotification("Within-group Processing is already running; duplicate click ignored.",
                                 type = "warning")
         return(invisible(NULL))
       }
       on.exit(.protvis_end_run(shared_state, "correct_noise", session,
                                "correct_noise"), add = TRUE)
       rv$noise_requested <- TRUE
+      rv$noise_report <- NULL
       tryCatch({
           if (!isTRUE(rv$load_success)) {
             shiny::showNotification(
-              "Load data successfully before running Correct Noise.",
+              "Load data successfully before running Within-group Processing.",
               type = "warning"
             )
             return(invisible(NULL))
@@ -519,7 +630,7 @@ correct_noise_server <- function(id, shared_state) {
             stop(
               paste(
                 "The current ProtVis_dataset has no expression matrix.",
-                "For Raw/Sage staging data, complete Sage Search before Correct Noise."
+                "For Raw/Sage staging data, complete Sage Search before Within-group Processing."
               ),
               call. = FALSE
             )
@@ -529,9 +640,26 @@ correct_noise_server <- function(id, shared_state) {
           shinyWidgets::updateProgressBar(session, id = "noise_progress", value = 15)
           dat <- correct_noise_step1()
           shinyWidgets::updateProgressBar(session, id = "noise_progress", value = 45)
-          result <- correct_values(dat)
+          method <- input$noise_method %||% "replicate_correction"
+          impute_mean <- identical(method, "replicate_filter") &&
+            isTRUE(input$replicate_mean_imputation)
+          parameters <- list(method = method,
+                             minimum_observed_replicates = 2L)
+          if (identical(method, "replicate_filter")) {
+            parameters$impute_mean <- impute_mean
+          } else {
+            parameters$zero_replacement <- "sum_positive_divided_by_two"
+          }
+          result <- if (identical(method, "replicate_filter")) {
+            .protvis_filter_replicates(dat, impute_mean = impute_mean)
+          } else {
+            correct_values(dat)
+          }
+          if (nrow(result) == 0L) {
+            stop("No proteins pass the replicate rule.", call. = FALSE)
+          }
           shinyWidgets::updateProgressBar(session, id = "noise_progress", value = 100)
-          shared_state$correct_noise_result <- result
+          report <- .protvis_noise_change_report(dat, result, parameters)
           dataset <- if (inherits(shared_state$dataset, "ProtVis_dataset")) {
             shared_state$dataset
           } else {
@@ -542,20 +670,28 @@ correct_noise_server <- function(id, shared_state) {
           }
           dataset <- .protvis_update_expression(dataset, result)
           dataset <- .protvis_new_analysis_dataset(
-            dataset, "noise_correction", list(method = "replicate_correction")
+            dataset, "noise_correction", parameters
           )
           dataset <- .protvis_store_preprocessing_result(
             dataset,
             stage = "noise_correction",
-            method = "replicate_correction"
+            method = method
           )
           dataset <- .protvis_append_process(
             dataset, "noise_correction", status = "success",
-            parameters = list(method = "replicate_correction")
+            parameters = parameters
           )
+          report$created_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
+          dataset$analysis_results$noise_correction_reports <- c(
+            dataset$analysis_results$noise_correction_reports %||% list(),
+            list(report)
+          )
+          dataset$analysis_results$noise_correction_report <- report
           .protvis_ui_sync_state(dataset, shared_state)
+          shared_state$correct_noise_result <- result
+          rv$noise_report <- report
           # Keep Step2 as the single, data-source-independent checkpoint for
-          # the hand-off from input/search to Correct Noise.  Step3 remains
+          # the hand-off from input/search to Within-group Processing.  Step3 remains
           # as a compatibility export for older downstream modules.
           .protvis_save_stage_dataset(
             dataset,
@@ -570,17 +706,17 @@ correct_noise_server <- function(id, shared_state) {
           # make a successful correction look like an empty result.
           tryCatch(
             bslib::nav_select(
-              id = "Expression_Matrix", selected = "Correct Noise",
+              id = "Expression_Matrix", selected = "Within-group Processing",
               session = session
             ),
             error = function(e) invisible(NULL)
           )
-          shiny::showNotification("✅ Noise correction completed.", type = "message")
+          shiny::showNotification("✅ Within-group Processing completed.", type = "message")
         }, error = function(e) {
           shared_state$correct_noise_result <- NULL
           shinyWidgets::updateProgressBar(session, id = "noise_progress", value = 0)
           shiny::showNotification(
-            paste0("Noise correction failed: ", conditionMessage(e)),
+            paste0("Within-group Processing failed: ", conditionMessage(e)),
             type = "error"
           )
         })
@@ -597,12 +733,46 @@ correct_noise_server <- function(id, shared_state) {
       }
     })
 
+    current_noise_report <- shiny::reactive({
+      if (!is.null(rv$noise_report)) return(rv$noise_report)
+      dataset <- shared_state$dataset
+      if (inherits(dataset, "ProtVis_dataset")) {
+        return(dataset$analysis_results$noise_correction_report)
+      }
+      NULL
+    })
+    output$noise_report_details <- shiny::renderUI({
+      report <- current_noise_report()
+      if (is.null(report)) return(shiny::tags$p("Run Within-group Processing to generate a before/after report."))
+      method <- if (identical(report$parameters$method, "replicate_filter")) {
+        if (isTRUE(report$parameters$impute_mean)) "Replicate filtering + group mean imputation" else "Replicate filtering only"
+      } else "Existing replicate correction"
+      shiny::tagList(shiny::tags$p(paste("Method:", method)),
+                     shiny::tags$p(paste("Removed protein IDs:", length(report$removed_ids))),
+                     shiny::tags$small(report$note))
+    })
+    output$noise_report_summary <- DT::renderDT({
+      report <- current_noise_report()
+      shiny::req(report)
+      DT::datatable(report$summary, rownames = FALSE,
+                    options = list(dom = "t", scrollX = TRUE)) %>%
+        DT::formatRound(c("Before", "After", "Change"), digits = 2)
+    })
+    output$noise_report_samples <- DT::renderDT({
+      report <- current_noise_report()
+      shiny::req(report)
+      rows <- report$per_sample
+      if (is.null(rows)) rows <- data.frame(Message = "Cell transitions unavailable because input IDs are duplicated.")
+      DT::datatable(rows, rownames = FALSE,
+                    options = list(scrollX = TRUE, pageLength = 10))
+    })
+
     output$tbl_correct_noise <- DT::renderDT({
       result <- shared_state$correct_noise_result
       if (!isTRUE(rv$noise_requested) || is.null(result) ||
           !is.data.frame(result)) {
         result <- data.frame(
-          Message = "Run Correct Noise to display the corrected matrix.",
+          Message = "Run Within-group Processing to display the corrected matrix.",
           stringsAsFactors = FALSE
         )
       }

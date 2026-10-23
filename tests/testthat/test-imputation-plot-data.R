@@ -29,3 +29,27 @@ testthat::test_that("imputation plot helper leaves matrix row names as metadata 
   testthat::expect_identical(names(plot_df), c("S1", "S2"))
   testthat::expect_identical(rownames(plot_df), c("P1", "P2"))
 })
+
+
+testthat::test_that("imputation seed defaults to 12345 and validates user input", {
+  testthat::expect_identical(
+    ProtVis:::.protvis_imputation_seed(NULL),
+    12345L
+  )
+  testthat::expect_identical(
+    ProtVis:::.protvis_imputation_seed(12345),
+    12345L
+  )
+  testthat::expect_identical(
+    ProtVis:::.protvis_imputation_seed(2026),
+    2026L
+  )
+  testthat::expect_identical(
+    ProtVis:::.protvis_imputation_seed(0),
+    12345L
+  )
+  testthat::expect_identical(
+    ProtVis:::.protvis_imputation_seed("not-a-number"),
+    12345L
+  )
+})

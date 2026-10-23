@@ -70,16 +70,14 @@ data_normalization_ui <- function(id) {
           ns("normalization_method"),
           "Normalization Method",
           choices = c(
-            "Auto (source recommended)" = "auto",
-            "MaxQuant recommended (median center + row shift)" = "maxquant_recommended",
+            "Median centering" = "auto",
+            "Median centering + positive-value shift" = "maxquant_recommended",
             "Median subtraction" = "median_subtraction"
           ),
           selected = "auto"
         ),
         shiny::div(
-          "For MaxQuant, Auto reproduces the archived workflow: sample-wise ",
-          "median subtraction followed by the row-wise +abs(min)+5 shift ",
-          "(exact zeros become 1).",
+          "Normalize sample intensity distributions before downstream analysis.",
           style = "font-size:12px;color:#657789;line-height:1.45;margin-top:-6px;margin-bottom:10px;"
         ),
 
@@ -132,7 +130,9 @@ data_normalization_ui <- function(id) {
       ),
 
       bslib::page_fluid(
-        bslib::layout_column_wrap(
+        bslib::navset_tab(
+          bslib::nav_panel("Results",
+          bslib::layout_column_wrap(
           width = 1 / 2,
           height = 600,
 
@@ -171,6 +171,8 @@ data_normalization_ui <- function(id) {
               shiny::plotOutput(ns("normalizedPlot"))
             )
           )
+        )),
+          bslib::nav_panel("Processing report", .protvis_change_report_ui(ns))
         )
       )
     )
@@ -208,6 +210,8 @@ data_normalization_ui <- function(id) {
 #' @export
 data_normalization_server <- function(id, shared_state) {
   shiny::moduleServer(id, function(input, output, session) {
+    .protvis_change_report_outputs(output, shared_state, "normalization")
+
 
     rv <- shiny::reactiveValues(
       sample_info = NULL,
@@ -442,6 +446,8 @@ data_normalization_server <- function(id, shared_state) {
           zero_value = if (identical(resolved_method, "maxquant_recommended")) 1 else NULL
         )
       )
+      dataset <- .protvis_save_change_report(dataset, "normalization",
+        expr_df, normalized_data, resolved_method)
       .protvis_ui_sync_state(dataset, shared_state)
       .protvis_save_stage_dataset(
         dataset,
